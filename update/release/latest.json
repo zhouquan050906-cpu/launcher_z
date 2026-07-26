@@ -2,29 +2,29 @@
   "schemaVersion": 1,
   "appId": "BlockHelm-Launcher",
   "channel": "release",
-  "versionName": "0.9.9",
-  "versionCode": 90999,
-  "publishedAt": "2026-07-24T08:34:36Z",
+  "versionName": "0.9.10",
+  "versionCode": 91099,
+  "publishedAt": "2026-07-26T06:18:41Z",
   "mandatory": false,
   "minSupportedVersionCode": 0,
-  "releaseNotes": "# 正式版 0.9.9\r\n\r\n* 新增自定义文件下载功能，可输入 HTTP 或 HTTPS 文件地址并选择本地保存位置。\r\n* 升级游戏下载引擎，为大型 Minecraft 文件提供自适应分段下载，并改进断点续传、失败重试、完整性校验和同源并发控制。\r\n* 优化下载速度统计、限速和并发调度，提高资源依赖项与整合包文件的批量下载效率。\r\n* 新增启动后自动加入服务器设置，支持全局默认配置和实例独立配置，并根据游戏版本使用兼容的启动参数。\r\n* 改进 Java 运行时导入与发现，手动导入的有效路径可在刷新和重启后保留，失效路径会在重新扫描时清理。\r\n* 改进本地整合包识别，扩展名为 `.zip` 的 Modrinth 整合包也可根据包内清单正常导入。\r\n* 在资源详情页新增相关网站入口，并完善资源关联信息的获取与展示。\r\n* 完善关于页面中的引用项目与许可信息展示，并补充多语言文案。\r\n* 修复亚克力背景不透明度为 `100%` 时数值换行的问题。",
+  "releaseNotes": "# 正式版 0.9.10\r\n\r\n* 改进 Microsoft 正版账户登录流程，提升登录、令牌刷新和凭据迁移的稳定性。更新后需要重新登录微软账号。\r\n* 离线账户现可使用皮肤库导入、管理和应用自定义皮肤，并支持经典与纤细模型。\r\n* 修复部分 Fabric、Forge 和 NeoForge 实例在修复或补全文件后丢失原有版本元数据、可能按原版游戏启动的问题。\r\n* 改进版本继承链、缺失父版本元数据和加载器安装文件的解析与校验，提升游戏下载、启动前检查和自动修复的可靠性。",
   "assets": [
     {
       "platform": "windows",
       "arch": "x64",
       "packageType": "exe",
       "fileName": "BlockHelm_Launcher_x64.exe",
-      "size": 10983304,
-      "sha256": "a91314d20ab88208b8781f5fc1cf6907a5f1590c05f1306636477f82d9414e0d",
+      "size": 12478048,
+      "sha256": "01197b81639a52a061fa9b61b32ec78d55fe0aceb7400f2fa13e226cd3951e77",
       "urls": [
         {
           "name": "gitee",
-          "url": "https://gitee.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.9/BlockHelm_Launcher_x64.exe",
+          "url": "https://gitee.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.10/BlockHelm_Launcher_x64.exe",
           "priority": 1
         },
         {
           "name": "github",
-          "url": "https://github.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.9/BlockHelm_Launcher_x64.exe",
+          "url": "https://github.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.10/BlockHelm_Launcher_x64.exe",
           "priority": 2
         }
       ]
