@@ -1228,9 +1228,6 @@
   <data name="Account_AddButton" xml:space="preserve">
     <value>アカウントを追加</value>
   </data>
-  <data name="Account_BuyMinecraftButton" xml:space="preserve">
-    <value>Minecraft を購入</value>
-  </data>
   <data name="Account_EmptySelection" xml:space="preserve">
     <value>設定を表示または変更するアカウントを選択してください。</value>
   </data>
@@ -1406,7 +1403,7 @@
     <value>追加するアカウントの種類を選択してください。</value>
   </data>
   <data name="Dialog_AddOfflineAccountSubtitle" xml:space="preserve">
-    <value>正規版 Minecraft をまだお持ちでない場合は、正規版の購入を優先してご検討ください。</value>
+    <value>追加するオフラインアカウント名を入力してください。</value>
   </data>
   <data name="Dialog_AddMicrosoftAccountSubtitle" xml:space="preserve">
     <value>表示された Microsoft 公式ページでログインを完了してください。</value>
@@ -1724,7 +1721,7 @@
     <value>ゲームは起動しましたが、オフラインスキンを読み込めませんでした。今回はデフォルトスキンを使用します。</value>
   </data>
   <data name="Status_LaunchInstanceRepairFailed" xml:space="preserve">
-    <value>現在のインスタンスには重要なファイルが不足しており、新しいバージョンを追加せずに自動補完できません。このインスタンスを再インストールするか、バージョンファイルを確認してください。</value>
+    <value>ゲームファイルの検証に失敗しました。「不足ファイルを自動補完」を有効にして再試行してください。解決しない場合は、このインスタンスを再インストールするか、バージョンファイルを確認してください。</value>
   </data>
   <data name="Status_LaunchInstanceSelectedFormat" xml:space="preserve">
     <value>現在のゲームを {0} に切り替えました</value>
@@ -2235,9 +2232,6 @@
   </data>
   <data name="Status_OpenFeedbackPageFailed" xml:space="preserve">
     <value>フィードバックページを開けませんでした。しばらくしてからもう一度お試しください。</value>
-  </data>
-  <data name="Status_OpenMinecraftPurchasePageFailed" xml:space="preserve">
-    <value>Minecraft の購入ページを開けませんでした。しばらくしてからもう一度お試しください。</value>
   </data>
   <data name="Status_OpenReferenceProjectFailed" xml:space="preserve">
     <value>プロジェクトリンクを開けませんでした</value>
@@ -3025,9 +3019,6 @@
   </data>
   <data name="Dialog_DeleteMultipleModsMessageFormat" xml:space="preserve">
     <value>この {0} 個の mod を削除しますか？可能な場合はごみ箱に移動し、ごみ箱を利用できない場合は完全に削除します。</value>
-  </data>
-  <data name="Status_ModEnabledStateTargetExistsFormat" xml:space="preserve">
-    <value>{0} は既に存在するため、操作に失敗しました。</value>
   </data>
   <data name="Status_SelectedModsEnabledFormat" xml:space="preserve">
     <value>{0} 個の mod を有効化しました</value>

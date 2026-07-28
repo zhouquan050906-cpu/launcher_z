@@ -418,7 +418,6 @@
   <data name="Launch_Button" xml:space="preserve"><value>启动游戏</value></data>
   <data name="Account_ListTitle" xml:space="preserve"><value>账户</value></data>
   <data name="Account_AddButton" xml:space="preserve"><value>添加账户</value></data>
-  <data name="Account_BuyMinecraftButton" xml:space="preserve"><value>购买 Minecraft</value></data>
   <data name="Account_EmptySelection" xml:space="preserve"><value>选择账号以浏览或修改设置。</value></data>
   <data name="Account_SkinHeader" xml:space="preserve"><value>皮肤</value></data>
   <data name="Account_CapeHeader" xml:space="preserve"><value>披风</value></data>
@@ -485,7 +484,7 @@
   <data name="Dialog_LoginSuccessTitle" xml:space="preserve"><value>登录成功</value></data>
   <data name="Dialog_LoginIncompleteTitle" xml:space="preserve"><value>登录未完成</value></data>
   <data name="Dialog_AddAccountSubtitle" xml:space="preserve"><value>选择要添加的账户类型。</value></data>
-  <data name="Dialog_AddOfflineAccountSubtitle" xml:space="preserve"><value>如果您尚未拥有正版 Minecraft，请始终优先考虑购入正版  Minecraft。</value></data>
+  <data name="Dialog_AddOfflineAccountSubtitle" xml:space="preserve"><value>输入要添加的离线账户名。</value></data>
   <data name="Dialog_AddMicrosoftAccountSubtitle" xml:space="preserve"><value>请在弹出的 Microsoft 官方页面完成登录。</value></data>
   <data name="Dialog_AddThirdPartyAccountSubtitle" xml:space="preserve"><value>填写外置认证服务器和账户信息。</value></data>
   <data name="Dialog_AddAccountResultSubtitle" xml:space="preserve"><value>点击确定返回账户列表。</value></data>
@@ -591,7 +590,7 @@
   <data name="Status_LaunchRuntimeAbnormalExit" xml:space="preserve"><value>游戏运行时异常退出，已记录诊断日志。</value></data>
   <data name="Status_LaunchFailed" xml:space="preserve"><value>启动失败，请稍后重试。</value></data>
   <data name="Status_LaunchOfflineSkinUnavailable" xml:space="preserve"><value>游戏已启动，但离线皮肤加载失败，本次将使用默认皮肤。</value></data>
-  <data name="Status_LaunchInstanceRepairFailed" xml:space="preserve"><value>当前实例缺少关键文件，且无法在不新增版本的情况下自动补齐，请重新安装该实例或检查版本文件。</value></data>
+  <data name="Status_LaunchInstanceRepairFailed" xml:space="preserve"><value>游戏文件校验失败。请启用“缺失文件自动补全”后重试；若仍失败，请重新安装该实例或检查版本文件。</value></data>
   <data name="Status_LaunchInstanceSelectedFormat" xml:space="preserve"><value>当前游戏已切换为 {0}</value></data>
   <data name="Status_LaunchInstanceSelectionFailed" xml:space="preserve"><value>当前游戏切换失败，请刷新后重试。</value></data>
   <data name="Status_LoadingVersions" xml:space="preserve"><value>正在获取 Minecraft 版本列表...</value></data>
@@ -762,7 +761,6 @@
   <data name="Status_OpenLaunchReportFailed" xml:space="preserve"><value>无法打开本次游戏报告，请稍后重试。</value></data>
   <data name="Status_OpenGithubRepositoryFailed" xml:space="preserve"><value>打开 GitHub 仓库失败</value></data>
   <data name="Status_OpenFeedbackPageFailed" xml:space="preserve"><value>打开反馈页面失败，请稍后重试。</value></data>
-  <data name="Status_OpenMinecraftPurchasePageFailed" xml:space="preserve"><value>无法打开 Minecraft 购买页面，请稍后重试。</value></data>
   <data name="Status_OpenReferenceProjectFailed" xml:space="preserve"><value>打开项目链接失败</value></data>
   <data name="Status_OpenRelatedWebsiteFailed" xml:space="preserve"><value>打开相关网站失败</value></data>
   <data name="Status_OpenResourceDetailsFailed" xml:space="preserve"><value>无法打开资源详情，请稍后重试</value></data>
@@ -1028,7 +1026,6 @@
   <data name="Dialog_DeleteModsTitle" xml:space="preserve"><value>删除模组</value></data>
   <data name="Dialog_DeleteSingleModMessageFormat" xml:space="preserve"><value>确认删除模组“{0}”吗？将优先移入系统回收站；回收站不可用时将直接删除。</value></data>
   <data name="Dialog_DeleteMultipleModsMessageFormat" xml:space="preserve"><value>确认删除这 {0} 个模组吗？将优先移入系统回收站；回收站不可用时将直接删除。</value></data>
-  <data name="Status_ModEnabledStateTargetExistsFormat" xml:space="preserve"><value>{0}已存在，操作失败</value></data>
   <data name="Status_SelectedModsEnabledFormat" xml:space="preserve"><value>已启用 {0} 个模组</value></data>
   <data name="Status_SelectedModsEnablePartialFailedFormat" xml:space="preserve"><value>已启用 {0} 个模组，{1} 个失败</value></data>
   <data name="Status_SelectedModsEnableFailed" xml:space="preserve"><value>启用所选模组失败，请稍后重试。</value></data>

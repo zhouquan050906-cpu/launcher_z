@@ -1228,9 +1228,6 @@ Longer content wraps automatically.</value>
   <data name="Account_AddButton" xml:space="preserve">
     <value>Add Account</value>
   </data>
-  <data name="Account_BuyMinecraftButton" xml:space="preserve">
-    <value>Buy Minecraft</value>
-  </data>
   <data name="Account_EmptySelection" xml:space="preserve">
     <value>Select an account to view or change settings.</value>
   </data>
@@ -1406,7 +1403,7 @@ Longer content wraps automatically.</value>
     <value>Choose the account type to add.</value>
   </data>
   <data name="Dialog_AddOfflineAccountSubtitle" xml:space="preserve">
-    <value>If you do not yet own a legitimate copy of Minecraft, please always prioritize purchasing one.</value>
+    <value>Enter a local username for offline play.</value>
   </data>
   <data name="Dialog_AddMicrosoftAccountSubtitle" xml:space="preserve">
     <value>Complete sign-in on the Microsoft page that opens.</value>
@@ -1724,7 +1721,7 @@ Longer content wraps automatically.</value>
     <value>The game started, but the offline skin could not be loaded. The default skin will be used this time.</value>
   </data>
   <data name="Status_LaunchInstanceRepairFailed" xml:space="preserve">
-    <value>The current instance is missing critical files and cannot be repaired without adding a new version. Reinstall this instance or check the version files.</value>
+    <value>Game file verification failed. Enable "Automatically repair missing files" and try again. If it still fails, reinstall this instance or check the version files.</value>
   </data>
   <data name="Status_LaunchInstanceSelectedFormat" xml:space="preserve">
     <value>Current game switched to {0}</value>
@@ -2235,9 +2232,6 @@ Longer content wraps automatically.</value>
   </data>
   <data name="Status_OpenFeedbackPageFailed" xml:space="preserve">
     <value>Failed to open the feedback page. Please try again later.</value>
-  </data>
-  <data name="Status_OpenMinecraftPurchasePageFailed" xml:space="preserve">
-    <value>Failed to open the Minecraft purchase page. Please try again later.</value>
   </data>
   <data name="Status_OpenReferenceProjectFailed" xml:space="preserve">
     <value>Failed to open the reference project.</value>
@@ -3025,9 +3019,6 @@ The current game folder will be backed up first.</value>
   </data>
   <data name="Dialog_DeleteMultipleModsMessageFormat" xml:space="preserve">
     <value>Delete these {0} mods? They will be moved to the Recycle Bin when possible; otherwise they will be permanently deleted.</value>
-  </data>
-  <data name="Status_ModEnabledStateTargetExistsFormat" xml:space="preserve">
-    <value>{0} already exists. Operation failed.</value>
   </data>
   <data name="Status_SelectedModsEnabledFormat" xml:space="preserve">
     <value>Enabled {0} mods</value>

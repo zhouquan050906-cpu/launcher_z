@@ -1228,9 +1228,6 @@
   <data name="Account_AddButton" xml:space="preserve">
     <value>新增帳戶</value>
   </data>
-  <data name="Account_BuyMinecraftButton" xml:space="preserve">
-    <value>購買 Minecraft</value>
-  </data>
   <data name="Account_EmptySelection" xml:space="preserve">
     <value>選擇帳號以瀏覽或修改設定。</value>
   </data>
@@ -1406,7 +1403,7 @@
     <value>選擇要新增的帳戶類型。</value>
   </data>
   <data name="Dialog_AddOfflineAccountSubtitle" xml:space="preserve">
-    <value>如果您尚未擁有正版 Minecraft，請始終優先考慮購買正版 Minecraft。</value>
+    <value>輸入要新增的離線帳戶名。</value>
   </data>
   <data name="Dialog_AddMicrosoftAccountSubtitle" xml:space="preserve">
     <value>請在彈出的 Microsoft 官方頁面完成登入。</value>
@@ -1724,7 +1721,7 @@
     <value>遊戲已啟動，但離線皮膚載入失敗，本次將使用預設皮膚。</value>
   </data>
   <data name="Status_LaunchInstanceRepairFailed" xml:space="preserve">
-    <value>目前實例缺少關鍵檔案，且無法在不新增版本的情況下自動補齊，請重新安裝該實例或檢查版本檔案。</value>
+    <value>遊戲檔案驗證失敗。請啟用「缺少檔案自動補齊」後重試；若仍然失敗，請重新安裝此實例或檢查版本檔案。</value>
   </data>
   <data name="Status_LaunchInstanceSelectedFormat" xml:space="preserve">
     <value>目前遊戲已切換為 {0}</value>
@@ -2235,9 +2232,6 @@
   </data>
   <data name="Status_OpenFeedbackPageFailed" xml:space="preserve">
     <value>無法開啟意見回饋頁面，請稍後再試。</value>
-  </data>
-  <data name="Status_OpenMinecraftPurchasePageFailed" xml:space="preserve">
-    <value>無法開啟 Minecraft 購買頁面，請稍後再試。</value>
   </data>
   <data name="Status_OpenReferenceProjectFailed" xml:space="preserve">
     <value>開啟專案連結失敗</value>
@@ -3025,9 +3019,6 @@
   </data>
   <data name="Dialog_DeleteMultipleModsMessageFormat" xml:space="preserve">
     <value>確認刪除這 {0} 個模組嗎？將優先移至系統資源回收筒；資源回收筒無法使用時將直接刪除。</value>
-  </data>
-  <data name="Status_ModEnabledStateTargetExistsFormat" xml:space="preserve">
-    <value>{0}已存在，操作失敗</value>
   </data>
   <data name="Status_SelectedModsEnabledFormat" xml:space="preserve">
     <value>已啟用 {0} 個模組</value>
