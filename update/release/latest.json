@@ -2,29 +2,29 @@
   "schemaVersion": 1,
   "appId": "BlockHelm-Launcher",
   "channel": "release",
-  "versionName": "0.9.10",
-  "versionCode": 91099,
-  "publishedAt": "2026-07-26T06:18:41Z",
+  "versionName": "0.9.11",
+  "versionCode": 91199,
+  "publishedAt": "2026-07-28T08:09:43Z",
   "mandatory": false,
   "minSupportedVersionCode": 0,
-  "releaseNotes": "# 正式版 0.9.10\r\n\r\n* 改进 Microsoft 正版账户登录流程，提升登录、令牌刷新和凭据迁移的稳定性。更新后需要重新登录微软账号。\r\n* 离线账户现可使用皮肤库导入、管理和应用自定义皮肤，并支持经典与纤细模型。\r\n* 修复部分 Fabric、Forge 和 NeoForge 实例在修复或补全文件后丢失原有版本元数据、可能按原版游戏启动的问题。\r\n* 改进版本继承链、缺失父版本元数据和加载器安装文件的解析与校验，提升游戏下载、启动前检查和自动修复的可靠性。",
+  "releaseNotes": "# 正式版 0.9.11\r\n\r\n* 增加购买正版 Minecraft 的按钮入口和文案提示。\r\n* 改进联机房间创建流程：由 Terracotta 自动检测已开放的世界。\r\n* 改进游戏启动状态检测，修复了游戏窗口已正常弹出，启动器却依旧显示正在启动游戏进程的情况。\r\n* 改进旧版原生库兼容处理，提升加载器安装、整合包服务端部署和游戏启动的可靠性。",
   "assets": [
     {
       "platform": "windows",
       "arch": "x64",
       "packageType": "exe",
       "fileName": "BlockHelm_Launcher_x64.exe",
-      "size": 12478048,
-      "sha256": "01197b81639a52a061fa9b61b32ec78d55fe0aceb7400f2fa13e226cd3951e77",
+      "size": 12502112,
+      "sha256": "c9af921a0b9dfcd7fe2773b1c836b8be901f7fbf7527cc366522c51e2ace8040",
       "urls": [
         {
           "name": "gitee",
-          "url": "https://gitee.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.10/BlockHelm_Launcher_x64.exe",
+          "url": "https://gitee.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.11/BlockHelm_Launcher_x64.exe",
           "priority": 1
         },
         {
           "name": "github",
-          "url": "https://github.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.10/BlockHelm_Launcher_x64.exe",
+          "url": "https://github.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.11/BlockHelm_Launcher_x64.exe",
           "priority": 2
         }
       ]
