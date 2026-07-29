@@ -25,6 +25,8 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using Launcher.App.Behaviors;
+using Launcher.App.Utilities;
 using Launcher.App.ViewModels.Home;
 
 namespace Launcher.App.Views.Home;
@@ -55,6 +57,7 @@ public partial class HomeLaunchGameListView : UserControl
     private bool pendingAnimate;
     private int animationGeneration;
     private int measureRetryCount;
+    private bool? appliedExpandedState;
 
     public HomeLaunchGameListView()
     {
@@ -207,11 +210,12 @@ public partial class HomeLaunchGameListView : UserControl
         HomeLaunchMenuViewport.Height = expandedHeight;
 
         var shouldExpand = ShouldUseExpandedState();
+        var selectedItemWasVisible = false;
         SuppressSelectedItemBackground = !shouldExpand;
         HomeLaunchHeaderOverlay.IsHitTestVisible = shouldExpand;
         if (!shouldExpand
             && attachedViewModel?.SelectedLaunchInstanceItem is not null
-            && !PrepareSelectedItemForMeasurement())
+            && !PrepareSelectedItemForMeasurement(out selectedItemWasVisible))
         {
             if (measureRetryCount++ < 4)
             {
@@ -224,6 +228,15 @@ public partial class HomeLaunchGameListView : UserControl
             measureRetryCount = 0;
         }
 
+        if (!shouldExpand
+            && animate
+            && appliedExpandedState == true
+            && !selectedItemWasVisible)
+        {
+            NormalizeSelectedItemCollapseStart();
+        }
+
+        appliedExpandedState = shouldExpand;
         var generation = ++animationGeneration;
         var targetHeight = shouldExpand ? expandedHeight : GetCollapsedHeight();
         var targetTranslate = shouldExpand ? 0 : CalculateCollapsedListTranslate();
@@ -253,8 +266,9 @@ public partial class HomeLaunchGameListView : UserControl
             || attachedViewModel?.HasNoLaunchInstances == true;
     }
 
-    private bool PrepareSelectedItemForMeasurement()
+    private bool PrepareSelectedItemForMeasurement(out bool wasVisible)
     {
+        wasVisible = false;
         // 虚拟化容器可能尚未生成，通过 UpdateLayout 请求当前选中项容器后再读取位置。
         var selectedItem = attachedViewModel?.SelectedLaunchInstanceItem;
         if (selectedItem is null)
@@ -262,13 +276,72 @@ public partial class HomeLaunchGameListView : UserControl
 
         HomeLaunchInstanceListBox.ApplyTemplate();
         HomeLaunchInstanceListBox.UpdateLayout();
+        SmoothScrollBehavior.CancelAnimationFromDescendant(HomeLaunchInstanceListBox);
+        wasVisible = IsWithinScrollViewport(GetSelectedItemContainer(selectedItem));
+        if (!wasVisible)
+        {
+            HomeLaunchInstanceListBox.ScrollIntoView(selectedItem);
+            HomeLaunchInstanceListBox.UpdateLayout();
+        }
 
-        if (GetSelectedItemContainer(selectedItem) is { ActualHeight: > 0 })
-            return true;
-
-        HomeLaunchInstanceListBox.ScrollIntoView(selectedItem);
-        HomeLaunchInstanceListBox.UpdateLayout();
         return GetSelectedItemContainer(selectedItem) is { ActualHeight: > 0 };
+    }
+
+    private bool IsWithinScrollViewport(FrameworkElement? container)
+    {
+        if (container is null
+            || container.ActualHeight <= 0
+            || VisualTreeSearch.FindDescendant<ScrollViewer>(
+                HomeLaunchInstanceListBox,
+                _ => true) is not { ActualHeight: > 0 } scrollViewer)
+        {
+            return false;
+        }
+
+        try
+        {
+            var top = container
+                .TransformToAncestor(scrollViewer)
+                .Transform(new Point(0, 0))
+                .Y;
+            var bottom = top + container.ActualHeight;
+            return bottom > 0 && top < scrollViewer.ActualHeight;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private void NormalizeSelectedItemCollapseStart()
+    {
+        var selectedItem = attachedViewModel?.SelectedLaunchInstanceItem;
+        var container = selectedItem is null ? null : GetSelectedItemContainer(selectedItem);
+        if (container is null)
+            return;
+
+        try
+        {
+            var currentTop = container
+                .TransformToAncestor(HomeLaunchMenuPanel)
+                .Transform(new Point(0, 0))
+                .Y;
+            var configuredHeaderHeight = HomeLaunchHeaderOverlay.Height;
+            var headerHeight = HomeLaunchHeaderOverlay.ActualHeight > 0
+                ? HomeLaunchHeaderOverlay.ActualHeight
+                : double.IsNaN(configuredHeaderHeight)
+                    ? 0
+                    : Math.Max(0, configuredHeaderHeight);
+            var anchorTop = HomeLaunchMenuPanel.BorderThickness.Top + headerHeight;
+            var currentTranslate = HomeLaunchListTranslate.Y;
+            var normalizedTranslate = currentTranslate + anchorTop - currentTop;
+
+            HomeLaunchListTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            HomeLaunchListTranslate.Y = normalizedTranslate;
+        }
+        catch (InvalidOperationException)
+        {
+        }
     }
 
     private double CalculateCollapsedListTranslate()

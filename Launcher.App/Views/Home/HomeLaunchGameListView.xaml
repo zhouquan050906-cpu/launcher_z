@@ -59,18 +59,25 @@
     </UserControl.Resources>
 
     <Grid x:Name="HomeLaunchFloatingLayer">
-        <Border x:Name="HomeLaunchMenuPanelShadow"
-                Width="{StaticResource HomeLaunchMenuPanelWidth}"
-                Height="{StaticResource HomeLaunchMenuCollapsedHeight}"
-                Margin="{StaticResource HomeLaunchMenuPanelMargin}"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Bottom">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="34"
-                                  Color="{DynamicResource Color.SecondaryMenu.Shadow}"
-                                  Opacity="0.1"
-                                  ShadowDepth="0" />
-            </Border.Effect>
+        <Grid x:Name="HomeLaunchMenuPanelShadow"
+              Width="{StaticResource HomeLaunchMenuPanelWidth}"
+              Height="{StaticResource HomeLaunchMenuCollapsedHeight}"
+              Margin="{StaticResource HomeLaunchMenuPanelMargin}"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Bottom">
+            <Border x:Name="HomeLaunchMenuShadowLayer"
+                    Background="{DynamicResource Brush.SecondaryMenu.Panel}"
+                    CornerRadius="14"
+                    Opacity="0.1"
+                    IsHitTestVisible="False"
+                    CacheMode="BitmapCache">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="34"
+                                      Color="{DynamicResource Color.SecondaryMenu.Shadow}"
+                                      Opacity="1"
+                                      ShadowDepth="0" />
+                </Border.Effect>
+            </Border>
 
             <controls:BackdropBlurBorder x:Name="HomeLaunchMenuPanel"
                                          Style="{StaticResource SecondaryMenuBackdropStyle}">
@@ -153,6 +160,6 @@
                     </Border>
                 </Grid>
             </controls:BackdropBlurBorder>
-        </Border>
+        </Grid>
     </Grid>
 </UserControl>

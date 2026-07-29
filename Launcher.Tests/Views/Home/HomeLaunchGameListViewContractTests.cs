@@ -30,6 +30,34 @@ namespace Launcher.Tests.Views.Home;
 public sealed class HomeLaunchGameListViewContractTests : TestTempDirectory
 {
     [Fact]
+    public void MenuShadowLayerDoesNotContainScrollableContent()
+    {
+        var document = XDocument.Load(Path.Combine(
+            FindRepositoryRoot().FullName,
+            "Launcher.App",
+            "Views",
+            "Home",
+            "HomeLaunchGameListView.xaml"));
+        var menuContainer = FindNamedElement(document, "HomeLaunchMenuPanelShadow");
+        var shadowLayer = FindNamedElement(document, "HomeLaunchMenuShadowLayer");
+        var menuPanel = FindNamedElement(document, "HomeLaunchMenuPanel");
+        var instanceList = FindNamedElement(document, "HomeLaunchInstanceListBox");
+
+        Assert.Equal("Grid", menuContainer.Name.LocalName);
+        Assert.DoesNotContain(
+            menuContainer.Elements(),
+            element => element.Name.LocalName.EndsWith(".Effect", StringComparison.Ordinal));
+        Assert.Equal("False", shadowLayer.Attribute("IsHitTestVisible")?.Value);
+        Assert.Equal("BitmapCache", shadowLayer.Attribute("CacheMode")?.Value);
+        Assert.Contains(
+            shadowLayer.Elements(),
+            element => element.Name.LocalName == "Border.Effect");
+        Assert.Same(menuContainer, shadowLayer.Parent);
+        Assert.Same(menuContainer, menuPanel.Parent);
+        Assert.DoesNotContain(shadowLayer, instanceList.Ancestors());
+    }
+
+    [Fact]
     public void DirectIconSourceBindingsUseImmediateFileLoader()
     {
         var unsafeBindings = Directory
@@ -104,5 +132,14 @@ public sealed class HomeLaunchGameListViewContractTests : TestTempDirectory
         while (root.GetFiles("Launcher.sln").Length == 0)
             root = root.Parent ?? throw new DirectoryNotFoundException("Could not locate repository root.");
         return root;
+    }
+
+    private static XElement FindNamedElement(XDocument document, string name)
+    {
+        return document
+            .Descendants()
+            .Single(element => element
+                .Attributes()
+                .Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == name));
     }
 }
