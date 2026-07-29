@@ -26,6 +26,8 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Launcher.App.Behaviors;
+using Launcher.App.Controls;
+using Launcher.App.Effects;
 using Launcher.App.Utilities;
 using Launcher.App.ViewModels.Home;
 
@@ -44,6 +46,13 @@ public partial class HomeLaunchGameListView : UserControl
             typeof(HomeLaunchGameListView),
             new PropertyMetadata(false));
 
+    public static readonly DependencyProperty IsProgressiveBlurEnabledProperty =
+        DependencyProperty.Register(
+            nameof(IsProgressiveBlurEnabled),
+            typeof(bool),
+            typeof(HomeLaunchGameListView),
+            new PropertyMetadata(false, OnProgressiveBlurEnabledChanged));
+
     private const double FallbackPanelWidth = 224;
     private const double FallbackCollapsedHeight = 72;
     private const double FallbackItemHeight = 54;
@@ -58,10 +67,29 @@ public partial class HomeLaunchGameListView : UserControl
     private int animationGeneration;
     private int measureRetryCount;
     private bool? appliedExpandedState;
+    private bool isProgressiveBlurActive;
+    private readonly ProgressiveBlurBandController? progressiveBlurController;
 
     public HomeLaunchGameListView()
     {
         InitializeComponent();
+
+        progressiveBlurController = new ProgressiveBlurBandController(
+            new ProgressiveBlurVisualParts(
+                this,
+                HomeLaunchProgressiveBlurLayer,
+                HomeLaunchProgressiveBlurVisualSource,
+                HomeLaunchProgressiveBlurDirectHost,
+                HomeLaunchProgressiveBlurViewport,
+                HomeLaunchProgressiveBlurUpscaleHost,
+                HomeLaunchProgressiveBlurUpscaleTransform,
+                HomeLaunchProgressiveBlurHorizontalHost,
+                HomeLaunchProgressiveBlurVerticalHost,
+                HomeLaunchProgressiveBlurBrush),
+            () => IsVisible && isProgressiveBlurActive);
+        SetResourceReference(
+            IsProgressiveBlurEnabledProperty,
+            ProgressiveBlurResourceKeys.IsEnabled);
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -101,6 +129,12 @@ public partial class HomeLaunchGameListView : UserControl
         set => SetValue(SuppressSelectedItemBackgroundProperty, value);
     }
 
+    public bool IsProgressiveBlurEnabled
+    {
+        get => (bool)GetValue(IsProgressiveBlurEnabledProperty);
+        set => SetValue(IsProgressiveBlurEnabledProperty, value);
+    }
+
     internal void SetPointerExpandedForTest(bool value)
     {
         SetPointerExpanded(value);
@@ -113,11 +147,15 @@ public partial class HomeLaunchGameListView : UserControl
         HomeLaunchMenuPanelShadow.Width = GetResourceDouble("HomeLaunchMenuPanelWidth", FallbackPanelWidth);
         HomeLaunchMenuPanelShadow.Height = GetCollapsedHeight();
         HomeLaunchMenuPanelShadow.Margin = GetPanelMargin();
+        progressiveBlurController?.OnLoaded();
         QueueApplyMenuState(animate: false, DispatcherPriority.Loaded);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        isProgressiveBlurActive = false;
+        VerticalEdgeOpacityMask.SetIsEnabled(HomeLaunchProgressiveBlurLayer, false);
+        progressiveBlurController?.OnUnloaded();
         DetachViewModel(attachedViewModel);
     }
 
@@ -213,6 +251,7 @@ public partial class HomeLaunchGameListView : UserControl
         var selectedItemWasVisible = false;
         SuppressSelectedItemBackground = !shouldExpand;
         HomeLaunchHeaderOverlay.IsHitTestVisible = shouldExpand;
+        UpdateProgressiveBlurState(shouldExpand);
         if (!shouldExpand
             && attachedViewModel?.SelectedLaunchInstanceItem is not null
             && !PrepareSelectedItemForMeasurement(out selectedItemWasVisible))
@@ -247,6 +286,30 @@ public partial class HomeLaunchGameListView : UserControl
         AnimateDouble(HomeLaunchListTranslate, TranslateTransform.YProperty, targetTranslate, animate, generation);
         AnimateDouble(HomeLaunchEmptyStateTranslate, TranslateTransform.YProperty, targetEmptyStateTranslate, animate, generation);
         AnimateDouble(HomeLaunchHeaderOverlay, OpacityProperty, targetHeaderOpacity, animate, generation);
+    }
+
+    private static void OnProgressiveBlurEnabledChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (dependencyObject is not HomeLaunchGameListView view)
+            return;
+
+        var becameEnabled = !(bool)e.OldValue && (bool)e.NewValue;
+        view.UpdateProgressiveBlurState(view.ShouldUseExpandedState());
+        if (becameEnabled)
+            view.progressiveBlurController?.OnEnabledChanged(true);
+    }
+
+    private void UpdateProgressiveBlurState(bool shouldExpand)
+    {
+        isProgressiveBlurActive = IsProgressiveBlurEnabled
+            && shouldExpand
+            && attachedViewModel?.HasLaunchInstances == true;
+        VerticalEdgeOpacityMask.SetIsEnabled(
+            HomeLaunchProgressiveBlurLayer,
+            isProgressiveBlurActive);
+        progressiveBlurController?.Update();
     }
 
     private bool ShouldUseExpandedState()

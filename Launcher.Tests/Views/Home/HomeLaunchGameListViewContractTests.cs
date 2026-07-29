@@ -58,6 +58,39 @@ public sealed class HomeLaunchGameListViewContractTests : TestTempDirectory
     }
 
     [Fact]
+    public void InstanceListUsesSharedTopProgressiveBlurStructure()
+    {
+        var document = XDocument.Load(Path.Combine(
+            FindRepositoryRoot().FullName,
+            "Launcher.App",
+            "Views",
+            "Home",
+            "HomeLaunchGameListView.xaml"));
+        var listLayer = FindNamedElement(document, "HomeLaunchProgressiveBlurLayer");
+        var directHost = FindNamedElement(document, "HomeLaunchProgressiveBlurDirectHost");
+        var visualSource = FindNamedElement(document, "HomeLaunchProgressiveBlurVisualSource");
+        var blurViewport = FindNamedElement(document, "HomeLaunchProgressiveBlurViewport");
+        var headerOverlay = FindNamedElement(document, "HomeLaunchHeaderOverlay");
+        var instanceList = FindNamedElement(document, "HomeLaunchInstanceListBox");
+
+        Assert.Equal(
+            "False",
+            listLayer.Attributes().Single(
+                attribute => attribute.Name.LocalName == "VerticalEdgeOpacityMask.IsEnabled").Value);
+        Assert.Equal(
+            "70",
+            listLayer.Attributes().Single(
+                attribute => attribute.Name.LocalName == "VerticalEdgeOpacityMask.TopFadeLength").Value);
+        Assert.Equal("False", blurViewport.Attribute("IsHitTestVisible")?.Value);
+        Assert.Same(listLayer, directHost.Parent);
+        Assert.Same(listLayer, blurViewport.Parent);
+        Assert.Same(directHost, visualSource.Parent);
+        Assert.Contains(visualSource, instanceList.Ancestors());
+        Assert.DoesNotContain(visualSource, blurViewport.Ancestors());
+        Assert.DoesNotContain(visualSource, headerOverlay.Ancestors());
+    }
+
+    [Fact]
     public void DirectIconSourceBindingsUseImmediateFileLoader()
     {
         var unsafeBindings = Directory

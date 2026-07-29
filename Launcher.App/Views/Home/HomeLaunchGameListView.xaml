@@ -103,31 +103,82 @@
                         </TextBlock.Style>
                     </TextBlock>
 
-                    <ListBox x:Name="HomeLaunchInstanceListBox"
-                             Tag="HomeLaunchInstanceList"
-                             ItemsSource="{Binding LaunchInstances}"
-                             Style="{StaticResource HomeLaunchInstanceListBoxStyle}"
-                             ItemContainerStyle="{StaticResource ListPageVirtualizedListBoxItemStyle}"
-                             VirtualizingPanel.IsVirtualizing="True"
-                             VirtualizingPanel.VirtualizationMode="Recycling"
-                             VirtualizingPanel.ScrollUnit="Pixel">
-                        <ListBox.RenderTransform>
-                            <TranslateTransform x:Name="HomeLaunchListTranslate" />
-                        </ListBox.RenderTransform>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Button Height="{StaticResource HomeLaunchMenuItemHeight}"
-                                        Style="{StaticResource SecondaryMenuButtonStyle}"
-                                        behaviors:SecondaryMenuButtonBehavior.IsSelected="{Binding IsSelected}"
-                                        behaviors:SecondaryMenuButtonBehavior.SuppressSelectedBackground="{Binding SuppressSelectedItemBackground, ElementName=Root}"
-                                        Command="{Binding DataContext.SelectLaunchInstanceCommand, RelativeSource={RelativeSource AncestorType={x:Type views:HomeLaunchGameListView}}}"
-                                        CommandParameter="{Binding}">
-                                    <ContentPresenter Content="{Binding}"
-                                                      ContentTemplate="{StaticResource HomeLaunchInstanceMenuItemContentTemplate}" />
-                                </Button>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <Grid x:Name="HomeLaunchProgressiveBlurLayer"
+                          Background="Transparent"
+                          behaviors:VerticalEdgeOpacityMask.IsEnabled="False"
+                          behaviors:VerticalEdgeOpacityMask.TopFadeLength="70"
+                          behaviors:VerticalEdgeOpacityMask.TopIntermediateLength="30"
+                          behaviors:VerticalEdgeOpacityMask.TopIntermediateOpacity="0.1"
+                          behaviors:VerticalEdgeOpacityMask.MinimumOpacity="0">
+                        <Grid x:Name="HomeLaunchProgressiveBlurDirectHost"
+                              SnapsToDevicePixels="True">
+                            <Grid x:Name="HomeLaunchProgressiveBlurVisualSource"
+                                  Background="Transparent">
+                                <ListBox x:Name="HomeLaunchInstanceListBox"
+                                         Tag="HomeLaunchInstanceList"
+                                         ItemsSource="{Binding LaunchInstances}"
+                                         Style="{StaticResource HomeLaunchInstanceListBoxStyle}"
+                                         ItemContainerStyle="{StaticResource ListPageVirtualizedListBoxItemStyle}"
+                                         VirtualizingPanel.IsVirtualizing="True"
+                                         VirtualizingPanel.VirtualizationMode="Recycling"
+                                         VirtualizingPanel.ScrollUnit="Pixel">
+                                    <ListBox.RenderTransform>
+                                        <TranslateTransform x:Name="HomeLaunchListTranslate" />
+                                    </ListBox.RenderTransform>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Height="{StaticResource HomeLaunchMenuItemHeight}"
+                                                    Style="{StaticResource SecondaryMenuButtonStyle}"
+                                                    behaviors:SecondaryMenuButtonBehavior.IsSelected="{Binding IsSelected}"
+                                                    behaviors:SecondaryMenuButtonBehavior.SuppressSelectedBackground="{Binding SuppressSelectedItemBackground, ElementName=Root}"
+                                                    Command="{Binding DataContext.SelectLaunchInstanceCommand, RelativeSource={RelativeSource AncestorType={x:Type views:HomeLaunchGameListView}}}"
+                                                    CommandParameter="{Binding}">
+                                                <ContentPresenter Content="{Binding}"
+                                                                  ContentTemplate="{StaticResource HomeLaunchInstanceMenuItemContentTemplate}" />
+                                            </Button>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                        </Grid>
+
+                        <Grid x:Name="HomeLaunchProgressiveBlurViewport"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Top"
+                              ClipToBounds="True"
+                              IsHitTestVisible="False"
+                              SnapsToDevicePixels="True"
+                              Visibility="Collapsed">
+                            <Grid x:Name="HomeLaunchProgressiveBlurUpscaleHost"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Top"
+                                  RenderOptions.BitmapScalingMode="Linear">
+                                <Grid.RenderTransform>
+                                    <ScaleTransform x:Name="HomeLaunchProgressiveBlurUpscaleTransform"
+                                                    ScaleX="1"
+                                                    ScaleY="1" />
+                                </Grid.RenderTransform>
+
+                                <Grid x:Name="HomeLaunchProgressiveBlurVerticalHost"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Top">
+                                    <Border x:Name="HomeLaunchProgressiveBlurHorizontalHost"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Top">
+                                        <Border.Background>
+                                            <VisualBrush x:Name="HomeLaunchProgressiveBlurBrush"
+                                                         Viewbox="0,0,1,1"
+                                                         ViewboxUnits="Absolute"
+                                                         Viewport="0,0,1,1"
+                                                         ViewportUnits="RelativeToBoundingBox"
+                                                         Stretch="Fill"
+                                                         TileMode="None" />
+                                        </Border.Background>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </Grid>
+                    </Grid>
 
                     <Border x:Name="HomeLaunchHeaderOverlay"
                             Style="{StaticResource SecondaryMenuHeaderOverlayStyle}">
