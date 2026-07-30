@@ -26,6 +26,7 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
     private readonly Func<T, string?>? iconSourceSelector;
     private readonly Action<T, string>? iconSourceSetter;
     private readonly bool preferResolvedIconSource;
+    private readonly Action<T, string>? iconChanged;
     private readonly Func<T, ResourceProjectReference?>? projectReferenceSelector;
     private readonly Action<T, ResourceProjectReference>? projectReferenceSetter;
     private readonly Func<IReadOnlyList<T>> currentItemsProvider;
@@ -49,7 +50,8 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
         Action<T, string>? iconSourceSetter = null,
         bool preferResolvedIconSource = false,
         Func<T, ResourceProjectReference?>? projectReferenceSelector = null,
-        Action<T, ResourceProjectReference>? projectReferenceSetter = null)
+        Action<T, ResourceProjectReference>? projectReferenceSetter = null,
+        Action<T, string>? iconChanged = null)
     {
         this.service = service;
         this.kind = kind;
@@ -59,6 +61,7 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
         this.iconSourceSelector = iconSourceSelector;
         this.iconSourceSetter = iconSourceSetter;
         this.preferResolvedIconSource = preferResolvedIconSource;
+        this.iconChanged = iconChanged;
         this.projectReferenceSelector = projectReferenceSelector;
         this.projectReferenceSetter = projectReferenceSetter;
         this.currentItemsProvider = currentItemsProvider;
@@ -105,16 +108,22 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
     {
         try
         {
+            var iconProgress = new CallbackProgress<LocalContentIconResolution>(resolution =>
+                dispatcher.Post(() => ApplyIcon(resolution, expectedGeneration, cts)));
             foreach (var batch in candidates.Chunk(EnrichmentBatchSize))
             {
-                var cached = await service!.ResolveCachedMetadataAsync(batch, cts.Token).ConfigureAwait(false);
+                var cached = await service!
+                    .ResolveCachedMetadataAsync(batch, cts.Token, iconProgress)
+                    .ConfigureAwait(false);
                 if (!IsCurrent(expectedGeneration, cts))
                     return;
 
                 if (cached.Count > 0)
                     dispatcher.Post(() => Apply(cached, expectedGeneration, cts));
 
-                var resolved = await service!.ResolveMetadataAsync(batch, cts.Token).ConfigureAwait(false);
+                var resolved = await service!
+                    .ResolveMetadataAsync(batch, cts.Token, iconProgress)
+                    .ConfigureAwait(false);
                 if (!IsCurrent(expectedGeneration, cts))
                     return;
 
@@ -168,7 +177,10 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
                     && !string.Equals(currentIconSource, metadata.IconSource, StringComparison.Ordinal))
                 {
                     iconSourceSetter(item, metadata.IconSource);
-                    updated = true;
+                    if (iconChanged is null)
+                        updated = true;
+                    else
+                        iconChanged(item, metadata.IconSource);
                 }
             }
 
@@ -184,6 +196,39 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
 
         if (updated)
             changed();
+    }
+
+    private void ApplyIcon(
+        LocalContentIconResolution resolution,
+        long expectedGeneration,
+        CancellationTokenSource cts)
+    {
+        if (!IsCurrent(expectedGeneration, cts)
+            || iconSourceSelector is null
+            || iconSourceSetter is null
+            || string.IsNullOrWhiteSpace(resolution.FullPath)
+            || string.IsNullOrWhiteSpace(resolution.IconSource))
+        {
+            return;
+        }
+
+        var item = currentItemsProvider().FirstOrDefault(candidate =>
+            string.Equals(pathSelector(candidate), resolution.FullPath, StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+            return;
+
+        var currentIconSource = iconSourceSelector(item);
+        if ((!preferResolvedIconSource && !string.IsNullOrWhiteSpace(currentIconSource))
+            || string.Equals(currentIconSource, resolution.IconSource, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        iconSourceSetter(item, resolution.IconSource);
+        if (iconChanged is null)
+            changed();
+        else
+            iconChanged(item, resolution.IconSource);
     }
 
     private bool IsCurrent(long expectedGeneration, CancellationTokenSource cts) =>

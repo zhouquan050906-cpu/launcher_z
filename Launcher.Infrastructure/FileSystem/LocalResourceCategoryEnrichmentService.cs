@@ -5,6 +5,8 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -56,10 +58,15 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
 
     public async Task<IReadOnlyDictionary<string, LocalResourceEnrichmentResult>> ResolveCachedMetadataAsync(
         IReadOnlyList<LocalResourceCategoryCandidate> resources,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<LocalContentIconResolution>? iconProgress = null)
     {
         var categories = await ResolveCachedCategoriesAsync(resources, cancellationToken).ConfigureAwait(false);
-        var icons = await ResolveProjectIconSourcesAsync(resources, downloadMissing: false, cancellationToken)
+        var icons = await ResolveProjectIconSourcesAsync(
+                resources,
+                downloadMissing: false,
+                resolution => iconProgress?.Report(resolution),
+                cancellationToken)
             .ConfigureAwait(false);
         var references = await ResolveProjectReferencesAsync(resources, cancellationToken).ConfigureAwait(false);
         return CombineMetadata(categories, icons, references);
@@ -67,13 +74,77 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
 
     public async Task<IReadOnlyDictionary<string, LocalResourceEnrichmentResult>> ResolveMetadataAsync(
         IReadOnlyList<LocalResourceCategoryCandidate> resources,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<LocalContentIconResolution>? iconProgress = null)
     {
-        var categories = await ResolveCategoriesAsync(resources, cancellationToken).ConfigureAwait(false);
-        var icons = await ResolveProjectIconSourcesAsync(resources, downloadMissing: true, cancellationToken)
+        var stopwatch = Stopwatch.StartNew();
+        long timeToFirstIconMs = -1;
+        var icons = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var reportedIcons = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var iconTasks = new ConcurrentBag<Task>();
+        var kindsByPath = resources
+            .Where(resource => !string.IsNullOrWhiteSpace(resource.FullPath))
+            .GroupBy(resource => resource.FullPath, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Kind, StringComparer.OrdinalIgnoreCase);
+
+        void ReportIcon(LocalContentIconResolution resolution)
+        {
+            icons[resolution.FullPath] = resolution.IconSource;
+            while (true)
+            {
+                if (reportedIcons.TryGetValue(resolution.FullPath, out var current))
+                {
+                    if (string.Equals(current, resolution.IconSource, StringComparison.Ordinal))
+                        return;
+                    if (!reportedIcons.TryUpdate(resolution.FullPath, resolution.IconSource, current))
+                        continue;
+                }
+                else if (!reportedIcons.TryAdd(resolution.FullPath, resolution.IconSource))
+                {
+                    continue;
+                }
+
+                Interlocked.CompareExchange(ref timeToFirstIconMs, stopwatch.ElapsedMilliseconds, -1);
+                iconProgress?.Report(resolution);
+                return;
+            }
+        }
+
+        var cachedIconTask = ResolveProjectIconSourcesAsync(
+                resources,
+                downloadMissing: true,
+                ReportIcon,
+                cancellationToken);
+        var categories = await ResolveCategoriesCoreAsync(
+                resources,
+                metadata =>
+                {
+                    var task = ResolveProjectIconSourcesAsync(
+                            metadata,
+                            kindsByPath,
+                            downloadMissing: true,
+                            ReportIcon,
+                            cancellationToken);
+                    iconTasks.Add(task);
+                },
+                cancellationToken)
             .ConfigureAwait(false);
+
+        var cachedIcons = await cachedIconTask.ConfigureAwait(false);
+        foreach (var (fullPath, iconSource) in cachedIcons)
+            icons[fullPath] = iconSource;
+        await Task.WhenAll(iconTasks).ConfigureAwait(false);
+
         var references = await ResolveProjectReferencesAsync(resources, cancellationToken).ConfigureAwait(false);
-        return CombineMetadata(categories, icons, references);
+        logger.LogDebug(
+            "Local resource metadata enrichment completed. CandidateCount={CandidateCount} IconCount={IconCount} TimeToFirstIconMs={TimeToFirstIconMs}",
+            resources.Count,
+            icons.Count,
+            timeToFirstIconMs);
+        return CombineMetadata(
+            categories,
+            new Dictionary<string, string>(icons, StringComparer.OrdinalIgnoreCase),
+            references);
     }
 
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<ResourceProjectCategory>>> ResolveCachedCategoriesAsync(
@@ -115,7 +186,13 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
 
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<ResourceProjectCategory>>> ResolveCategoriesAsync(
         IReadOnlyList<LocalResourceCategoryCandidate> resources,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await ResolveCategoriesCoreAsync(resources, metadataResolved: null, cancellationToken).ConfigureAwait(false);
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<ResourceProjectCategory>>> ResolveCategoriesCoreAsync(
+        IReadOnlyList<LocalResourceCategoryCandidate> resources,
+        Action<IReadOnlyDictionary<string, RemoteIconCandidate>>? metadataResolved,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(resources);
         var identities = CreateFileIdentities(resources);
@@ -129,11 +206,70 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
             identity => identity.Resource.FullPath,
             StringComparer.OrdinalIgnoreCase);
         var resourcesNeedingHashes = new List<LocalResourceFileIdentity>();
+        var contentEntries = new Dictionary<string, LocalResourceCategoryCacheEntry>(StringComparer.OrdinalIgnoreCase);
+        var pendingLookups = new Dictionary<ResourceProjectKind, List<ModIconLookupCandidate>>();
+        var resolvedMetadata = new Dictionary<string, RemoteIconCandidate>(StringComparer.OrdinalIgnoreCase);
+
+        async Task ResolveProviderBatchAsync(IReadOnlyList<ModIconLookupCandidate> batch)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var batchResolvedMetadata =
+                new Dictionary<string, RemoteIconCandidate>(StringComparer.OrdinalIgnoreCase);
+            var unresolved = batch
+                .GroupBy(lookup => lookup.Sha1, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<ModIconLookupCandidate>)group.ToArray(),
+                    StringComparer.OrdinalIgnoreCase);
+            var modrinth = await providerClient.ResolveModrinthAsync(batch, cancellationToken).ConfigureAwait(false);
+            ApplyResolvedCategories(modrinth, unresolved, result, batchResolvedMetadata);
+
+            if (unresolved.Count > 0)
+            {
+                var curseForgeCandidates = unresolved.Values
+                    .SelectMany(values => values)
+                    .DistinctBy(candidate => candidate.CurseForgeFingerprint)
+                    .ToArray();
+                var curseForge = await providerClient
+                    .ResolveCurseForgeAsync(curseForgeCandidates, cancellationToken)
+                    .ConfigureAwait(false);
+                ApplyResolvedCategories(curseForge, unresolved, result, batchResolvedMetadata);
+            }
+
+            foreach (var (fullPath, metadata) in batchResolvedMetadata)
+                resolvedMetadata[fullPath] = metadata;
+            if (batchResolvedMetadata.Count > 0)
+                metadataResolved?.Invoke(batchResolvedMetadata);
+        }
+
+        async Task EnqueueLookupAsync(ModIconLookupCandidate lookup)
+        {
+            if (!pendingLookups.TryGetValue(lookup.Kind, out var pending))
+            {
+                pending = [];
+                pendingLookups[lookup.Kind] = pending;
+            }
+
+            pending.Add(lookup);
+            if (pending.Count < ProviderBatchSize)
+                return;
+
+            var batch = pending.ToArray();
+            pending.Clear();
+            await ResolveProviderBatchAsync(batch).ConfigureAwait(false);
+        }
 
         await cacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var index = await GetCacheIndexAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var entry in index.Entries.Values
+                         .Where(entry => !string.IsNullOrWhiteSpace(entry.Sha1))
+                         .OrderByDescending(entry => entry.CheckedAt))
+            {
+                contentEntries.TryAdd(CreateContentCacheKey(entry.Kind, entry.Sha1), entry);
+            }
+
             foreach (var identity in identities)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -169,12 +305,59 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
             cacheLock.Release();
         }
 
+        foreach (var lookup in lookups.ToArray())
+            await EnqueueLookupAsync(lookup).ConfigureAwait(false);
+
+        var contentCacheCopies =
+            new Dictionary<string, LocalResourceCategoryCacheEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var identity in resourcesNeedingHashes)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var lookup = await CreateLookupCandidateAsync(identity, cancellationToken).ConfigureAwait(false);
-            if (lookup is not null)
-                lookups.Add(lookup);
+            if (lookup is null)
+                continue;
+
+            if (contentEntries.TryGetValue(
+                    CreateContentCacheKey(identity.Resource.Kind, lookup.Sha1),
+                    out var contentEntry))
+            {
+                var copiedEntry = CopyContentEntry(identity, contentEntry, now);
+                contentCacheCopies[identity.Resource.FullPath] = copiedEntry;
+                if (copiedEntry.Categories.Count > 0)
+                    result[identity.Resource.FullPath] = copiedEntry.Categories;
+
+                var cachedMetadata = TryCreateRemoteMetadata(copiedEntry);
+                if (cachedMetadata is not null)
+                {
+                    metadataResolved?.Invoke(
+                        new Dictionary<string, RemoteIconCandidate>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            [identity.Resource.FullPath] = cachedMetadata
+                        });
+                }
+
+                var needsIconMetadataUpgrade = SupportsRemoteProjectIcon(identity.Resource.Kind)
+                    && thumbnailService is not null
+                    && !copiedEntry.HasRemoteMetadata;
+                if (!needsIconMetadataUpgrade
+                    && copiedEntry.CheckedAt != default
+                    && now - copiedEntry.CheckedAt < RefreshAfter)
+                {
+                    continue;
+                }
+            }
+
+            lookups.Add(lookup);
+            await EnqueueLookupAsync(lookup).ConfigureAwait(false);
+        }
+
+        if (contentCacheCopies.Count > 0)
+        {
+            await PersistContentCacheCopiesAsync(
+                    contentCacheCopies,
+                    identitiesByPath,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         if (lookups.Count == 0)
@@ -186,32 +369,10 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
             lookups.Count,
             resourcesNeedingHashes.Count);
 
-        var resolvedMetadata = new Dictionary<string, RemoteIconCandidate>(StringComparer.OrdinalIgnoreCase);
-        foreach (var kindGroup in lookups.GroupBy(lookup => lookup.Kind))
+        foreach (var pending in pendingLookups.Values)
         {
-            foreach (var batch in kindGroup.Chunk(ProviderBatchSize))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var unresolved = batch
-                    .GroupBy(lookup => lookup.Sha1, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(
-                        group => group.Key,
-                        group => (IReadOnlyList<ModIconLookupCandidate>)group.ToArray(),
-                        StringComparer.OrdinalIgnoreCase);
-                var modrinth = await providerClient.ResolveModrinthAsync(batch, cancellationToken).ConfigureAwait(false);
-                ApplyResolvedCategories(modrinth, unresolved, result, resolvedMetadata);
-
-                if (unresolved.Count > 0)
-                {
-                    var curseForgeCandidates = unresolved.Values
-                        .SelectMany(values => values)
-                        .DistinctBy(candidate => candidate.CurseForgeFingerprint)
-                        .ToArray();
-                    var curseForge = await providerClient.ResolveCurseForgeAsync(curseForgeCandidates, cancellationToken)
-                        .ConfigureAwait(false);
-                    ApplyResolvedCategories(curseForge, unresolved, result, resolvedMetadata);
-                }
-            }
+            if (pending.Count > 0)
+                await ResolveProviderBatchAsync(pending.ToArray()).ConfigureAwait(false);
         }
 
         if (resolvedMetadata.Count > 0)
@@ -339,6 +500,70 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
         }
     }
 
+    private async Task PersistContentCacheCopiesAsync(
+        IReadOnlyDictionary<string, LocalResourceCategoryCacheEntry> copies,
+        IReadOnlyDictionary<string, LocalResourceFileIdentity> identitiesByPath,
+        CancellationToken cancellationToken)
+    {
+        await cacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var index = await GetCacheIndexAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var (fullPath, entry) in copies)
+            {
+                if (identitiesByPath.TryGetValue(fullPath, out var identity))
+                    index.Entries[identity.CacheKey] = entry;
+            }
+
+            CleanupCache(index, DateTimeOffset.UtcNow);
+            await TrySaveCacheIndexAsync(index, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            cacheLock.Release();
+        }
+    }
+
+    private static LocalResourceCategoryCacheEntry CopyContentEntry(
+        LocalResourceFileIdentity identity,
+        LocalResourceCategoryCacheEntry source,
+        DateTimeOffset now) =>
+        new()
+        {
+            Kind = identity.Resource.Kind,
+            FileLength = identity.FileLength,
+            LastWriteTimeUtcTicks = identity.LastWriteTimeUtcTicks,
+            Sha1 = source.Sha1,
+            CurseForgeFingerprint = source.CurseForgeFingerprint,
+            Categories = source.Categories,
+            Source = source.Source,
+            ProjectId = source.ProjectId,
+            IconUrl = source.IconUrl,
+            HasRemoteMetadata = source.HasRemoteMetadata,
+            CheckedAt = source.CheckedAt,
+            LastUsedAt = now
+        };
+
+    private static RemoteIconCandidate? TryCreateRemoteMetadata(LocalResourceCategoryCacheEntry entry)
+    {
+        if (!entry.HasRemoteMetadata
+            || entry.Source is null
+            || string.IsNullOrWhiteSpace(entry.ProjectId)
+            || string.IsNullOrWhiteSpace(entry.IconUrl))
+        {
+            return null;
+        }
+
+        return new RemoteIconCandidate(
+            entry.Source.Value.ToString().ToLowerInvariant(),
+            entry.ProjectId,
+            entry.IconUrl,
+            entry.Categories);
+    }
+
+    private static string CreateContentCacheKey(ResourceProjectKind kind, string sha1) =>
+        $"{kind}:{sha1}";
+
     private async Task<LocalResourceCategoryCacheIndex> GetCacheIndexAsync(CancellationToken cancellationToken)
     {
         cacheIndex ??= await cacheStore.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -348,6 +573,7 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
     private async Task<IReadOnlyDictionary<string, string>> ResolveProjectIconSourcesAsync(
         IReadOnlyList<LocalResourceCategoryCandidate> resources,
         bool downloadMissing,
+        Action<LocalContentIconResolution>? iconResolved,
         CancellationToken cancellationToken)
     {
         if (thumbnailService is null)
@@ -388,10 +614,12 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
             cacheLock.Release();
         }
 
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (fullPath, project) in projects)
+        var result = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var progressGate = new object();
+        var tasks = projects.Select(async projectEntry =>
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var (fullPath, project) = projectEntry;
             var iconSource = thumbnailService.TryGetCachedThumbnailSource(project);
             if (iconSource is null && downloadMissing)
             {
@@ -401,10 +629,70 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
             }
 
             if (!string.IsNullOrWhiteSpace(iconSource))
+            {
                 result[fullPath] = iconSource;
-        }
+                if (iconResolved is not null)
+                    lock (progressGate)
+                        iconResolved(new LocalContentIconResolution(fullPath, iconSource));
+            }
+        });
+        await Task.WhenAll(tasks).ConfigureAwait(false);
 
-        return result;
+        return new Dictionary<string, string>(result, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> ResolveProjectIconSourcesAsync(
+        IReadOnlyDictionary<string, RemoteIconCandidate> metadata,
+        IReadOnlyDictionary<string, ResourceProjectKind> kindsByPath,
+        bool downloadMissing,
+        Action<LocalContentIconResolution>? iconResolved,
+        CancellationToken cancellationToken)
+    {
+        if (thumbnailService is null || metadata.Count == 0)
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var result = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var progressGate = new object();
+        var tasks = metadata.Select(async pair =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var source = ParseSource(pair.Value.Source);
+            if (source is null
+                || !kindsByPath.TryGetValue(pair.Key, out var kind)
+                || string.IsNullOrWhiteSpace(pair.Value.ProjectId)
+                || string.IsNullOrWhiteSpace(pair.Value.IconUrl))
+            {
+                return;
+            }
+
+            var project = new ResourceProject
+            {
+                Kind = kind,
+                Source = source.Value,
+                ProjectId = pair.Value.ProjectId,
+                IconUrl = pair.Value.IconUrl
+            };
+            if (!SupportsRemoteProjectIcon(project.Kind))
+                return;
+
+            var iconSource = thumbnailService.TryGetCachedThumbnailSource(project);
+            if (iconSource is null && downloadMissing)
+            {
+                iconSource = await thumbnailService
+                    .GetOrCreateThumbnailSourceAsync(project, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (string.IsNullOrWhiteSpace(iconSource))
+                return;
+
+            result[pair.Key] = iconSource;
+            if (iconResolved is not null)
+                lock (progressGate)
+                    iconResolved(new LocalContentIconResolution(pair.Key, iconSource));
+        });
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+        return new Dictionary<string, string>(result, StringComparer.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyDictionary<string, LocalResourceEnrichmentResult> CombineMetadata(

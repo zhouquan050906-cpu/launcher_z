@@ -46,6 +46,7 @@ public sealed partial class InstanceModManagementSettingsViewModel : GameSetting
     private readonly ILogger<InstanceModManagementSettingsViewModel> logger;
     // 投影路径索引用于跨刷新复用 Item ViewModel；同名启用/禁用文件并存时必须保持两个独立键。
     private readonly Dictionary<string, ModManagementModItemViewModel> allModsByProjectionPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ModManagementModItemViewModel> allModsByFullPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> selectedModPaths = new(StringComparer.OrdinalIgnoreCase);
     // 冲突对话框通过 TaskCompletionSource 将事件驱动 UI 转换为可顺序 await 的导入步骤。
     private TaskCompletionSource<bool>? pendingImportConflictResolutionSource;
@@ -118,6 +119,7 @@ public sealed partial class InstanceModManagementSettingsViewModel : GameSetting
         this.uiDispatcher = uiDispatcher ?? ImmediateUiDispatcher.Instance;
         this.logger = logger ?? NullLogger<InstanceModManagementSettingsViewModel>.Instance;
         this.localModsViewModel.ModsChanged += LocalModsViewModel_ModsChanged;
+        this.localModsViewModel.IconChanged += LocalModsViewModel_IconChanged;
     }
 
     public event Action<ModDeleteRequest>? DeleteModsRequested;

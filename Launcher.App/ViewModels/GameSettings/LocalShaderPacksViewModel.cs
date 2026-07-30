@@ -69,10 +69,16 @@ public sealed class LocalShaderPacksViewModel : IDisposable
             iconSourceSelector: shaderPack => shaderPack.IconSource,
             iconSourceSetter: static (shaderPack, iconSource) => shaderPack.IconSource = iconSource,
             projectReferenceSelector: shaderPack => shaderPack.ProjectReference,
-            projectReferenceSetter: static (shaderPack, reference) => shaderPack.ProjectReference = reference);
+            projectReferenceSetter: static (shaderPack, reference) => shaderPack.ProjectReference = reference,
+            iconChanged: (shaderPack, iconSource) =>
+                IconChanged?.Invoke(
+                    this,
+                    new LocalContentIconChangedEventArgs(shaderPack.FullPath, iconSource)));
     }
 
     public event EventHandler? ShaderPacksChanged;
+
+    public event EventHandler<LocalContentIconChangedEventArgs>? IconChanged;
 
     public ObservableCollection<LocalShaderPack> ShaderPacks { get; } = [];
 

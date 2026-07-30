@@ -70,10 +70,16 @@ public sealed class LocalResourcePacksViewModel : IDisposable
             iconSourceSetter: static (resourcePack, iconSource) => resourcePack.IconSource = iconSource,
             preferResolvedIconSource: true,
             projectReferenceSelector: resourcePack => resourcePack.ProjectReference,
-            projectReferenceSetter: static (resourcePack, reference) => resourcePack.ProjectReference = reference);
+            projectReferenceSetter: static (resourcePack, reference) => resourcePack.ProjectReference = reference,
+            iconChanged: (resourcePack, iconSource) =>
+                IconChanged?.Invoke(
+                    this,
+                    new LocalContentIconChangedEventArgs(resourcePack.FullPath, iconSource)));
     }
 
     public event EventHandler? ResourcePacksChanged;
+
+    public event EventHandler<LocalContentIconChangedEventArgs>? IconChanged;
 
     public ObservableCollection<LocalResourcePack> ResourcePacks { get; } = [];
 

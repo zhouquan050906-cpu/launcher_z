@@ -99,6 +99,8 @@ public sealed class LocalModsViewModel : IDisposable
 
     public event EventHandler? ModsChanged;
 
+    public event EventHandler<LocalContentIconChangedEventArgs>? IconChanged;
+
     public ObservableCollection<LocalMod> Mods { get; } = [];
 
     public IReadOnlyList<LocalMod> CurrentMods => currentMods;
@@ -613,12 +615,11 @@ public sealed class LocalModsViewModel : IDisposable
         {
             try
             {
-                var progress = new Progress<IReadOnlyDictionary<string, string>>(resolvedIcons =>
-                    ApplyResolvedIcons(instance, resolvedIcons, enrichmentCts));
-                var resolvedIcons = await iconEnrichmentService
+                var progress = new CallbackProgress<LocalContentIconResolution>(resolution =>
+                    ApplyResolvedIcon(instance, resolution, enrichmentCts));
+                await iconEnrichmentService
                     .ResolveMissingIconSourcesAsync(missingIconMods, enrichmentCts.Token, progress)
                     .ConfigureAwait(false);
-                ApplyResolvedIcons(instance, resolvedIcons, enrichmentCts);
             }
             catch (OperationCanceledException) when (enrichmentCts.IsCancellationRequested)
             {
@@ -641,13 +642,14 @@ public sealed class LocalModsViewModel : IDisposable
     /// <summary>
     /// 将远程图标结果合并到当前快照；过期、已取消或已切换实例的结果会被丢弃。
     /// </summary>
-    private void ApplyResolvedIcons(
+    private void ApplyResolvedIcon(
         GameInstance instance,
-        IReadOnlyDictionary<string, string> resolvedIcons,
+        LocalContentIconResolution resolution,
         CancellationTokenSource enrichmentCts)
     {
         // 第一次检查避免无效任务排队到 UI 线程。
-        if (resolvedIcons.Count == 0
+        if (string.IsNullOrWhiteSpace(resolution.FullPath)
+            || string.IsNullOrWhiteSpace(resolution.IconSource)
             || enrichmentCts.IsCancellationRequested
             || !IsSameInstancePath(instance, selectedInstance))
         {
@@ -664,22 +666,19 @@ public sealed class LocalModsViewModel : IDisposable
             }
 
             // 第二次检查通过后只填空值，不覆盖导入扫描期间新发现的内嵌图标。
-            var updated = false;
-            foreach (var mod in currentMods)
+            var mod = currentMods.FirstOrDefault(candidate =>
+                string.Equals(candidate.FullPath, resolution.FullPath, StringComparison.OrdinalIgnoreCase));
+            if (mod is null
+                || !string.IsNullOrWhiteSpace(mod.IconSource)
+                || string.IsNullOrWhiteSpace(resolution.IconSource))
             {
-                if (!string.IsNullOrWhiteSpace(mod.IconSource)
-                    || !resolvedIcons.TryGetValue(mod.FullPath, out var iconSource)
-                    || string.IsNullOrWhiteSpace(iconSource))
-                {
-                    continue;
-                }
-
-                mod.IconSource = iconSource;
-                updated = true;
+                return;
             }
 
-            if (updated)
-                ModsChanged?.Invoke(this, EventArgs.Empty);
+            mod.IconSource = resolution.IconSource;
+            IconChanged?.Invoke(
+                this,
+                new LocalContentIconChangedEventArgs(mod.FullPath, resolution.IconSource));
         });
     }
 

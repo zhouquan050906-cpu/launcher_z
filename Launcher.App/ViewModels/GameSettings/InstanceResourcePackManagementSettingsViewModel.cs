@@ -108,6 +108,7 @@ public sealed partial class InstanceResourcePackManagementSettingsViewModel : Ga
             resourcePack => resourcePack.IsSelected,
             static (resourcePack, isSelected) => resourcePack.IsSelected = isSelected);
         this.localResourcePacksViewModel.ResourcePacksChanged += LocalResourcePacksViewModel_ResourcePacksChanged;
+        this.localResourcePacksViewModel.IconChanged += LocalResourcePacksViewModel_IconChanged;
     }
 
     public event Action<ResourcePackDeleteRequest>? DeleteResourcePacksRequested;

@@ -153,6 +153,18 @@ public sealed partial class InstanceModManagementSettingsViewModel
         QueueVisibleRefresh();
     }
 
+    private void LocalModsViewModel_IconChanged(object? sender, LocalContentIconChangedEventArgs e)
+    {
+        if (!HasLoadedMods || !isSectionActive)
+            return;
+
+        if (allModsByFullPath.TryGetValue(e.FullPath, out var item)
+            && !string.Equals(item.IconSource, e.IconSource, StringComparison.Ordinal))
+        {
+            item.IconSource = e.IconSource;
+        }
+    }
+
     /// <summary>
     /// 增量同步本地 Mod 快照到筛选列表，同时恢复单选或裁剪多选集合。
     /// </summary>
@@ -176,6 +188,9 @@ public sealed partial class InstanceModManagementSettingsViewModel
             mod => new ModManagementModItemViewModel(mod),
             static (item, mod) => item.SyncFrom(mod),
             MatchesSearch);
+        allModsByFullPath.Clear();
+        foreach (var item in allModsByProjectionPath.Values)
+            allModsByFullPath[item.FullPath] = item;
 
         // 搜索或筛选隐藏的项目不应继续留在批量选择中。
         if (IsMultiSelectMode)
@@ -335,6 +350,7 @@ public sealed partial class InstanceModManagementSettingsViewModel
     private void ClearDisplayedMods()
     {
         allModsByProjectionPath.Clear();
+        allModsByFullPath.Clear();
         SetVisibleMods(Array.Empty<ModManagementModItemViewModel>());
         RefreshVisibleModListItems();
         SelectedMod = null;

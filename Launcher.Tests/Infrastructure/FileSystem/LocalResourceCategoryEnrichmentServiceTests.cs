@@ -168,6 +168,198 @@ public sealed class LocalResourceCategoryEnrichmentServiceTests : TestTempDirect
         Assert.Single(thumbnailService.CachedProjects);
     }
 
+    [Fact]
+    public async Task MatchedProjectIconsReportIndividuallyBeforeWholeBatchCompletes()
+    {
+        Directory.CreateDirectory(TempRoot);
+        var paths = Enumerable.Range(0, 2)
+            .Select(index =>
+            {
+                var path = Path.Combine(TempRoot, $"resource-pack-{index}.zip");
+                File.WriteAllBytes(path, Encoding.UTF8.GetBytes($"resource-pack-{index}"));
+                return path;
+            })
+            .ToArray();
+        var hashes = paths
+            .Select(path => Convert.ToHexString(SHA1.HashData(File.ReadAllBytes(path))).ToLowerInvariant())
+            .ToArray();
+        var thumbnailService = new ControlledThumbnailService(2);
+        using var httpClient = new HttpClient(new MultipleModrinthMatchHandler(hashes));
+        var service = new LocalResourceCategoryEnrichmentService(
+            new LauncherPathProvider(TempRoot),
+            httpClient,
+            logger: NullLogger<LocalResourceCategoryEnrichmentService>.Instance,
+            thumbnailService: thumbnailService);
+        var firstIconReported = new TaskCompletionSource<LocalContentIconResolution>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var progress = new InlineProgress<LocalContentIconResolution>(resolution =>
+        {
+            if (string.Equals(resolution.FullPath, paths[0], StringComparison.OrdinalIgnoreCase))
+                firstIconReported.TrySetResult(resolution);
+        });
+        var candidates = paths
+            .Select(path => new LocalResourceCategoryCandidate(path, ResourceProjectKind.ResourcePack))
+            .ToArray();
+
+        var enrichment = service.ResolveMetadataAsync(candidates, iconProgress: progress);
+        await thumbnailService.AllDownloadsStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        thumbnailService.Release(0);
+        var firstResolution = await firstIconReported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(enrichment.IsCompleted);
+        Assert.Equal(paths[0], firstResolution.FullPath);
+        Assert.Equal("file:///cache/project-0.png", firstResolution.IconSource);
+
+        thumbnailService.ReleaseAll();
+        var resolved = await enrichment.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(2, resolved.Count);
+        Assert.All(resolved.Values, metadata => Assert.False(string.IsNullOrWhiteSpace(metadata.IconSource)));
+    }
+
+    [Theory]
+    [InlineData(ResourceProjectKind.ResourcePack)]
+    [InlineData(ResourceProjectKind.ShaderPack)]
+    public async Task ContentMetadataCacheReportsFirstIconBeforeLaterFingerprintCompletes(
+        ResourceProjectKind kind)
+    {
+        Directory.CreateDirectory(TempRoot);
+        var oldPaths = CreatePaths("old");
+        var hashes = oldPaths
+            .Select(path => Convert.ToHexString(SHA1.HashData(File.ReadAllBytes(path))).ToLowerInvariant())
+            .ToArray();
+        var pathProvider = new LauncherPathProvider(TempRoot);
+        using (var seedClient = new HttpClient(new MultipleModrinthMatchHandler(hashes)))
+        {
+            var seedService = new LocalResourceCategoryEnrichmentService(
+                pathProvider,
+                seedClient,
+                logger: NullLogger<LocalResourceCategoryEnrichmentService>.Instance,
+                thumbnailService: new RecordingThumbnailService(
+                    downloadedSource: "file:///cache/seed.png"));
+            var seeded = await seedService.ResolveMetadataAsync(oldPaths
+                .Select(path => new LocalResourceCategoryCandidate(path, kind))
+                .ToArray());
+            Assert.Equal(2, seeded.Count);
+        }
+
+        var newPaths = CreatePaths("new");
+        var secondFingerprintStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecondFingerprint = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var fingerprintService = new LocalFileFingerprintService(path =>
+        {
+            var stream = File.OpenRead(path);
+            return string.Equals(path, newPaths[1], StringComparison.OrdinalIgnoreCase)
+                ? new BlockingReadStream(stream, secondFingerprintStarted, releaseSecondFingerprint)
+                : stream;
+        });
+        var thumbnailService = new RecordingThumbnailService(
+            cachedSource: "file:///cache/reused.png");
+        using var rejectingClient = new HttpClient(new RejectingHandler());
+        var service = new LocalResourceCategoryEnrichmentService(
+            pathProvider,
+            rejectingClient,
+            logger: NullLogger<LocalResourceCategoryEnrichmentService>.Instance,
+            thumbnailService: thumbnailService,
+            fingerprintService: fingerprintService);
+        var firstReported = new TaskCompletionSource<LocalContentIconResolution>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var progress = new InlineProgress<LocalContentIconResolution>(resolution =>
+        {
+            if (string.Equals(resolution.FullPath, newPaths[0], StringComparison.OrdinalIgnoreCase))
+                firstReported.TrySetResult(resolution);
+        });
+
+        var enrichment = service.ResolveMetadataAsync(
+            newPaths.Select(path => new LocalResourceCategoryCandidate(path, kind)).ToArray(),
+            iconProgress: progress);
+        await secondFingerprintStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var first = await firstReported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(newPaths[0], first.FullPath);
+        Assert.Equal("file:///cache/reused.png", first.IconSource);
+        Assert.False(enrichment.IsCompleted);
+
+        releaseSecondFingerprint.TrySetResult();
+        var resolved = await enrichment.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, resolved.Count);
+        Assert.Empty(thumbnailService.DownloadedProjects);
+        return;
+
+        string[] CreatePaths(string prefix) => Enumerable.Range(0, 2)
+            .Select(index =>
+            {
+                var path = Path.Combine(TempRoot, $"{prefix}-{kind}-{index}.zip");
+                File.WriteAllBytes(path, Encoding.UTF8.GetBytes($"shared-{kind}-content-{index}"));
+                return path;
+            })
+            .ToArray();
+    }
+
+    [Fact]
+    public async Task FirstProjectBatchReportsBeforeLaterResourceFingerprintCompletes()
+    {
+        Directory.CreateDirectory(TempRoot);
+        var paths = Enumerable.Range(0, LocalResourceCategoryEnrichmentService.ProviderBatchSize + 1)
+            .Select(index =>
+            {
+                var path = Path.Combine(TempRoot, $"batched-resource-{index}.zip");
+                File.WriteAllBytes(path, Encoding.UTF8.GetBytes($"batched-resource-content-{index}"));
+                return path;
+            })
+            .ToArray();
+        var hashes = paths
+            .Select(path => Convert.ToHexString(SHA1.HashData(File.ReadAllBytes(path))).ToLowerInvariant())
+            .ToArray();
+        var laterFingerprintStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseLaterFingerprint = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var fingerprintService = new LocalFileFingerprintService(path =>
+        {
+            var stream = File.OpenRead(path);
+            return string.Equals(path, paths[^1], StringComparison.OrdinalIgnoreCase)
+                ? new BlockingReadStream(stream, laterFingerprintStarted, releaseLaterFingerprint)
+                : stream;
+        });
+        var thumbnailService = new ControlledThumbnailService(
+            paths.Length,
+            LocalResourceCategoryEnrichmentService.ProviderBatchSize);
+        using var httpClient = new HttpClient(new MultipleModrinthMatchHandler(hashes));
+        var service = new LocalResourceCategoryEnrichmentService(
+            new LauncherPathProvider(TempRoot),
+            httpClient,
+            logger: NullLogger<LocalResourceCategoryEnrichmentService>.Instance,
+            thumbnailService: thumbnailService,
+            fingerprintService: fingerprintService);
+        var firstReported = new TaskCompletionSource<LocalContentIconResolution>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var progress = new InlineProgress<LocalContentIconResolution>(resolution =>
+        {
+            if (string.Equals(resolution.FullPath, paths[0], StringComparison.OrdinalIgnoreCase))
+                firstReported.TrySetResult(resolution);
+        });
+
+        var enrichment = service.ResolveMetadataAsync(
+            paths.Select(path => new LocalResourceCategoryCandidate(
+                path,
+                ResourceProjectKind.ResourcePack)).ToArray(),
+            iconProgress: progress);
+        await laterFingerprintStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await thumbnailService.AllDownloadsStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        thumbnailService.Release(0);
+        await firstReported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(enrichment.IsCompleted);
+
+        releaseLaterFingerprint.TrySetResult();
+        thumbnailService.ReleaseAll();
+        var resolved = await enrichment.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Equal(paths.Length, resolved.Count);
+    }
+
     private sealed class ModrinthMatchHandler(string sha1) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
@@ -195,6 +387,36 @@ public sealed class LocalResourceCategoryEnrichmentServiceTests : TestTempDirect
             throw new InvalidOperationException("Directory resources must not trigger remote matching.");
     }
 
+    private sealed class MultipleModrinthMatchHandler(IReadOnlyList<string> hashes) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            object response = request.RequestUri!.AbsolutePath switch
+            {
+                "/v2/version_files" => hashes
+                    .Select((hash, index) => new KeyValuePair<string, object>(
+                        hash,
+                        new Dictionary<string, string> { ["project_id"] = $"project-{index}" }))
+                    .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+                "/v2/projects" => hashes
+                    .Select((_, index) => new Dictionary<string, object>
+                    {
+                        ["id"] = $"project-{index}",
+                        ["icon_url"] = $"https://cdn.example/project-{index}.png",
+                        ["categories"] = new[] { "realistic" }
+                    })
+                    .ToArray(),
+                _ => throw new InvalidOperationException($"Unexpected request: {request.RequestUri}")
+            };
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(response), Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
     private sealed class RecordingThumbnailService(
         string? cachedSource = null,
         string? downloadedSource = null) : IResourceThumbnailService
@@ -215,6 +437,96 @@ public sealed class LocalResourceCategoryEnrichmentServiceTests : TestTempDirect
         {
             DownloadedProjects.Add(project);
             return Task.FromResult(downloadedSource);
+        }
+    }
+
+    private sealed class ControlledThumbnailService(
+        int count,
+        int? expectedStartedCount = null) : IResourceThumbnailService
+    {
+        private readonly TaskCompletionSource allDownloadsStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource[] releases = Enumerable.Range(0, count)
+            .Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))
+            .ToArray();
+        private int startedCount;
+
+        public Task AllDownloadsStarted => allDownloadsStarted.Task;
+
+        public string? TryGetCachedThumbnailSource(ResourceProject project) => null;
+
+        public async Task<string?> GetOrCreateThumbnailSourceAsync(
+            ResourceProject project,
+            CancellationToken cancellationToken = default)
+        {
+            var index = int.Parse(project.ProjectId.AsSpan("project-".Length));
+            if (Interlocked.Increment(ref startedCount) == (expectedStartedCount ?? count))
+                allDownloadsStarted.TrySetResult();
+            await releases[index].Task.WaitAsync(cancellationToken);
+            return $"file:///cache/project-{index}.png";
+        }
+
+        public void Release(int index) => releases[index].TrySetResult();
+
+        public void ReleaseAll()
+        {
+            foreach (var release in releases)
+                release.TrySetResult();
+        }
+    }
+
+    private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
+    {
+        public void Report(T value) => callback(value);
+    }
+
+    private sealed class BlockingReadStream(
+        Stream inner,
+        TaskCompletionSource started,
+        TaskCompletionSource release) : Stream
+    {
+        private int blocked;
+
+        public override bool CanRead => inner.CanRead;
+        public override bool CanSeek => inner.CanSeek;
+        public override bool CanWrite => false;
+        public override long Length => inner.Length;
+        public override long Position
+        {
+            get => inner.Position;
+            set => inner.Position = value;
+        }
+
+        public override void Flush() => inner.Flush();
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+        public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Exchange(ref blocked, 1) == 0)
+            {
+                started.TrySetResult();
+                await release.Task.WaitAsync(cancellationToken);
+            }
+
+            return await inner.ReadAsync(buffer, cancellationToken);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                inner.Dispose();
+            base.Dispose(disposing);
+        }
+
+        public override async ValueTask DisposeAsync()
+        {
+            await inner.DisposeAsync();
+            GC.SuppressFinalize(this);
         }
     }
 

@@ -37,6 +37,7 @@ namespace Launcher.Infrastructure.FileSystem;
 /// </summary>
 public sealed partial class LocalModIconEnrichmentService : ILocalModIconEnrichmentService
 {
+    private const int ProviderBatchSize = 50;
     private const long MaxIconBytes = 1024L * 1024L;
     private const long MaxCacheBytes = 50L * 1024L * 1024L;
     private const long TargetCacheBytes = 40L * 1024L * 1024L;

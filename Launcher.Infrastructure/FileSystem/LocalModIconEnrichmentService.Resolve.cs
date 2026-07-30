@@ -17,30 +17,25 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
-using System.Globalization;
+using System.Diagnostics;
 using System.IO;
-using System.Net.Http;
-using System.Security.Cryptography;
-using System.Text;
+using System.Threading.Channels;
 using Launcher.Application.Services;
 using Launcher.Domain.Models;
-using Launcher.Infrastructure.CurseForge;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Launcher.Infrastructure.FileSystem;
 
 public sealed partial class LocalModIconEnrichmentService
 {
-/// <summary>
-    /// 先返回新鲜或可用的过期缓存，再远程刷新未命中项，最后执行一次缓存清理。
+    /// <summary>
+    /// 按文件顺序计算指纹，内容缓存命中后立即报告；远程缺失项由单消费者分批补全。
     /// </summary>
     public async Task<IReadOnlyDictionary<string, string>> ResolveMissingIconSourcesAsync(
         IReadOnlyList<LocalMod> mods,
         CancellationToken cancellationToken = default,
-        IProgress<IReadOnlyDictionary<string, string>>? progress = null)
+        IProgress<LocalContentIconResolution>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(mods);
 
@@ -50,7 +45,6 @@ public sealed partial class LocalModIconEnrichmentService
             .GroupBy(mod => mod.FullPath, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
-
         if (candidates.Count == 0)
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -58,102 +52,124 @@ public sealed partial class LocalModIconEnrichmentService
             "Remote local mod icon enrichment started. CandidateCount={CandidateCount}",
             candidates.Count);
 
+        var stopwatch = Stopwatch.StartNew();
         var now = DateTimeOffset.UtcNow;
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var staleResults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var unresolved = new List<ModIconLookupCandidate>();
-        var lookups = new List<ModIconLookupCandidate>(candidates.Count);
+        var result = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var reported = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var cacheFileAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var touchedEntryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var contentCacheHits = 0;
+        long timeToFirstIconMs = -1;
 
-        // JAR 哈希是此流程最昂贵的本地操作。不能在缓存索引锁内执行，否则列表的轻量
-        // 缓存查询（例如 Mod 启停后的图标复用）会被大型整合包的全量哈希阻塞数秒。
-        foreach (var mod in candidates)
+        void ReportResolvedIcon(string fullPath, string iconSource)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var lookup = await CreateLookupCandidateAsync(mod, cancellationToken).ConfigureAwait(false);
-            if (lookup is not null)
-                lookups.Add(lookup);
+            while (true)
+            {
+                if (reported.TryGetValue(fullPath, out var current))
+                {
+                    if (string.Equals(current, iconSource, StringComparison.Ordinal))
+                        return;
+                    if (!reported.TryUpdate(fullPath, iconSource, current))
+                        continue;
+                }
+                else if (!reported.TryAdd(fullPath, iconSource))
+                {
+                    continue;
+                }
+
+                Interlocked.CompareExchange(ref timeToFirstIconMs, stopwatch.ElapsedMilliseconds, -1);
+                ReportProgress(progress, fullPath, iconSource);
+                return;
+            }
         }
 
+        RemoteIconCacheIndex cacheSnapshot;
         await cacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        RemoteIconCacheIndex index;
         try
         {
             Directory.CreateDirectory(cacheDirectory);
-            index = await cacheIndexStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-
-            foreach (var lookup in lookups)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var cachedIcon = TryGetCachedIcon(
-                    index,
-                    lookup.Sha1Alias,
-                    now,
-                    allowStale: true,
-                    updateLastUsed: true,
-                    out var isStale);
-                if (cachedIcon is not null)
-                {
-                    CacheFileAlias(index, lookup);
-                    if (isStale)
-                    {
-                        staleResults[lookup.FullPath] = cachedIcon;
-                        unresolved.Add(lookup);
-                    }
-                    else
-                    {
-                        result[lookup.FullPath] = cachedIcon;
-                    }
-                }
-                else
-                {
-                    unresolved.Add(lookup);
-                }
-            }
-
-            if (result.Count > 0 || staleResults.Count > 0)
-            {
-                await cacheIndexStore.SaveAsync(index, cancellationToken).ConfigureAwait(false);
-                ReportProgress(progress, result);
-                ReportProgress(progress, staleResults);
-                logger.LogDebug(
-                    "Remote local mod icon cache resolved icons. FreshCount={FreshCount} StaleCount={StaleCount}",
-                    result.Count,
-                    staleResults.Count);
-            }
+            cacheSnapshot = await cacheIndexStore.LoadAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             cacheLock.Release();
         }
 
-        if (unresolved.Count > 0)
+        var remoteChannel = Channel.CreateUnbounded<ModIconLookupCandidate>(new UnboundedChannelOptions
         {
+            SingleReader = true,
+            SingleWriter = true,
+            AllowSynchronousContinuations = false
+        });
+        var remoteConsumer = ConsumeRemoteCandidatesAsync(
+            remoteChannel.Reader,
+            result,
+            ReportResolvedIcon,
+            cancellationToken);
+
+        int remoteResolvedCount;
+        try
+        {
+            foreach (var mod in candidates)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var lookup = await CreateLookupCandidateAsync(mod, cancellationToken).ConfigureAwait(false);
+                if (lookup is null)
+                    continue;
+
+                var cachedIcon = TryGetCachedIcon(
+                    cacheSnapshot,
+                    lookup.Sha1Alias,
+                    now,
+                    allowStale: true,
+                    updateLastUsed: false,
+                    out var isStale);
+                if (cachedIcon is not null)
+                {
+                    result[lookup.FullPath] = cachedIcon;
+                    contentCacheHits++;
+                    if (cacheSnapshot.Aliases.TryGetValue(lookup.Sha1Alias, out var entryKey))
+                    {
+                        cacheFileAliases[lookup.FileAlias] = entryKey;
+                        touchedEntryKeys.Add(entryKey);
+                    }
+
+                    ReportResolvedIcon(lookup.FullPath, cachedIcon);
+                    if (!isStale)
+                        continue;
+                }
+
+                await remoteChannel.Writer.WriteAsync(lookup, cancellationToken).ConfigureAwait(false);
+            }
+
+            remoteChannel.Writer.TryComplete();
+            await PersistCacheUsageAsync(cacheFileAliases, touchedEntryKeys, now, cancellationToken)
+                .ConfigureAwait(false);
+            remoteResolvedCount = await remoteConsumer.ConfigureAwait(false);
+        }
+        catch
+        {
+            remoteChannel.Writer.TryComplete();
             try
             {
-                var resolved = await ResolveRemoteIconsAsync(unresolved, cancellationToken, progress).ConfigureAwait(false);
-                foreach (var pair in resolved)
-                    result[pair.Key] = pair.Value;
+                await remoteConsumer.ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch
             {
-                throw;
             }
-            catch (Exception exception)
-            {
-                logger.LogWarning(exception, "Failed to resolve remote local mod icons. Cached icons will still be used.");
-            }
+
+            throw;
         }
 
-        foreach (var pair in staleResults)
-            result.TryAdd(pair.Key, pair.Value);
-
         await CleanupCacheOnceAsync(cancellationToken).ConfigureAwait(false);
-
         logger.LogDebug(
-            "Remote local mod icon enrichment completed. CandidateCount={CandidateCount} ResolvedCount={ResolvedCount}",
+            "Remote local mod icon enrichment completed. CandidateCount={CandidateCount} ResolvedCount={ResolvedCount} ContentCacheHitCount={ContentCacheHitCount} RemoteResolvedCount={RemoteResolvedCount} TimeToFirstIconMs={TimeToFirstIconMs}",
             candidates.Count,
-            result.Count);
-        return result;
+            result.Count,
+            contentCacheHits,
+            remoteResolvedCount,
+            timeToFirstIconMs);
+        return new Dictionary<string, string>(result, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -171,13 +187,11 @@ public sealed partial class LocalModIconEnrichmentService
             .GroupBy(mod => mod.FullPath, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
-
         if (candidates.Count == 0)
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var now = DateTimeOffset.UtcNow;
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
         await cacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -188,7 +202,9 @@ public sealed partial class LocalModIconEnrichmentService
                 var fileAlias = TryCreateFileAlias(mod.FullPath);
                 if (fileAlias is null
                     || !index.FileAliases.TryGetValue(fileAlias, out var entryKey))
+                {
                     continue;
+                }
 
                 var cachedIcon = TryGetCachedIconByEntryKey(
                     index,
@@ -213,105 +229,246 @@ public sealed partial class LocalModIconEnrichmentService
         return result;
     }
 
-    /// <summary>
-    /// 优先批量查询 Modrinth，剩余候选再查询 CurseForge，并逐项报告可用图标。
-    /// </summary>
+    private async Task<int> ConsumeRemoteCandidatesAsync(
+        ChannelReader<ModIconLookupCandidate> reader,
+        ConcurrentDictionary<string, string> result,
+        Action<string, string> reportResolvedIcon,
+        CancellationToken cancellationToken)
+    {
+        var batch = new List<ModIconLookupCandidate>(ProviderBatchSize);
+        var resolvedCount = 0;
+        await foreach (var candidate in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            batch.Add(candidate);
+            if (batch.Count < ProviderBatchSize)
+                continue;
+
+            resolvedCount += await ResolveRemoteBatchAsync(
+                    batch,
+                    result,
+                    reportResolvedIcon,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            batch.Clear();
+        }
+
+        if (batch.Count > 0)
+        {
+            resolvedCount += await ResolveRemoteBatchAsync(
+                    batch,
+                    result,
+                    reportResolvedIcon,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return resolvedCount;
+    }
+
+    private async Task<int> ResolveRemoteBatchAsync(
+        IReadOnlyList<ModIconLookupCandidate> batch,
+        ConcurrentDictionary<string, string> result,
+        Action<string, string> reportResolvedIcon,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var resolved = await ResolveRemoteIconsAsync(
+                    batch,
+                    cancellationToken,
+                    reportResolvedIcon)
+                .ConfigureAwait(false);
+            foreach (var (fullPath, iconSource) in resolved)
+                result[fullPath] = iconSource;
+            return resolved.Count;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Failed to resolve a remote local mod icon batch. BatchCount={BatchCount}",
+                batch.Count);
+            return 0;
+        }
+    }
+
     private async Task<IReadOnlyDictionary<string, string>> ResolveRemoteIconsAsync(
         IReadOnlyList<ModIconLookupCandidate> candidates,
         CancellationToken cancellationToken,
-        IProgress<IReadOnlyDictionary<string, string>>? progress)
+        Action<string, string> reportResolvedIcon)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var unresolved = candidates.ToDictionary(candidate => candidate.Sha1, StringComparer.OrdinalIgnoreCase);
-        var progressGate = new object();
+        var unresolved = candidates
+            .GroupBy(candidate => candidate.Sha1, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<ModIconLookupCandidate>)group.ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+        var providerCandidates = unresolved.Values.Select(group => group[0]).ToArray();
 
-        var modrinthIcons = await providerClient.ResolveModrinthAsync(candidates, cancellationToken).ConfigureAwait(false);
+        var modrinthIcons = await providerClient
+            .ResolveModrinthAsync(providerCandidates, cancellationToken)
+            .ConfigureAwait(false);
         var resolvedModrinthIcons = await CacheProviderIconsAsync(
-            modrinthIcons,
-            unresolved,
-            progress,
-            progressGate,
-            cancellationToken).ConfigureAwait(false);
-        foreach (var (sha1, iconSource) in resolvedModrinthIcons)
-        {
-            if (!unresolved.TryGetValue(sha1, out var candidate))
-                continue;
-
-            result[candidate.FullPath] = iconSource;
-            unresolved.Remove(sha1);
-        }
+                modrinthIcons,
+                unresolved,
+                reportResolvedIcon,
+                cancellationToken)
+            .ConfigureAwait(false);
+        ApplyProviderResults(resolvedModrinthIcons, unresolved, result);
 
         if (unresolved.Count > 0)
         {
-            var curseForgeIcons = await providerClient.ResolveCurseForgeAsync(unresolved.Values.ToList(), cancellationToken)
+            var curseForgeCandidates = unresolved.Values.Select(group => group[0]).ToArray();
+            var curseForgeIcons = await providerClient
+                .ResolveCurseForgeAsync(curseForgeCandidates, cancellationToken)
                 .ConfigureAwait(false);
             var resolvedCurseForgeIcons = await CacheProviderIconsAsync(
-                curseForgeIcons,
-                unresolved,
-                progress,
-                progressGate,
-                cancellationToken).ConfigureAwait(false);
-            foreach (var (sha1, iconSource) in resolvedCurseForgeIcons)
-            {
-                if (!unresolved.TryGetValue(sha1, out var candidate))
-                    continue;
-
-                result[candidate.FullPath] = iconSource;
-                unresolved.Remove(sha1);
-            }
+                    curseForgeIcons,
+                    unresolved,
+                    reportResolvedIcon,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            ApplyProviderResults(resolvedCurseForgeIcons, unresolved, result);
         }
 
+        await PersistResolvedRemoteFileAliasesAsync(candidates, result.Keys, cancellationToken)
+            .ConfigureAwait(false);
         return result;
     }
 
     private async Task<IReadOnlyDictionary<string, string>> CacheProviderIconsAsync(
         IReadOnlyDictionary<string, RemoteIconCandidate> providerIcons,
-        IReadOnlyDictionary<string, ModIconLookupCandidate> unresolved,
-        IProgress<IReadOnlyDictionary<string, string>>? progress,
-        object progressGate,
+        IReadOnlyDictionary<string, IReadOnlyList<ModIconLookupCandidate>> unresolved,
+        Action<string, string> reportResolvedIcon,
         CancellationToken cancellationToken)
     {
         var resolved = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var tasks = providerIcons.Select(async pair =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!unresolved.TryGetValue(pair.Key, out var candidate))
+            if (!unresolved.TryGetValue(pair.Key, out var matchingCandidates)
+                || matchingCandidates.Count == 0)
+            {
                 return;
+            }
 
-            var iconSource = await TryCacheRemoteIconAsync(candidate, pair.Value, cancellationToken)
+            var iconSource = await TryCacheRemoteIconAsync(
+                    matchingCandidates[0],
+                    pair.Value,
+                    cancellationToken)
                 .ConfigureAwait(false);
             if (iconSource is null)
                 return;
 
             resolved[pair.Key] = iconSource;
-            lock (progressGate)
-                ReportProgress(progress, candidate.FullPath, iconSource);
+            foreach (var candidate in matchingCandidates)
+                reportResolvedIcon(candidate.FullPath, iconSource);
         });
         await Task.WhenAll(tasks).ConfigureAwait(false);
         return resolved;
     }
 
-    private static void ReportProgress(
-        IProgress<IReadOnlyDictionary<string, string>>? progress,
-        IReadOnlyDictionary<string, string> icons)
+    private static void ApplyProviderResults(
+        IReadOnlyDictionary<string, string> resolvedBySha1,
+        IDictionary<string, IReadOnlyList<ModIconLookupCandidate>> unresolved,
+        IDictionary<string, string> result)
     {
-        if (progress is null || icons.Count == 0)
+        foreach (var (sha1, iconSource) in resolvedBySha1)
+        {
+            if (!unresolved.Remove(sha1, out var matchingCandidates))
+                continue;
+
+            foreach (var candidate in matchingCandidates)
+                result[candidate.FullPath] = iconSource;
+        }
+    }
+
+    private async Task PersistCacheUsageAsync(
+        IReadOnlyDictionary<string, string> fileAliases,
+        IReadOnlyCollection<string> touchedEntryKeys,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (fileAliases.Count == 0 && touchedEntryKeys.Count == 0)
             return;
 
-        progress.Report(new Dictionary<string, string>(icons, StringComparer.OrdinalIgnoreCase));
+        await cacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var index = await cacheIndexStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var entryKey in touchedEntryKeys)
+            {
+                if (index.Entries.TryGetValue(entryKey, out var entry))
+                    entry.LastUsedAt = now;
+            }
+
+            foreach (var (fileAlias, entryKey) in fileAliases)
+            {
+                if (index.Entries.ContainsKey(entryKey))
+                    index.FileAliases[fileAlias] = entryKey;
+            }
+
+            await cacheIndexStore.SaveAsync(index, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            cacheLock.Release();
+        }
+    }
+
+    private async Task PersistResolvedRemoteFileAliasesAsync(
+        IReadOnlyList<ModIconLookupCandidate> candidates,
+        IEnumerable<string> resolvedPaths,
+        CancellationToken cancellationToken)
+    {
+        var resolvedPathSet = resolvedPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (resolvedPathSet.Count == 0)
+            return;
+
+        await cacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var index = await cacheIndexStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var changed = false;
+            foreach (var candidate in candidates)
+            {
+                if (!resolvedPathSet.Contains(candidate.FullPath)
+                    || !index.Aliases.TryGetValue(candidate.Sha1Alias, out var entryKey)
+                    || !index.Entries.ContainsKey(entryKey))
+                {
+                    continue;
+                }
+
+                index.FileAliases[candidate.FileAlias] = entryKey;
+                changed = true;
+            }
+
+            if (changed)
+                await cacheIndexStore.SaveAsync(index, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            cacheLock.Release();
+        }
     }
 
     private static void ReportProgress(
-        IProgress<IReadOnlyDictionary<string, string>>? progress,
+        IProgress<LocalContentIconResolution>? progress,
         string fullPath,
         string iconSource)
     {
-        if (progress is null || string.IsNullOrWhiteSpace(fullPath) || string.IsNullOrWhiteSpace(iconSource))
-            return;
-
-        progress.Report(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        if (progress is null
+            || string.IsNullOrWhiteSpace(fullPath)
+            || string.IsNullOrWhiteSpace(iconSource))
         {
-            [fullPath] = iconSource
-        });
+            return;
+        }
+
+        progress.Report(new LocalContentIconResolution(fullPath, iconSource));
     }
 }

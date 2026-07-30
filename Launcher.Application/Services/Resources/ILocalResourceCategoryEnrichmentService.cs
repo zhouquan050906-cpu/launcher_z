@@ -22,11 +22,13 @@ public interface ILocalResourceCategoryEnrichmentService
 {
     Task<IReadOnlyDictionary<string, LocalResourceEnrichmentResult>> ResolveCachedMetadataAsync(
         IReadOnlyList<LocalResourceCategoryCandidate> resources,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IProgress<LocalContentIconResolution>? iconProgress = null);
 
     Task<IReadOnlyDictionary<string, LocalResourceEnrichmentResult>> ResolveMetadataAsync(
         IReadOnlyList<LocalResourceCategoryCandidate> resources,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IProgress<LocalContentIconResolution>? iconProgress = null);
 
     Task<IReadOnlyDictionary<string, IReadOnlyList<ResourceProjectCategory>>> ResolveCachedCategoriesAsync(
         IReadOnlyList<LocalResourceCategoryCandidate> resources,

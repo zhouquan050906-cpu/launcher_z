@@ -152,6 +152,18 @@ public sealed partial class InstanceResourcePackManagementSettingsViewModel
         QueueVisibleRefresh();
     }
 
+    private void LocalResourcePacksViewModel_IconChanged(object? sender, LocalContentIconChangedEventArgs e)
+    {
+        if (!HasLoadedResourcePacks || !isSectionActive)
+            return;
+
+        if (selectionState.ItemsByPath.TryGetValue(e.FullPath, out var item)
+            && !string.Equals(item.IconSource, e.IconSource, StringComparison.Ordinal))
+        {
+            item.IconSource = e.IconSource;
+        }
+    }
+
     /// <summary>
     /// 增量更新筛选后的资源包列表，并保持单选或多选状态稳定。
     /// </summary>

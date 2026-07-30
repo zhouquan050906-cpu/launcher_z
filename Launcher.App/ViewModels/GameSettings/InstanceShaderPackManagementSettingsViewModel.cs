@@ -108,6 +108,7 @@ public sealed partial class InstanceShaderPackManagementSettingsViewModel : Game
             shaderPack => shaderPack.IsSelected,
             static (shaderPack, isSelected) => shaderPack.IsSelected = isSelected);
         this.localShaderPacksViewModel.ShaderPacksChanged += LocalShaderPacksViewModel_ShaderPacksChanged;
+        this.localShaderPacksViewModel.IconChanged += LocalShaderPacksViewModel_IconChanged;
     }
 
     public event Action<ShaderPackDeleteRequest>? DeleteShaderPacksRequested;

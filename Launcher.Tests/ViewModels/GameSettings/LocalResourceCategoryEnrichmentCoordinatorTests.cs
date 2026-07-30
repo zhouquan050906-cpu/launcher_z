@@ -130,6 +130,67 @@ public sealed class LocalResourceCategoryEnrichmentCoordinatorTests
         Assert.Equal(0, changedCount);
     }
 
+    [Fact]
+    public void IconProgressUsesDedicatedItemEventWithoutCollectionRefresh()
+    {
+        const string path = "instance/resourcepacks/progressive.zip";
+        const string remoteIcon = "file:///cache/progressive.png";
+        var item = new LocalResourcePack { FullPath = path };
+        var dispatcher = new QueueingUiDispatcher();
+        var changedCount = 0;
+        var iconChangedCount = 0;
+        using var coordinator = new LocalResourceCategoryEnrichmentCoordinator<LocalResourcePack>(
+            new ProgressMetadataService(new LocalContentIconResolution(path, remoteIcon)),
+            ResourceProjectKind.ResourcePack,
+            resourcePack => resourcePack.FullPath,
+            resourcePack => resourcePack.Categories,
+            static (resourcePack, categories) => resourcePack.Categories = categories,
+            () => [item],
+            () => changedCount++,
+            dispatcher,
+            NullLogger.Instance,
+            iconSourceSelector: resourcePack => resourcePack.IconSource,
+            iconSourceSetter: static (resourcePack, iconSource) => resourcePack.IconSource = iconSource,
+            iconChanged: (_, _) => iconChangedCount++);
+
+        coordinator.Queue([item]);
+        dispatcher.RunAll();
+
+        Assert.Equal(remoteIcon, item.IconSource);
+        Assert.Equal(1, iconChangedCount);
+        Assert.Equal(0, changedCount);
+    }
+
+    [Fact]
+    public void CanceledCoordinatorDropsQueuedIconProgress()
+    {
+        const string path = "instance/shaderpacks/stale.zip";
+        var item = new LocalShaderPack { FullPath = path };
+        var dispatcher = new QueueingUiDispatcher();
+        var iconChangedCount = 0;
+        using var coordinator = new LocalResourceCategoryEnrichmentCoordinator<LocalShaderPack>(
+            new ProgressMetadataService(
+                new LocalContentIconResolution(path, "file:///cache/stale.png")),
+            ResourceProjectKind.ShaderPack,
+            shaderPack => shaderPack.FullPath,
+            shaderPack => shaderPack.Categories,
+            static (shaderPack, categories) => shaderPack.Categories = categories,
+            () => [item],
+            () => { },
+            dispatcher,
+            NullLogger.Instance,
+            iconSourceSelector: shaderPack => shaderPack.IconSource,
+            iconSourceSetter: static (shaderPack, iconSource) => shaderPack.IconSource = iconSource,
+            iconChanged: (_, _) => iconChangedCount++);
+
+        coordinator.Queue([item]);
+        coordinator.Cancel();
+        dispatcher.RunAll();
+
+        Assert.Null(item.IconSource);
+        Assert.Equal(0, iconChangedCount);
+    }
+
     private sealed class FixedMetadataService(
         IReadOnlyDictionary<string, LocalResourceEnrichmentResult> cached,
         IReadOnlyDictionary<string, LocalResourceEnrichmentResult> resolved)
@@ -137,12 +198,14 @@ public sealed class LocalResourceCategoryEnrichmentCoordinatorTests
     {
         public Task<IReadOnlyDictionary<string, LocalResourceEnrichmentResult>> ResolveCachedMetadataAsync(
             IReadOnlyList<LocalResourceCategoryCandidate> resources,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            IProgress<LocalContentIconResolution>? iconProgress = null) =>
             Task.FromResult(cached);
 
         public Task<IReadOnlyDictionary<string, LocalResourceEnrichmentResult>> ResolveMetadataAsync(
             IReadOnlyList<LocalResourceCategoryCandidate> resources,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            IProgress<LocalContentIconResolution>? iconProgress = null) =>
             Task.FromResult(resolved);
 
         public Task<IReadOnlyDictionary<string, IReadOnlyList<ResourceProjectCategory>>> ResolveCachedCategoriesAsync(
@@ -156,6 +219,39 @@ public sealed class LocalResourceCategoryEnrichmentCoordinatorTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<ResourceProjectCategory>>>(
                 new Dictionary<string, IReadOnlyList<ResourceProjectCategory>>());
+    }
+
+    private sealed class ProgressMetadataService(LocalContentIconResolution resolution)
+        : ILocalResourceCategoryEnrichmentService
+    {
+        public Task<IReadOnlyDictionary<string, LocalResourceEnrichmentResult>> ResolveCachedMetadataAsync(
+            IReadOnlyList<LocalResourceCategoryCandidate> resources,
+            CancellationToken cancellationToken = default,
+            IProgress<LocalContentIconResolution>? iconProgress = null) =>
+            Task.FromResult<IReadOnlyDictionary<string, LocalResourceEnrichmentResult>>(
+                new Dictionary<string, LocalResourceEnrichmentResult>(StringComparer.OrdinalIgnoreCase));
+
+        public Task<IReadOnlyDictionary<string, LocalResourceEnrichmentResult>> ResolveMetadataAsync(
+            IReadOnlyList<LocalResourceCategoryCandidate> resources,
+            CancellationToken cancellationToken = default,
+            IProgress<LocalContentIconResolution>? iconProgress = null)
+        {
+            iconProgress?.Report(resolution);
+            return Task.FromResult<IReadOnlyDictionary<string, LocalResourceEnrichmentResult>>(
+                new Dictionary<string, LocalResourceEnrichmentResult>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        public Task<IReadOnlyDictionary<string, IReadOnlyList<ResourceProjectCategory>>> ResolveCachedCategoriesAsync(
+            IReadOnlyList<LocalResourceCategoryCandidate> resources,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<ResourceProjectCategory>>>(
+                new Dictionary<string, IReadOnlyList<ResourceProjectCategory>>(StringComparer.OrdinalIgnoreCase));
+
+        public Task<IReadOnlyDictionary<string, IReadOnlyList<ResourceProjectCategory>>> ResolveCategoriesAsync(
+            IReadOnlyList<LocalResourceCategoryCandidate> resources,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<ResourceProjectCategory>>>(
+                new Dictionary<string, IReadOnlyList<ResourceProjectCategory>>(StringComparer.OrdinalIgnoreCase));
     }
 
     private sealed class QueueingUiDispatcher : IUiDispatcher

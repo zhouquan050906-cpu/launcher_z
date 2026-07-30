@@ -32,12 +32,6 @@ namespace Launcher.Infrastructure.FileSystem;
 
 public sealed partial class LocalModIconEnrichmentService
 {
-private void CacheFileAlias(RemoteIconCacheIndex index, ModIconLookupCandidate lookup)
-    {
-        if (index.Aliases.TryGetValue(lookup.Sha1Alias, out var entryKey))
-            index.FileAliases[lookup.FileAlias] = entryKey;
-    }
-
     internal static string? TryCreateFileAlias(string path)
     {
         try

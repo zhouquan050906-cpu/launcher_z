@@ -37,8 +37,10 @@ public sealed class LocalModsViewModelIconEnrichmentTests
             InstanceDirectory = "instance"
         });
         var iconApplied = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        viewModel.ModsChanged += (_, _) =>
+        var iconChangedCount = 0;
+        viewModel.IconChanged += (_, _) =>
         {
+            Interlocked.Increment(ref iconChangedCount);
             if (!string.IsNullOrWhiteSpace(viewModel.CurrentMods.Single().IconSource))
                 iconApplied.TrySetResult(true);
         };
@@ -51,6 +53,7 @@ public sealed class LocalModsViewModelIconEnrichmentTests
 
         Assert.Equal(1, enrichment.ResolveCallCount);
         Assert.Equal("file:///cached/example.png", mod.IconSource);
+        Assert.Equal(1, Volatile.Read(ref iconChangedCount));
     }
 
     [Fact]
@@ -115,7 +118,7 @@ public sealed class LocalModsViewModelIconEnrichmentTests
         });
         viewModel.SetSectionActive(true);
         var iconApplied = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        viewModel.ModsChanged += (_, _) =>
+        viewModel.IconChanged += (_, _) =>
         {
             if (!string.IsNullOrWhiteSpace(viewModel.CurrentMods.Single().IconSource))
                 iconApplied.TrySetResult(true);
@@ -186,15 +189,19 @@ public sealed class LocalModsViewModelIconEnrichmentTests
         public async Task<IReadOnlyDictionary<string, string>> ResolveMissingIconSourcesAsync(
             IReadOnlyList<LocalMod> mods,
             CancellationToken cancellationToken = default,
-            IProgress<IReadOnlyDictionary<string, string>>? progress = null)
+            IProgress<LocalContentIconResolution>? progress = null)
         {
             ResolveCallCount++;
             Started.TrySetResult(true);
             await Release.Task.WaitAsync(cancellationToken);
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            var resolved = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 [mods.Single().FullPath] = "file:///cached/example.png"
             };
+            progress?.Report(new LocalContentIconResolution(
+                mods.Single().FullPath,
+                "file:///cached/example.png"));
+            return resolved;
         }
     }
 
