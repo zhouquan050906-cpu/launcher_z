@@ -138,6 +138,169 @@ public sealed class ModServiceTests : TestTempDirectory
         Assert.Single(await service.GetModsAsync(instance));
     }
 
+    [Fact]
+    public async Task GetModsAsyncDoesNotCreateMissingDirectory()
+    {
+        var instanceDirectory = Directory.CreateDirectory(Path.Combine(TempRoot, "instances", "missing-mods")).FullName;
+        var service = CreateService();
+
+        var mods = await service.GetModsAsync(new GameInstance { InstanceDirectory = instanceDirectory });
+
+        Assert.Empty(mods);
+        Assert.False(Directory.Exists(Path.Combine(instanceDirectory, "mods")));
+    }
+
+    [Fact]
+    public async Task GetModsAsyncReusesUnchangedItemsAndReplacesOnlyChangedItem()
+    {
+        var modsDirectory = Directory.CreateDirectory(Path.Combine(TempRoot, "instances", "snapshot", "mods")).FullName;
+        var firstPath = Path.Combine(modsDirectory, "first.jar");
+        var secondPath = Path.Combine(modsDirectory, "second.jar");
+        await File.WriteAllTextAsync(firstPath, "first");
+        await File.WriteAllTextAsync(secondPath, "second");
+        var instance = new GameInstance { InstanceDirectory = Directory.GetParent(modsDirectory)!.FullName };
+        var service = CreateService();
+
+        var initial = await service.GetModsAsync(instance);
+        var unchanged = await service.GetModsAsync(instance);
+        await File.AppendAllTextAsync(firstPath, "-changed");
+        var changed = await service.GetModsAsync(instance);
+
+        Assert.Same(initial[0], unchanged[0]);
+        Assert.Same(initial[1], unchanged[1]);
+        Assert.NotSame(initial.Single(item => item.FileName == "first.jar"), changed.Single(item => item.FileName == "first.jar"));
+        Assert.Same(initial.Single(item => item.FileName == "second.jar"), changed.Single(item => item.FileName == "second.jar"));
+    }
+
+    [Fact]
+    public async Task SetEnabledAsyncMovesExistingSnapshotWithoutReplacingItem()
+    {
+        var modsDirectory = Directory.CreateDirectory(
+            Path.Combine(TempRoot, "instances", "toggle-snapshot", "mods")).FullName;
+        var enabledPath = Path.Combine(modsDirectory, "example.jar");
+        await File.WriteAllTextAsync(enabledPath, "content");
+        var instance = new GameInstance
+        {
+            InstanceDirectory = Directory.GetParent(modsDirectory)!.FullName
+        };
+        var service = CreateService();
+        var loaded = Assert.Single(await service.GetModsAsync(instance));
+
+        await service.SetEnabledAsync(loaded, enabled: false);
+        var afterToggle = Assert.Single(await service.GetModsAsync(instance));
+
+        Assert.Same(loaded, afterToggle);
+        Assert.False(afterToggle.IsEnabled);
+        Assert.Equal("example.jar.disabled", afterToggle.FileName);
+        Assert.False(File.Exists(enabledPath));
+        Assert.True(File.Exists(Path.Combine(modsDirectory, "example.jar.disabled")));
+    }
+
+    [Fact]
+    public async Task SetEnabledAsyncRemainsConsistentAfterSnapshotEviction()
+    {
+        var instances = new List<GameInstance>();
+        for (var index = 0; index < 5; index++)
+        {
+            var instanceDirectory = Directory.CreateDirectory(
+                Path.Combine(TempRoot, "instances", "toggle-after-eviction", $"instance-{index}")).FullName;
+            var modsDirectory = Directory.CreateDirectory(Path.Combine(instanceDirectory, "mods")).FullName;
+            var jarPath = Path.Combine(modsDirectory, $"mod-{index}.jar");
+            using (ZipFile.Open(jarPath, ZipArchiveMode.Create))
+            {
+            }
+            instances.Add(new GameInstance { Id = $"instance-{index}", InstanceDirectory = instanceDirectory });
+        }
+
+        var service = CreateService();
+        var first = Assert.Single(await service.GetModsAsync(instances[0]));
+        for (var index = 1; index < instances.Count; index++)
+            Assert.Single(await service.GetModsAsync(instances[index]));
+
+        await service.SetEnabledAsync(first, enabled: false);
+        var reloaded = Assert.Single(await service.GetModsAsync(instances[0]));
+
+        Assert.NotSame(first, reloaded);
+        Assert.False(first.IsEnabled);
+        Assert.False(reloaded.IsEnabled);
+        Assert.Equal("mod-0.jar.disabled", reloaded.FileName);
+        Assert.True(File.Exists(Path.Combine(instances[0].InstanceDirectory, "mods", "mod-0.jar.disabled")));
+    }
+
+    [Fact]
+    public async Task ConcurrentInstanceLoadsRemainConsistentAcrossEviction()
+    {
+        var instances = new List<GameInstance>();
+        for (var index = 0; index < 8; index++)
+        {
+            var instanceDirectory = Directory.CreateDirectory(
+                Path.Combine(TempRoot, "instances", "concurrent-lru", $"instance-{index}")).FullName;
+            var modsDirectory = Directory.CreateDirectory(Path.Combine(instanceDirectory, "mods")).FullName;
+            using (ZipFile.Open(Path.Combine(modsDirectory, $"mod-{index}.jar"), ZipArchiveMode.Create))
+            {
+            }
+            instances.Add(new GameInstance { Id = $"instance-{index}", InstanceDirectory = instanceDirectory });
+        }
+
+        var service = CreateService();
+        var results = await Task.WhenAll(instances.Select(instance => service.GetModsAsync(instance)));
+
+        Assert.All(results, result => Assert.Single(result));
+        for (var index = 0; index < instances.Count; index++)
+        {
+            var reloaded = Assert.Single(await service.GetModsAsync(instances[index]));
+            Assert.Equal($"mod-{index}.jar", reloaded.FileName);
+        }
+    }
+
+    [Fact]
+    public async Task RemoteIconFileAliasIsStableAcrossEnabledStateRename()
+    {
+        var modsDirectory = Directory.CreateDirectory(
+            Path.Combine(TempRoot, "instances", "icon-alias", "mods")).FullName;
+        var enabledPath = Path.Combine(modsDirectory, "example.jar");
+        var disabledPath = enabledPath + ".disabled";
+        await File.WriteAllTextAsync(enabledPath, "content");
+        var originalWriteTime = File.GetLastWriteTimeUtc(enabledPath);
+        var enabledAlias = LocalModIconEnrichmentService.TryCreateFileAlias(enabledPath);
+
+        File.Move(enabledPath, disabledPath);
+        File.SetLastWriteTimeUtc(disabledPath, originalWriteTime);
+        var disabledAlias = LocalModIconEnrichmentService.TryCreateFileAlias(disabledPath);
+
+        Assert.NotNull(enabledAlias);
+        Assert.Equal(enabledAlias, disabledAlias);
+    }
+
+    [Fact]
+    public async Task MetadataCacheIsReusedAcrossServiceInstances()
+    {
+        var modsDirectory = Directory.CreateDirectory(Path.Combine(TempRoot, "instances", "persistent-cache", "mods")).FullName;
+        var jarPath = Path.Combine(modsDirectory, "cached.jar");
+        using (var archive = ZipFile.Open(jarPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("fabric.mod.json");
+            await using var stream = entry.Open();
+            await stream.WriteAsync(Encoding.UTF8.GetBytes(
+                """{"schemaVersion":1,"id":"cached_mod","version":"1.0.0","name":"Cached Display Name"}"""));
+        }
+
+        var instance = new GameInstance { InstanceDirectory = Directory.GetParent(modsDirectory)!.FullName };
+        var firstService = CreateService();
+        var first = Assert.Single(await firstService.GetModsAsync(instance));
+        var originalLength = new FileInfo(jarPath).Length;
+        var originalLastWrite = File.GetLastWriteTimeUtc(jarPath);
+        await File.WriteAllBytesAsync(jarPath, new byte[checked((int)originalLength)]);
+        File.SetLastWriteTimeUtc(jarPath, originalLastWrite);
+
+        var second = Assert.Single(await CreateService().GetModsAsync(instance));
+
+        Assert.Equal("Cached Display Name", first.Name);
+        Assert.Equal(first.Name, second.Name);
+        Assert.Equal(first.ModId, second.ModId);
+        Assert.Equal(first.Version, second.Version);
+    }
+
     private ModService CreateService()
     {
         return new ModService(new LauncherPathProvider(TempRoot));

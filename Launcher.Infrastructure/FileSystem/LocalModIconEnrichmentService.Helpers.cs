@@ -17,7 +17,6 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-using System.Buffers.Binary;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
@@ -39,7 +38,7 @@ private void CacheFileAlias(RemoteIconCacheIndex index, ModIconLookupCandidate l
             index.FileAliases[lookup.FileAlias] = entryKey;
     }
 
-    private static string? TryCreateFileAlias(string path)
+    internal static string? TryCreateFileAlias(string path)
     {
         try
         {
@@ -47,9 +46,12 @@ private void CacheFileAlias(RemoteIconCacheIndex index, ModIconLookupCandidate l
             if (!fileInfo.Exists)
                 return null;
 
+            var stablePath = fileInfo.FullName.EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase)
+                ? fileInfo.FullName[..^".disabled".Length]
+                : fileInfo.FullName;
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"file:{Path.GetFullPath(fileInfo.FullName)}|{fileInfo.Length}|{fileInfo.LastWriteTimeUtc.Ticks}");
+                $"file:{Path.GetFullPath(stablePath)}|{fileInfo.Length}|{fileInfo.LastWriteTimeUtc.Ticks}");
         }
         catch (Exception exception) when (
             exception is IOException
@@ -82,44 +84,4 @@ private void CacheFileAlias(RemoteIconCacheIndex index, ModIconLookupCandidate l
         }
     }
 
-    private static long ComputeCurseForgeMurmurHash2(ReadOnlySpan<byte> data)
-    {
-        const uint seed = 1;
-        const uint m = 0x5bd1e995;
-        const int r = 24;
-
-        var length = data.Length;
-        var hash = seed ^ (uint)length;
-        var current = data;
-        while (current.Length >= 4)
-        {
-            var value = BinaryPrimitives.ReadUInt32LittleEndian(current);
-            value *= m;
-            value ^= value >> r;
-            value *= m;
-
-            hash *= m;
-            hash ^= value;
-            current = current[4..];
-        }
-
-        switch (current.Length)
-        {
-            case 3:
-                hash ^= (uint)current[2] << 16;
-                goto case 2;
-            case 2:
-                hash ^= (uint)current[1] << 8;
-                goto case 1;
-            case 1:
-                hash ^= current[0];
-                hash *= m;
-                break;
-        }
-
-        hash ^= hash >> 13;
-        hash *= m;
-        hash ^= hash >> 15;
-        return hash;
-    }
 }

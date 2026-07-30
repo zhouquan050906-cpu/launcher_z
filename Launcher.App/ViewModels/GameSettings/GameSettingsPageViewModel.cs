@@ -42,6 +42,7 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
     // 选中项对象会被列表刷新替换，单独保存订阅目标以便安全解除旧对象事件。
     private INotifyPropertyChanged? selectedInstanceNotifier;
     private string lastImportDropHintMessage = string.Empty;
+    private bool isShellPageActive;
 
     [ObservableProperty]
     private GameSettingsPageStep currentStep = GameSettingsPageStep.List;
@@ -109,6 +110,8 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
 
     public event Action? LocalImportRequested;
 
+    public event Action? InstanceListActivated;
+
     public event Action<ResourceProjectReference>? ResourceProjectDetailsRequested;
 
     public GameSettingsInstanceListViewModel InstanceList { get; }
@@ -124,6 +127,15 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
     public bool IsListStep => CurrentStep is GameSettingsPageStep.List;
 
     public bool IsDetailsStep => CurrentStep is GameSettingsPageStep.Details;
+
+    public void SetShellPageActive(bool active)
+    {
+        if (isShellPageActive == active)
+            return;
+
+        isShellPageActive = active;
+        UpdateDetailsActivation();
+    }
 
     public bool IsGameSettingsContentVisible => IsDetailsStep || InstanceList.HasVisibleInstances;
 
@@ -240,20 +252,13 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
 
     public void PrimeFromSettings(LauncherSettings settings) => Details.PrimeFromSettings(settings);
 
-    public Task EnsureInstancesLoadedAsync(CancellationToken cancellationToken = default) =>
-        InstanceList.EnsureLoadedAsync(cancellationToken);
-
-    [RelayCommand]
-    public Task RefreshInstancesAsync(CancellationToken cancellationToken = default) =>
-        InstanceList.RefreshAsync(cancellationToken);
-
-    public Task RefreshInstancesForPageActivationAsync(CancellationToken cancellationToken = default) =>
-        IsDetailsStep
-            ? Task.CompletedTask
-            : InstanceList.RefreshForActivationAsync(cancellationToken);
-
-    public Task RefreshInstancesSilentlyAsync(CancellationToken cancellationToken = default) =>
-        InstanceList.RefreshSilentlyAsync(cancellationToken);
+    public bool ApplyInstanceCatalog(
+        IReadOnlyList<GameInstance> instances,
+        long catalogRevision,
+        bool playEntranceAnimation = true)
+    {
+        return InstanceList.ApplyInstanceCatalog(instances, catalogRevision, playEntranceAnimation);
+    }
 
     public async Task OpenInstanceDetailsAsync(GameInstance? instance, CancellationToken cancellationToken = default)
     {
@@ -281,8 +286,6 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
         SelectDetailsSectionCore(ResolveDetailSection(sectionId));
         CurrentStep = GameSettingsPageStep.Details;
     }
-
-    public void AddOrUpdateInstance(GameInstance instance) => InstanceList.AddOrUpdate(instance);
 
     [RelayCommand]
     private void SelectInstance(GameSettingsInstanceItem instance)
@@ -336,7 +339,7 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
         // 详情页保留被筛选掉的当前实例选择，返回列表时恢复普通筛选语义。
         var isDetailsActive = value is GameSettingsPageStep.Details;
         InstanceList.SetPreserveFilteredSelection(isDetailsActive);
-        Details.SetPageActive(isDetailsActive);
+        UpdateDetailsActivation();
         OnPropertyChanged(nameof(IsListStep));
         OnPropertyChanged(nameof(IsDetailsStep));
         OnPropertyChanged(nameof(IsGameSettingsContentVisible));
@@ -344,16 +347,25 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
         OnPropertyChanged(nameof(PageTitle));
         OnPropertyChanged(nameof(PageTitleIconSource));
         RaiseTopSearchPropertyChanges();
+        if (value is GameSettingsPageStep.List)
+            InstanceListActivated?.Invoke();
     }
 
-    private async Task OpenInstanceDetailsAsync(
+    private void UpdateDetailsActivation()
+    {
+        Details.SetPageActive(
+            isShellPageActive && IsDetailsStep,
+            releaseLocalContentObservation: IsListStep);
+    }
+
+    private Task OpenInstanceDetailsAsync(
         GameInstance? instance,
         string? sectionId,
         CancellationToken cancellationToken)
     {
-        // 先刷新列表以取得仓库中的最新实例引用，再进入详情避免编辑陈旧对象。
-        await InstanceList.RefreshForActivationAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         ShowInstanceDetails(instance, sectionId);
+        return Task.CompletedTask;
     }
 
     private bool IsDetailsSection(string sectionId) => IsDetailsStep

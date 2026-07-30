@@ -27,6 +27,7 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
     private static readonly TimeSpan CacheRetention = TimeSpan.FromDays(90);
 
     private readonly RemoteModIconProviderClient providerClient;
+    private readonly LocalFileFingerprintService fingerprintService;
     private readonly IResourceThumbnailService? thumbnailService;
     private readonly ILogger<LocalResourceCategoryEnrichmentService> logger;
     private readonly LocalResourceCategoryCacheStore cacheStore;
@@ -38,12 +39,14 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
         HttpClient? httpClient = null,
         ICurseForgeApiKeyResolver? curseForgeApiKeyResolver = null,
         ILogger<LocalResourceCategoryEnrichmentService>? logger = null,
-        IResourceThumbnailService? thumbnailService = null)
+        IResourceThumbnailService? thumbnailService = null,
+        LocalFileFingerprintService? fingerprintService = null)
     {
         var resolvedPathProvider = pathProvider ?? new LauncherPathProvider();
         var resolvedHttpClient = httpClient ?? MinecraftHttpClientFactory.CreateTransportClient();
         this.logger = logger ?? NullLogger<LocalResourceCategoryEnrichmentService>.Instance;
         this.thumbnailService = thumbnailService;
+        this.fingerprintService = fingerprintService ?? new LocalFileFingerprintService();
         var apiKeyResolver = curseForgeApiKeyResolver ?? new CurseForgeApiKeyResolver(resolvedPathProvider);
         providerClient = new RemoteModIconProviderClient(resolvedHttpClient, apiKeyResolver, this.logger);
         cacheStore = new LocalResourceCategoryCacheStore(
@@ -56,7 +59,7 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
         CancellationToken cancellationToken = default)
     {
         var categories = await ResolveCachedCategoriesAsync(resources, cancellationToken).ConfigureAwait(false);
-        var icons = await ResolveShaderPackIconSourcesAsync(resources, downloadMissing: false, cancellationToken)
+        var icons = await ResolveProjectIconSourcesAsync(resources, downloadMissing: false, cancellationToken)
             .ConfigureAwait(false);
         var references = await ResolveProjectReferencesAsync(resources, cancellationToken).ConfigureAwait(false);
         return CombineMetadata(categories, icons, references);
@@ -67,7 +70,7 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
         CancellationToken cancellationToken = default)
     {
         var categories = await ResolveCategoriesAsync(resources, cancellationToken).ConfigureAwait(false);
-        var icons = await ResolveShaderPackIconSourcesAsync(resources, downloadMissing: true, cancellationToken)
+        var icons = await ResolveProjectIconSourcesAsync(resources, downloadMissing: true, cancellationToken)
             .ConfigureAwait(false);
         var references = await ResolveProjectReferencesAsync(resources, cancellationToken).ConfigureAwait(false);
         return CombineMetadata(categories, icons, references);
@@ -144,10 +147,10 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
                 if (entry.Categories.Count > 0)
                     result[identity.Resource.FullPath] = entry.Categories;
 
-                var needsShaderMetadataUpgrade = identity.Resource.Kind == ResourceProjectKind.ShaderPack
+                var needsIconMetadataUpgrade = SupportsRemoteProjectIcon(identity.Resource.Kind)
                     && thumbnailService is not null
                     && !entry.HasRemoteMetadata;
-                if (!needsShaderMetadataUpgrade
+                if (!needsIconMetadataUpgrade
                     && entry.CheckedAt != default
                     && now - entry.CheckedAt < RefreshAfter)
                     continue;
@@ -342,7 +345,7 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
         return cacheIndex;
     }
 
-    private async Task<IReadOnlyDictionary<string, string>> ResolveShaderPackIconSourcesAsync(
+    private async Task<IReadOnlyDictionary<string, string>> ResolveProjectIconSourcesAsync(
         IReadOnlyList<LocalResourceCategoryCandidate> resources,
         bool downloadMissing,
         CancellationToken cancellationToken)
@@ -351,7 +354,7 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var identities = CreateFileIdentities(resources)
-            .Where(identity => identity.Resource.Kind == ResourceProjectKind.ShaderPack)
+            .Where(identity => SupportsRemoteProjectIcon(identity.Resource.Kind))
             .ToArray();
         if (identities.Length == 0)
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -373,7 +376,7 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
 
                 projects.Add((identity.Resource.FullPath, new ResourceProject
                 {
-                    Kind = ResourceProjectKind.ShaderPack,
+                    Kind = identity.Resource.Kind,
                     Source = entry.Source.Value,
                     ProjectId = entry.ProjectId,
                     IconUrl = entry.IconUrl
@@ -458,6 +461,9 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
         return result;
     }
 
+    private static bool SupportsRemoteProjectIcon(ResourceProjectKind kind) =>
+        kind is ResourceProjectKind.ResourcePack or ResourceProjectKind.ShaderPack;
+
     private static ResourceProjectSource? ParseSource(string source) => source.ToLowerInvariant() switch
     {
         "modrinth" => ResourceProjectSource.Modrinth,
@@ -489,37 +495,14 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
     {
         try
         {
-            using var sha1 = SHA1.Create();
-            long fingerprintLength = 0;
-            await using (var stream = OpenResource(identity.Resource.FullPath))
-            {
-                var buffer = new byte[81920];
-                while (true)
-                {
-                    var read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-                    if (read == 0)
-                        break;
-
-                    sha1.TransformBlock(buffer, 0, read, null, 0);
-                    for (var index = 0; index < read; index++)
-                    {
-                        if (!IsCurseForgeWhitespace(buffer[index]))
-                            fingerprintLength++;
-                    }
-                }
-            }
-
-            sha1.TransformFinalBlock([], 0, 0);
-            var curseForgeFingerprint = await ComputeCurseForgeMurmurHash2Async(
-                    identity.Resource.FullPath,
-                    fingerprintLength,
-                    cancellationToken)
+            var fingerprint = await fingerprintService
+                .GetFingerprintAsync(identity.Resource.FullPath, cancellationToken)
                 .ConfigureAwait(false);
             return new ModIconLookupCandidate(
                 identity.Resource.FullPath,
-                Convert.ToHexString(sha1.Hash!).ToLowerInvariant(),
+                fingerprint.Sha1,
                 identity.FileAlias,
-                curseForgeFingerprint,
+                fingerprint.CurseForgeFingerprint,
                 identity.Resource.Kind);
         }
         catch (OperationCanceledException)
@@ -623,69 +606,6 @@ public sealed class LocalResourceCategoryEnrichmentService : ILocalResourceCateg
             index.Entries.Remove(key);
         }
     }
-
-    private static FileStream OpenResource(string path) => new(
-        path,
-        FileMode.Open,
-        FileAccess.Read,
-        FileShare.ReadWrite | FileShare.Delete,
-        bufferSize: 81920,
-        useAsync: true);
-
-    private static async Task<long> ComputeCurseForgeMurmurHash2Async(
-        string path,
-        long fingerprintLength,
-        CancellationToken cancellationToken)
-    {
-        const uint seed = 1;
-        const uint m = 0x5bd1e995;
-        const int r = 24;
-
-        var hash = seed ^ unchecked((uint)fingerprintLength);
-        var pending = 0u;
-        var pendingCount = 0;
-        var buffer = new byte[81920];
-        await using var stream = OpenResource(path);
-        while (true)
-        {
-            var read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-            if (read == 0)
-                break;
-
-            for (var index = 0; index < read; index++)
-            {
-                var value = buffer[index];
-                if (IsCurseForgeWhitespace(value))
-                    continue;
-
-                pending |= (uint)value << (pendingCount * 8);
-                pendingCount++;
-                if (pendingCount != 4)
-                    continue;
-
-                var block = pending * m;
-                block ^= block >> r;
-                block *= m;
-                hash *= m;
-                hash ^= block;
-                pending = 0;
-                pendingCount = 0;
-            }
-        }
-
-        if (pendingCount > 0)
-        {
-            hash ^= pending;
-            hash *= m;
-        }
-
-        hash ^= hash >> 13;
-        hash *= m;
-        hash ^= hash >> 15;
-        return hash;
-    }
-
-    private static bool IsCurseForgeWhitespace(byte value) => value is 0x09 or 0x0a or 0x0d or 0x20;
 
     private sealed record LocalResourceFileIdentity(
         LocalResourceCategoryCandidate Resource,

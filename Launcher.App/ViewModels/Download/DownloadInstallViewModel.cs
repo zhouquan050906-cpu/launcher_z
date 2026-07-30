@@ -116,6 +116,10 @@ public sealed partial class DownloadInstallViewModel : ObservableObject
                 fabricApiVersionId: request.FabricApiVersionId,
                 quiltStandardLibraryVersionId: request.QuiltStandardLibraryVersionId);
 
+            // The install service only receives the version id and therefore cannot retain the
+            // catalog type. Publish the type already known by the download page so category
+            // projections can include the new instance without rescanning the versions directory.
+            instance.VersionType = request.MinecraftVersionType;
             instanceNameTracker.RemovePending(request.InstanceName);
             instanceNameTracker.AddExisting(instance.Name);
             instanceNameTracker.AddExisting(instance.VersionName);

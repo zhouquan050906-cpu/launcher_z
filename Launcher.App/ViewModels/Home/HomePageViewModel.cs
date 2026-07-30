@@ -205,6 +205,11 @@ public sealed partial class HomePageViewModel : ObservableObject
         LaunchGames.SetLaunchInstances(instances);
     }
 
+    public bool ApplyInstanceCatalog(IEnumerable<GameInstance> instances, long catalogRevision)
+    {
+        return LaunchGames.ApplyInstanceCatalog(instances, catalogRevision);
+    }
+
     public Task EnsureVersionTypesLoadedAsync(CancellationToken cancellationToken = default)
     {
         return LaunchGames.EnsureVersionTypesLoadedAsync(cancellationToken);

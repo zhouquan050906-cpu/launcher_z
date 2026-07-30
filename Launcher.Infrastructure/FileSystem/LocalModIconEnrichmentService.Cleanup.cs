@@ -17,7 +17,6 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-using System.Buffers.Binary;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
@@ -121,42 +120,18 @@ public sealed partial class LocalModIconEnrichmentService
     {
         try
         {
-            await using var stream = new FileStream(
-                mod.FullPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete,
-                bufferSize: 81920,
-                useAsync: true);
-            using var sha1 = SHA1.Create();
-            using var fingerprintBytes = new MemoryStream();
-            var buffer = new byte[81920];
-            while (true)
-            {
-                var read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-                if (read == 0)
-                    break;
-
-                sha1.TransformBlock(buffer, 0, read, null, 0);
-                for (var i = 0; i < read; i++)
-                {
-                    var value = buffer[i];
-                    if (value is not (0x09 or 0x0a or 0x0d or 0x20))
-                        fingerprintBytes.WriteByte(value);
-                }
-            }
-
-            sha1.TransformFinalBlock([], 0, 0);
-            var sha1Text = Convert.ToHexString(sha1.Hash!).ToLowerInvariant();
+            var fingerprint = await fingerprintService
+                .GetFingerprintAsync(mod.FullPath, cancellationToken)
+                .ConfigureAwait(false);
             var fileAlias = TryCreateFileAlias(mod.FullPath);
             if (fileAlias is null)
                 return null;
 
             return new ModIconLookupCandidate(
                 mod.FullPath,
-                sha1Text,
+                fingerprint.Sha1,
                 fileAlias,
-                ComputeCurseForgeMurmurHash2(fingerprintBytes.GetBuffer().AsSpan(0, (int)fingerprintBytes.Length)),
+                fingerprint.CurseForgeFingerprint,
                 ResourceProjectKind.Mod);
         }
         catch (OperationCanceledException)

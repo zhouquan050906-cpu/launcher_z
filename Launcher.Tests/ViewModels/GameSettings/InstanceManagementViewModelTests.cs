@@ -66,6 +66,210 @@ public sealed class InstanceManagementViewModelTests : TestTempDirectory
         Assert.Equal("root-b", Assert.Single(viewModel.Instances).Id);
     }
 
+    [Fact]
+    public async Task UnchangedCatalogPreservesInstanceReferenceCollectionAndRevision()
+    {
+        var settings = new LauncherSettings
+        {
+            MinecraftDirectory = Path.Combine(TempRoot, "root")
+        };
+        var first = CreateInstance("instance-a", "Instance A");
+        var service = new SequenceInstanceService(
+            [first],
+            [CreateInstance("instance-a", "Instance A")]);
+        var viewModel = new InstanceManagementViewModel(
+            new TestSettingsService(settings),
+            service,
+            new NullStatusService());
+
+        await viewModel.InitializeAsync(settings);
+        var original = Assert.Single(viewModel.Instances);
+        var revision = viewModel.CatalogRevision;
+        var collectionChanges = 0;
+        viewModel.Instances.CollectionChanged += (_, _) => collectionChanges++;
+
+        await viewModel.RefreshInstancesAsync();
+
+        Assert.Same(original, Assert.Single(viewModel.Instances));
+        Assert.Equal(revision, viewModel.CatalogRevision);
+        Assert.Equal(0, collectionChanges);
+    }
+
+    [Fact]
+    public async Task CatalogFieldChangeUpdatesStableInstanceAndAdvancesRevision()
+    {
+        var settings = new LauncherSettings
+        {
+            MinecraftDirectory = Path.Combine(TempRoot, "root")
+        };
+        var service = new SequenceInstanceService(
+            [CreateInstance("instance-a", "Before")],
+            [CreateInstance("instance-a", "After")]);
+        var viewModel = new InstanceManagementViewModel(
+            new TestSettingsService(settings),
+            service,
+            new NullStatusService());
+
+        await viewModel.InitializeAsync(settings);
+        var original = Assert.Single(viewModel.Instances);
+        var revision = viewModel.CatalogRevision;
+        var collectionChanges = 0;
+        viewModel.Instances.CollectionChanged += (_, _) => collectionChanges++;
+
+        await viewModel.RefreshInstancesAsync();
+
+        Assert.Same(original, Assert.Single(viewModel.Instances));
+        Assert.Equal("After", original.Name);
+        Assert.True(viewModel.CatalogRevision > revision);
+        Assert.Equal(0, collectionChanges);
+    }
+
+    [Fact]
+    public async Task NonCatalogSettingChangeUpdatesStableInstanceWithoutAdvancingRevision()
+    {
+        var settings = new LauncherSettings
+        {
+            MinecraftDirectory = Path.Combine(TempRoot, "root")
+        };
+        var first = CreateInstance("instance-a", "Instance A");
+        first.MemoryMb = 4096;
+        var second = CreateInstance("instance-a", "Instance A");
+        second.MemoryMb = 8192;
+        var service = new SequenceInstanceService([first], [second]);
+        var viewModel = new InstanceManagementViewModel(
+            new TestSettingsService(settings),
+            service,
+            new NullStatusService());
+
+        await viewModel.InitializeAsync(settings);
+        var original = Assert.Single(viewModel.Instances);
+        var revision = viewModel.CatalogRevision;
+
+        await viewModel.RefreshInstancesAsync();
+
+        Assert.Same(original, Assert.Single(viewModel.Instances));
+        Assert.Equal(8192, original.MemoryMb);
+        Assert.Equal(revision, viewModel.CatalogRevision);
+    }
+
+    [Fact]
+    public async Task CreatedInstanceRetainsSelectedMinecraftVersionType()
+    {
+        var service = new FakeGameInstanceService();
+        var viewModel = new InstanceManagementViewModel(
+            new TestSettingsService(new LauncherSettings()),
+            service,
+            new NullStatusService());
+
+        var instance = await viewModel.CreateInstanceAsync(
+            new MinecraftVersionInfo("25w01a", "snapshot", false),
+            LoaderKind.Vanilla,
+            loaderVersion: null,
+            progress: null);
+
+        Assert.NotNull(instance);
+        Assert.Equal("snapshot", instance.VersionType);
+    }
+
+    [Fact]
+    public async Task LocalInstallAppliedAfterRunningStaleRefreshCannotBeRemovedByIt()
+    {
+        var settings = new LauncherSettings
+        {
+            MinecraftDirectory = Path.Combine(TempRoot, "root")
+        };
+        var existing = CreateInstance("instance-a", "Instance A");
+        var installed = CreateInstance("instance-b", "Instance B");
+        var releaseStaleRefresh = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new FakeGameInstanceService();
+        service.CreatedInstances.Add(existing);
+        service.GetInstancesHandler = async (_, cancellationToken) =>
+        {
+            await releaseStaleRefresh.Task.WaitAsync(cancellationToken);
+            return [existing];
+        };
+        var viewModel = new InstanceManagementViewModel(
+            new TestSettingsService(settings),
+            service,
+            new NullStatusService());
+        await viewModel.PrimeInstancesAsync(settings);
+
+        var staleRefresh = viewModel.RefreshInstancesAsync();
+        await service.GetInstancesStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var applyInstalled = viewModel.ApplyUpdatedInstanceAsync(installed);
+
+        Assert.False(applyInstalled.IsCompleted);
+        releaseStaleRefresh.TrySetResult();
+        await Task.WhenAll(staleRefresh, applyInstalled);
+
+        Assert.Equal(["instance-a", "instance-b"], viewModel.Instances.Select(instance => instance.Id));
+    }
+
+    private static GameInstance CreateInstance(string id, string name)
+    {
+        return new GameInstance
+        {
+            Id = id,
+            Name = name,
+            MinecraftVersion = "1.21.4",
+            VersionName = "1.21.4",
+            VersionType = "release",
+            InstanceDirectory = Path.Combine("versions", id),
+            CreatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            UpdatedAt = new DateTimeOffset(2026, 1, 2, 0, 0, 0, TimeSpan.Zero)
+        };
+    }
+
+    private sealed class SequenceInstanceService(
+        IReadOnlyList<GameInstance> first,
+        IReadOnlyList<GameInstance> second) : IGameInstanceService
+    {
+        private int callCount;
+
+        public Task<IReadOnlyList<GameInstance>> GetStoredInstancesAsync(
+            LauncherSettings settings,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<GameInstance>>([]);
+
+        public Task<IReadOnlyList<GameInstance>> GetInstancesAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Interlocked.Increment(ref callCount) == 1 ? first : second);
+        }
+
+        public Task<GameInstance?> GetDefaultInstanceAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<GameInstance> CreateInstanceAsync(
+            string minecraftVersion,
+            LoaderKind loader,
+            string? loaderVersion,
+            string? name,
+            IProgress<LauncherProgress>? progress,
+            CancellationToken cancellationToken = default,
+            DownloadSourcePreference downloadSourcePreference = LauncherDefaults.DefaultDownloadSourcePreference,
+            int downloadSpeedLimitMbPerSecond = 0,
+            bool installFabricApi = true,
+            string? fabricApiVersionId = null,
+            string? quiltStandardLibraryVersionId = null) => throw new NotSupportedException();
+
+        public Task SaveInstanceAsync(GameInstance instance, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<GameInstance> RenameInstanceAsync(
+            string instanceId,
+            string? newName,
+            string? newIconSource,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<bool> SetDefaultInstanceAsync(
+            string instanceId,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<bool> DeleteInstanceAsync(
+            string instanceId,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
     private sealed class RootSwitchingInstanceService : IGameInstanceService
     {
         private readonly RecordingBackupService? backupService;

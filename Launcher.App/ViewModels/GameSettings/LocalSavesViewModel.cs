@@ -61,13 +61,21 @@ public sealed class LocalSavesViewModel : IDisposable
 
     public IReadOnlyList<LocalSave> CurrentSaves => refreshCoordinator.CurrentItems;
 
+    public long Revision => refreshCoordinator.Revision;
+
     public void SetSelectedInstance(GameInstance? instance)
     {
         refreshCoordinator.SetInstance(instance);
         logger.LogInformation("Selected instance changed for local saves view. InstanceId={InstanceId}", instance?.Id ?? "<none>");
     }
 
-    public void SetWatcherEnabled(bool enabled) => refreshCoordinator.SetWatcherEnabled(enabled);
+    public void SetSectionActive(bool active) => refreshCoordinator.SetSectionActive(active);
+
+    public Task<bool> RefreshIfInvalidatedAsync() => refreshCoordinator.RefreshIfInvalidatedAsync();
+
+    public void InvalidateSnapshot() => refreshCoordinator.InvalidateSnapshot();
+
+    public void ReleaseObservation() => refreshCoordinator.ReleaseObservation();
 
     public void SuspendWatcherForInstanceRename() => refreshCoordinator.SuspendForRename();
 
@@ -77,19 +85,18 @@ public sealed class LocalSavesViewModel : IDisposable
 
     public async Task DeleteSaveAsync(LocalSave save)
     {
-        await localSaveService.DeleteAsync(save);
-        await RefreshSavesAsync();
+        await refreshCoordinator.ExecuteInternalOperationAsync(
+            () => localSaveService.DeleteAsync(save));
     }
 
     public async Task<int> DeleteSavesAsync(IEnumerable<LocalSave> saves)
     {
-        var failed = await LocalContentBatchExecutor.ExecuteAsync(
-            saves,
-            save => save.FullPath,
-            save => localSaveService.DeleteAsync(save),
-            (save, exception) => logger.LogWarning(exception, "Failed to delete local save. Path={Path}", save.FullPath));
-        await RefreshSavesAsync();
-        return failed;
+        return await refreshCoordinator.ExecuteInternalOperationAsync(
+            () => LocalContentBatchExecutor.ExecuteAsync(
+                saves,
+                save => save.FullPath,
+                save => localSaveService.DeleteAsync(save),
+                (save, exception) => logger.LogWarning(exception, "Failed to delete local save. Path={Path}", save.FullPath)));
     }
 
     public async Task<LocalSaveImportResult> ImportSaveFromArchiveAsync(string archivePath, bool reportStatus = true)
@@ -97,7 +104,9 @@ public sealed class LocalSavesViewModel : IDisposable
         var instance = refreshCoordinator.SelectedInstance;
         if (instance is null || string.IsNullOrWhiteSpace(archivePath))
             return LocalSaveImportResult.Failure(LocalSaveImportFailureReason.UnexpectedError);
-        var result = await localSaveService.ImportFromArchiveAsync(instance, archivePath);
+        var result = await refreshCoordinator.ExecuteInternalOperationAsync(
+            () => localSaveService.ImportFromArchiveAsync(instance, archivePath),
+            static value => value.IsSuccess);
         if (!result.IsSuccess)
         {
             if (reportStatus)
@@ -108,7 +117,6 @@ public sealed class LocalSavesViewModel : IDisposable
             }
             return result;
         }
-        await RefreshSavesAsync();
         if (reportStatus)
             ReportStatus(Strings.Status_LocalSaveImported);
         return result;
@@ -118,12 +126,19 @@ public sealed class LocalSavesViewModel : IDisposable
 
     private void ApplySaves(IReadOnlyList<LocalSave> saves)
     {
-        Saves.ReplaceWith(saves);
-        SavesChanged?.Invoke(this, EventArgs.Empty);
+        if (Saves.SynchronizeByKey(
+                saves,
+                static save => save.FullPath,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            SavesChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void ClearSaves()
     {
+        if (Saves.Count == 0)
+            return;
         Saves.Clear();
         SavesChanged?.Invoke(this, EventArgs.Empty);
     }

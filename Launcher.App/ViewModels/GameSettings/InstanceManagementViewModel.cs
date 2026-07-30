@@ -43,6 +43,8 @@ public sealed partial class InstanceManagementViewModel : ObservableObject
     private long appliedRefreshGeneration;
     private string? lastRefreshedMinecraftDirectory;
     private bool hasLoadedInstances;
+    private IReadOnlyList<InstanceCatalogEntrySnapshot> catalogSnapshot = [];
+    private long catalogRevision;
 
     [ObservableProperty]
     private GameInstance? selectedInstance;
@@ -68,19 +70,21 @@ public sealed partial class InstanceManagementViewModel : ObservableObject
 
     public bool HasLoadedInstances => hasLoadedInstances;
 
+    public long CatalogRevision => Interlocked.Read(ref catalogRevision);
+
     public async Task PrimeInstancesAsync(LauncherSettings launcherSettings)
     {
         settings = launcherSettings;
         var loadedInstances = await instanceService.GetStoredInstancesAsync(launcherSettings);
-        var previousSelectedId = SelectedInstance?.Id;
-
-        Instances.ReplaceWith(loadedInstances);
-        lastRefreshedMinecraftDirectory = launcherSettings.MinecraftDirectory;
-        SelectedInstance = ResolveSelectedInstance(launcherSettings.DefaultInstanceId, previousSelectedId);
+        ApplyInstanceSnapshot(
+            launcherSettings.MinecraftDirectory,
+            loadedInstances,
+            markAsFullyLoaded: false);
         logger.LogDebug(
-            "Game management instances primed. Count={InstanceCount} SelectedInstanceId={SelectedInstanceId}",
+            "Game management instances primed. Count={InstanceCount} SelectedInstanceId={SelectedInstanceId} CatalogRevision={CatalogRevision}",
             Instances.Count,
-            SelectedInstance?.Id);
+            SelectedInstance?.Id,
+            CatalogRevision);
     }
 
     public async Task InitializeAsync(LauncherSettings launcherSettings)
@@ -141,7 +145,10 @@ public sealed partial class InstanceManagementViewModel : ObservableObject
                         continue;
                     }
 
-                    ApplyInstanceSnapshot(requestedMinecraftDirectory, loadedInstances);
+                    ApplyInstanceSnapshot(
+                        requestedMinecraftDirectory,
+                        loadedInstances,
+                        markAsFullyLoaded: true);
                     appliedRefreshGeneration = generation;
                     return;
                 }
@@ -184,8 +191,20 @@ public sealed partial class InstanceManagementViewModel : ObservableObject
             return null;
         }
 
-        Instances.Add(instance);
-        SelectedInstance = instance;
+        await refreshInstancesGate.WaitAsync();
+        try
+        {
+            // The creation service receives only the version id. Retain the catalog type already
+            // selected by this ViewModel so filtered instance projections update without a disk scan.
+            instance.VersionType = minecraftVersion.Type;
+            Instances.Add(instance);
+            SelectedInstance = instance;
+            UpdateCatalogSnapshotAndRevision();
+        }
+        finally
+        {
+            refreshInstancesGate.Release();
+        }
         ReportStatus(string.Format(Strings.Status_InstanceCreatedFormat, instance.Name));
         return instance;
     }
@@ -267,13 +286,31 @@ public sealed partial class InstanceManagementViewModel : ObservableObject
         return true;
     }
 
-    public void ApplyUpdatedInstance(GameInstance instance)
+    public async Task ApplyUpdatedInstanceAsync(GameInstance instance)
+    {
+        await refreshInstancesGate.WaitAsync();
+        try
+        {
+            ApplyUpdatedInstanceCore(instance);
+        }
+        finally
+        {
+            refreshInstancesGate.Release();
+        }
+    }
+
+    private void ApplyUpdatedInstanceCore(GameInstance instance)
     {
         var index = FindInstanceIndex(instance.Id);
         var wasSelected = string.Equals(SelectedInstance?.Id, instance.Id, StringComparison.OrdinalIgnoreCase);
 
         if (index >= 0)
-            Instances[index] = instance;
+        {
+            var existing = Instances[index];
+            if (!ReferenceEquals(existing, instance))
+                GameInstanceStateCopier.Copy(instance, existing);
+            instance = existing;
+        }
         else
             Instances.Add(instance);
 
@@ -281,11 +318,13 @@ public sealed partial class InstanceManagementViewModel : ObservableObject
             SelectedInstance = instance;
 
         hasLoadedInstances = true;
+        UpdateCatalogSnapshotAndRevision();
         logger.LogDebug(
-            "Game management instance updated locally. InstanceId={InstanceId} Count={InstanceCount} SelectedInstanceId={SelectedInstanceId}",
+            "Game management instance updated locally. InstanceId={InstanceId} Count={InstanceCount} SelectedInstanceId={SelectedInstanceId} CatalogRevision={CatalogRevision}",
             instance.Id,
             Instances.Count,
-            SelectedInstance?.Id);
+            SelectedInstance?.Id,
+            CatalogRevision);
     }
 
     private async Task<IReadOnlyList<GameInstance>> LoadInstanceSnapshotAsync(string requestedMinecraftDirectory)
@@ -300,19 +339,137 @@ public sealed partial class InstanceManagementViewModel : ObservableObject
 
     private void ApplyInstanceSnapshot(
         string requestedMinecraftDirectory,
-        IReadOnlyList<GameInstance> loadedInstances)
+        IReadOnlyList<GameInstance> loadedInstances,
+        bool markAsFullyLoaded)
     {
         var previousSelectedId = SelectedInstance?.Id;
-
-        Instances.ReplaceWith(loadedInstances);
+        var rootChanged = lastRefreshedMinecraftDirectory is null
+            || !PathsEqual(lastRefreshedMinecraftDirectory, requestedMinecraftDirectory);
+        ReconcileInstances(loadedInstances);
         lastRefreshedMinecraftDirectory = requestedMinecraftDirectory;
-
         SelectedInstance = ResolveSelectedInstance(settings.DefaultInstanceId, previousSelectedId);
-        hasLoadedInstances = true;
+        if (!string.IsNullOrWhiteSpace(settings.DefaultInstanceId)
+            && Instances.All(instance => !string.Equals(
+                instance.Id,
+                settings.DefaultInstanceId,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            settings.DefaultInstanceId = SelectedInstance?.Id ?? string.Empty;
+        }
+        hasLoadedInstances = markAsFullyLoaded;
+        UpdateCatalogSnapshotAndRevision(rootChanged);
         logger.LogDebug(
-            "Game management instances refreshed. Count={InstanceCount} SelectedInstanceId={SelectedInstanceId}",
+            "Game management instances refreshed. Count={InstanceCount} SelectedInstanceId={SelectedInstanceId} CatalogRevision={CatalogRevision}",
             Instances.Count,
-            SelectedInstance?.Id);
+            SelectedInstance?.Id,
+            CatalogRevision);
+    }
+
+    public async Task<bool> RemoveInstanceAsync(string instanceId)
+    {
+        await refreshInstancesGate.WaitAsync();
+        try
+        {
+            return RemoveInstanceCore(instanceId);
+        }
+        finally
+        {
+            refreshInstancesGate.Release();
+        }
+    }
+
+    private bool RemoveInstanceCore(string instanceId)
+    {
+        var index = FindInstanceIndex(instanceId);
+        if (index < 0)
+            return false;
+
+        var wasSelected = string.Equals(
+            SelectedInstance?.Id,
+            instanceId,
+            StringComparison.OrdinalIgnoreCase);
+        Instances.RemoveAt(index);
+        if (wasSelected)
+        {
+            SelectedInstance = ResolveSelectedInstance(settings.DefaultInstanceId, previousSelectedId: null);
+            settings.DefaultInstanceId = SelectedInstance?.Id ?? string.Empty;
+        }
+        UpdateCatalogSnapshotAndRevision();
+        logger.LogDebug(
+            "Game management instance removed locally. InstanceId={InstanceId} Count={InstanceCount} SelectedInstanceId={SelectedInstanceId} CatalogRevision={CatalogRevision}",
+            instanceId,
+            Instances.Count,
+            SelectedInstance?.Id,
+            CatalogRevision);
+        return true;
+    }
+
+    private void ReconcileInstances(IReadOnlyList<GameInstance> loadedInstances)
+    {
+        var existingById = Instances
+            .Where(instance => !string.IsNullOrWhiteSpace(instance.Id))
+            .GroupBy(instance => instance.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var next = new List<GameInstance>(loadedInstances.Count);
+
+        foreach (var loadedInstance in loadedInstances)
+        {
+            if (!string.IsNullOrWhiteSpace(loadedInstance.Id)
+                && existingById.TryGetValue(loadedInstance.Id, out var existing))
+            {
+                if (!ReferenceEquals(existing, loadedInstance))
+                    GameInstanceStateCopier.Copy(loadedInstance, existing);
+                next.Add(existing);
+            }
+            else
+            {
+                next.Add(loadedInstance);
+            }
+        }
+
+        for (var index = 0; index < next.Count; index++)
+        {
+            var instance = next[index];
+            if (index < Instances.Count && ReferenceEquals(Instances[index], instance))
+                continue;
+
+            var existingIndex = -1;
+            for (var candidate = index + 1; candidate < Instances.Count; candidate++)
+            {
+                if (!ReferenceEquals(Instances[candidate], instance))
+                    continue;
+                existingIndex = candidate;
+                break;
+            }
+
+            if (existingIndex >= 0)
+                Instances.Move(existingIndex, index);
+            else
+                Instances.Insert(index, instance);
+        }
+
+        while (Instances.Count > next.Count)
+            Instances.RemoveAt(Instances.Count - 1);
+    }
+
+    private void UpdateCatalogSnapshotAndRevision(bool forceChanged = false)
+    {
+        var nextSnapshot = Instances
+            .Select(InstanceCatalogEntrySnapshot.Create)
+            .ToArray();
+        if (!forceChanged && catalogSnapshot.SequenceEqual(nextSnapshot))
+            return;
+
+        catalogSnapshot = nextSnapshot;
+        Interlocked.Increment(ref catalogRevision);
+    }
+
+    partial void OnSelectedInstanceChanged(GameInstance? oldValue, GameInstance? newValue)
+    {
+        if (string.Equals(oldValue?.Id, newValue?.Id, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Interlocked.Increment(ref catalogRevision);
     }
 
     private static bool PathsEqual(string first, string second) =>

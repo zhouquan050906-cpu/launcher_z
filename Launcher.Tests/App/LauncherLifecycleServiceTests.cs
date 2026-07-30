@@ -107,6 +107,39 @@ public sealed class LauncherLifecycleServiceTests
     }
 
     [Fact]
+    public async Task ChangesDuringSynchronizationProduceOneTrailingSynchronization()
+    {
+        var monitor = new TestLauncherStateMonitor();
+        using var service = new LauncherStateSyncService(
+            monitor,
+            ImmediateUiDispatcher.Instance,
+            debounceDelay: TimeSpan.FromMilliseconds(10));
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var synchronizationCount = 0;
+        service.Start(() => new LauncherSettings(), async () =>
+        {
+            var call = Interlocked.Increment(ref synchronizationCount);
+            if (call != 1)
+                return;
+
+            firstStarted.TrySetResult();
+            await releaseFirst.Task;
+        });
+
+        monitor.RaiseStateChanged();
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        monitor.RaiseStateChanged();
+        monitor.RaiseStateChanged();
+        monitor.RaiseStateChanged();
+        releaseFirst.TrySetResult();
+        await service.WaitForPendingSyncAsync();
+
+        Assert.Equal(2, synchronizationCount);
+        Assert.Equal(3, monitor.WatchCount);
+    }
+
+    [Fact]
     public async Task ShutdownIsIdempotentAndBoundedWhenBackgroundTaskDoesNotFinish()
     {
         var downloadTasks = new DownloadTasksPageViewModel(TimeSpan.FromMinutes(1));

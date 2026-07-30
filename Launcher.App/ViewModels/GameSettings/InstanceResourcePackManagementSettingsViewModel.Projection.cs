@@ -93,14 +93,18 @@ public sealed partial class InstanceResourcePackManagementSettingsViewModel
         if (selectedInstance is null)
             return;
         var expectedInstance = selectedInstance;
+        var previousRevision = localResourcePacksViewModel.Revision;
 
         try
         {
-            if (!await localResourcePacksViewModel.RefreshResourcePacksAsync()
+            if (!await localResourcePacksViewModel.RefreshIfInvalidatedAsync()
                 || !IsCurrentLifecycle(generation, expectedInstance))
             {
                 return;
             }
+
+            if (localResourcePacksViewModel.Revision == previousRevision)
+                return;
 
             hasPendingVisualRefresh = false;
             RefreshFromLocalResourcePacks();

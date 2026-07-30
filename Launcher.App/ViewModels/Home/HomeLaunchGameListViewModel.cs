@@ -35,6 +35,7 @@ public sealed partial class HomeLaunchGameListViewModel : ObservableObject
     private readonly Func<bool, Task<bool>> setLaunchMenuPinned;
     private IReadOnlyDictionary<string, string> versionTypesByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     private bool hasLoadedVersionTypes;
+    private long appliedCatalogRevision = -1;
 
     [ObservableProperty]
     private GameInstance? selectedInstance;
@@ -80,13 +81,48 @@ public sealed partial class HomeLaunchGameListViewModel : ObservableObject
 
     public void SetLaunchInstances(IEnumerable<GameInstance> instances)
     {
+        ReconcileLaunchInstances(instances);
+    }
+
+    public bool ApplyInstanceCatalog(IEnumerable<GameInstance> instances, long catalogRevision)
+    {
+        if (appliedCatalogRevision == catalogRevision)
+            return false;
+
+        var changed = ReconcileLaunchInstances(instances);
+        appliedCatalogRevision = catalogRevision;
+        return changed;
+    }
+
+    private bool ReconcileLaunchInstances(IEnumerable<GameInstance> instances)
+    {
         var selectedInstanceId = SelectedInstance?.Id;
-        LaunchInstances.ReplaceWith(
-            instances
-                .OrderByDescending(instance => instance.CreatedAt)
-                .Select(CreateLaunchInstanceItem));
+        var existing = LaunchInstances
+            .Where(item => !string.IsNullOrWhiteSpace(item.Instance.Id))
+            .GroupBy(item => item.Instance.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var next = new List<HomeLaunchInstanceItem>();
+        var itemChanged = false;
+        foreach (var instance in instances.OrderByDescending(instance => instance.CreatedAt))
+        {
+            if (!string.IsNullOrWhiteSpace(instance.Id)
+                && existing.TryGetValue(instance.Id, out var item))
+            {
+                itemChanged |= item.Update(instance, ResolveVersionType(instance));
+                next.Add(item);
+            }
+            else
+            {
+                next.Add(CreateLaunchInstanceItem(instance));
+                itemChanged = true;
+            }
+        }
+
+        var collectionChanged = ApplyLaunchInstances(next);
         UpdateLaunchInstanceSelection(selectedInstanceId);
-        NotifyLaunchInstancesChanged();
+        if (itemChanged || collectionChanged)
+            NotifyLaunchInstancesChanged();
+        return itemChanged || collectionChanged;
     }
 
     public async Task EnsureVersionTypesLoadedAsync(CancellationToken cancellationToken = default)
@@ -112,7 +148,7 @@ public sealed partial class HomeLaunchGameListViewModel : ObservableObject
         hasLoadedVersionTypes = true;
 
         if (LaunchInstances.Count > 0)
-            SetLaunchInstances(LaunchInstances.Select(item => item.Instance).ToArray());
+            ReconcileLaunchInstances(LaunchInstances.Select(item => item.Instance).ToArray());
     }
 
     [RelayCommand]
@@ -198,6 +234,40 @@ public sealed partial class HomeLaunchGameListViewModel : ObservableObject
     private HomeLaunchInstanceItem CreateLaunchInstanceItem(GameInstance instance)
     {
         return new HomeLaunchInstanceItem(instance, ResolveVersionType(instance));
+    }
+
+    private bool ApplyLaunchInstances(IReadOnlyList<HomeLaunchInstanceItem> instances)
+    {
+        var changed = false;
+        for (var index = 0; index < instances.Count; index++)
+        {
+            var item = instances[index];
+            if (index < LaunchInstances.Count && ReferenceEquals(LaunchInstances[index], item))
+                continue;
+
+            var existingIndex = -1;
+            for (var candidate = index + 1; candidate < LaunchInstances.Count; candidate++)
+            {
+                if (!ReferenceEquals(LaunchInstances[candidate], item))
+                    continue;
+                existingIndex = candidate;
+                break;
+            }
+
+            if (existingIndex >= 0)
+                LaunchInstances.Move(existingIndex, index);
+            else
+                LaunchInstances.Insert(index, item);
+            changed = true;
+        }
+
+        while (LaunchInstances.Count > instances.Count)
+        {
+            LaunchInstances.RemoveAt(LaunchInstances.Count - 1);
+            changed = true;
+        }
+
+        return changed;
     }
 
     private string ResolveVersionType(GameInstance instance)

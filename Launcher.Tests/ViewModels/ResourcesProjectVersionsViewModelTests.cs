@@ -7,7 +7,6 @@
 using Launcher.App.Services;
 using Launcher.App.ViewModels.Resources;
 using Launcher.Domain.Models;
-using Launcher.Tests.Fakes;
 
 namespace Launcher.Tests.ViewModels;
 
@@ -22,16 +21,20 @@ public sealed class ResourcesProjectVersionsViewModelTests
         ResourceProjectKind kind,
         bool includesVanilla)
     {
-        var instances = new FakeGameInstanceService();
-        instances.CreatedInstances.AddRange(
+        IReadOnlyList<GameInstance> instances =
         [
             CreateInstance("vanilla", LoaderKind.Vanilla),
             CreateInstance("fabric", LoaderKind.Fabric)
-        ]);
+        ];
+        var snapshotReadCount = 0;
         using var viewModel = new ResourcesProjectVersionsViewModel(
             CreateOptions(kind),
             resourceCatalogService: null,
-            instances,
+            () =>
+            {
+                snapshotReadCount++;
+                return instances;
+            },
             ImmediateUiDispatcher.Instance,
             logger: null);
 
@@ -54,6 +57,7 @@ public sealed class ResourcesProjectVersionsViewModelTests
             : ["fabric"];
         Assert.Equal(expectedIds, targetIds);
         Assert.True(viewModel.InstallTargets[^1].IsLocalDownload);
+        Assert.Equal(1, snapshotReadCount);
     }
 
     private static GameInstance CreateInstance(string id, LoaderKind loader) => new()

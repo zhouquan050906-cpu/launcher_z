@@ -40,6 +40,9 @@ public sealed class LocalResourcePackService : ILocalResourcePackService
     private readonly ILogger<LocalResourcePackService> logger;
     private readonly IUserFileDeletionService userFileDeletionService;
     private readonly string iconCacheDirectory;
+    private readonly SemaphoreSlim snapshotLock = new(1, 1);
+    private readonly BoundedLocalContentSnapshotCache<LocalContentFileIdentity, LocalResourcePack> snapshots = new();
+    private readonly VersionedLocalContentCache<ResourcePackCacheValue> metadataCache;
 
     public LocalResourcePackService(
         LauncherPathProvider? pathProvider = null,
@@ -50,46 +53,68 @@ public sealed class LocalResourcePackService : ILocalResourcePackService
         this.logger = logger ?? NullLogger<LocalResourcePackService>.Instance;
         this.userFileDeletionService = userFileDeletionService ?? new UserFileDeletionService();
         iconCacheDirectory = Path.Combine(this.pathProvider.DefaultDataDirectory, "cache", "resourcepacks", "icons");
+        metadataCache = new VersionedLocalContentCache<ResourcePackCacheValue>(
+            Path.Combine(this.pathProvider.DefaultDataDirectory, "cache", "local-content", "resource-packs.json"),
+            this.logger);
     }
 
-    public Task<IReadOnlyList<LocalResourcePack>> GetResourcePacksAsync(
+    public async Task<IReadOnlyList<LocalResourcePack>> GetResourcePacksAsync(
         GameInstance instance,
         CancellationToken cancellationToken = default)
     {
         // 目录扫描在线程池执行，单个损坏包的图标读取失败不影响其余列表。
         ArgumentNullException.ThrowIfNull(instance);
 
-        return Task.Run<IReadOnlyList<LocalResourcePack>>(
-            () =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var resourcePacksDirectory = GetResourcePacksDirectory(instance);
-                if (!Directory.Exists(resourcePacksDirectory))
+        await snapshotLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var resourcePacksDirectory = GetResourcePacksDirectory(instance);
+            var result = await Task.Run<IReadOnlyList<LocalResourcePack>>(
+                () =>
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var inventory = Directory.Exists(resourcePacksDirectory)
+                        ? Directory.EnumerateFiles(
+                                resourcePacksDirectory,
+                                $"*{SupportedArchiveExtension}",
+                                SearchOption.TopDirectoryOnly)
+                            .Select(CreateIdentity)
+                            .OrderByDescending(item => item.CreationTimeUtcTicks)
+                            .ThenBy(item => Path.GetFileNameWithoutExtension(item.FullPath), StringComparer.OrdinalIgnoreCase)
+                            .ToArray()
+                        : [];
+                    var currentPaths = inventory
+                        .Select(item => item.FullPath)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    metadataCache.PruneDirectory(resourcePacksDirectory, currentPaths);
+                    if (inventory.Length == 0)
+                    {
+                        snapshots.Remove(resourcePacksDirectory);
+                        logger.LogDebug(
+                            "Local resource pack inventory checked. InstanceId={InstanceId} Count=0",
+                            instance.Id);
+                        return [];
+                    }
+
+                    var snapshot = snapshots.GetOrCreate(resourcePacksDirectory);
+                    var resourcePacks = snapshot.Reconcile(
+                        inventory,
+                        static item => item.FullPath,
+                        CreateResourcePack);
                     logger.LogDebug(
-                        "No local resource packs directory found. InstanceId={InstanceId} ResourcePacksDirectory={ResourcePacksDirectory}",
+                        "Local resource pack inventory checked. InstanceId={InstanceId} Count={ResourcePackCount}",
                         instance.Id,
-                        resourcePacksDirectory);
-                    return [];
-                }
-
-                var resourcePacks = Directory.EnumerateFiles(
-                        resourcePacksDirectory,
-                        $"*{SupportedArchiveExtension}",
-                        SearchOption.TopDirectoryOnly)
-                    .Select(ToLocalResourcePack)
-                    .OrderByDescending(resourcePack => resourcePack.CreatedAt)
-                    .ThenBy(resourcePack => resourcePack.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-
-                logger.LogDebug(
-                    "Local resource packs loaded. InstanceId={InstanceId} Count={ResourcePackCount}",
-                    instance.Id,
-                    resourcePacks.Length);
-                return resourcePacks;
-            },
-            cancellationToken);
+                        resourcePacks.Count);
+                    return resourcePacks;
+                },
+                cancellationToken).ConfigureAwait(false);
+            await metadataCache.SaveIfChangedAsync(cancellationToken).ConfigureAwait(false);
+            return result;
+        }
+        finally
+        {
+            snapshotLock.Release();
+        }
     }
 
     public Task<LocalResourcePackImportResult> ImportAsync(
@@ -185,7 +210,16 @@ public sealed class LocalResourcePackService : ILocalResourcePackService
             var targetPath = ResolveUniqueFilePath(resourcePacksDirectory, Path.GetFileName(normalizedArchivePath));
             File.Copy(normalizedArchivePath, targetPath, overwrite: false);
 
-            var importedResourcePack = ToLocalResourcePack(targetPath);
+            var importedIdentity = CreateIdentity(targetPath);
+            TryResolveCachedIconSource(new FileInfo(importedIdentity.FullPath), out var importedIconSource);
+            var importedResourcePack = new LocalResourcePack
+            {
+                Name = Path.GetFileNameWithoutExtension(importedIdentity.FullPath),
+                FileName = Path.GetFileName(importedIdentity.FullPath),
+                FullPath = importedIdentity.FullPath,
+                IconSource = importedIconSource,
+                CreatedAt = new DateTimeOffset(importedIdentity.CreationTimeUtcTicks, TimeSpan.Zero)
+            };
             logger.LogDebug(
                 "Local resource pack archive imported. InstanceId={InstanceId} ArchivePath={ArchivePath} ResourcePackPath={ResourcePackPath}",
                 instance.Id,
@@ -226,21 +260,53 @@ public sealed class LocalResourcePackService : ILocalResourcePackService
         }
     }
 
-    private LocalResourcePack ToLocalResourcePack(string path)
+    private static LocalContentFileIdentity CreateIdentity(string path)
     {
         var file = new FileInfo(path);
+        return new LocalContentFileIdentity(
+            file.FullName,
+            file.Length,
+            file.LastWriteTimeUtc.Ticks,
+            file.CreationTimeUtc.Ticks);
+    }
+
+    private LocalResourcePack CreateResourcePack(LocalContentFileIdentity identity)
+    {
+        if (!metadataCache.TryGet(identity, IsValidCacheValue, out var cacheValue))
+        {
+            var resolved = TryResolveCachedIconSource(new FileInfo(identity.FullPath), out var iconSource);
+            cacheValue = new ResourcePackCacheValue(iconSource is not null, iconSource);
+            if (resolved)
+                metadataCache.Set(identity, cacheValue);
+        }
+
         return new LocalResourcePack
         {
-            Name = Path.GetFileNameWithoutExtension(file.Name),
-            FileName = file.Name,
-            FullPath = file.FullName,
-            IconSource = TryGetCachedIconSource(file),
-            CreatedAt = new DateTimeOffset(file.CreationTimeUtc)
+            Name = Path.GetFileNameWithoutExtension(identity.FullPath),
+            FileName = Path.GetFileName(identity.FullPath),
+            FullPath = identity.FullPath,
+            IconSource = cacheValue.IconSource,
+            CreatedAt = new DateTimeOffset(identity.CreationTimeUtcTicks, TimeSpan.Zero)
         };
     }
 
-    private string? TryGetCachedIconSource(FileInfo archiveFile)
+    private static bool IsValidCacheValue(ResourcePackCacheValue value)
     {
+        if (!value.HasIcon)
+            return true;
+        if (string.IsNullOrWhiteSpace(value.IconSource)
+            || !Uri.TryCreate(value.IconSource, UriKind.Absolute, out var uri)
+            || !uri.IsFile)
+        {
+            return false;
+        }
+
+        return File.Exists(uri.LocalPath);
+    }
+
+    private bool TryResolveCachedIconSource(FileInfo archiveFile, out string? iconSource)
+    {
+        iconSource = null;
         // 缓存键包含归档修改信息和图标条目，包更新后自然生成新缓存而不会复用旧图。
         try
         {
@@ -248,12 +314,15 @@ public sealed class LocalResourcePackService : ILocalResourcePackService
             var iconEntry = archive.Entries.FirstOrDefault(entry =>
                 string.Equals(entry.FullName.Replace('\\', '/'), "pack.png", StringComparison.OrdinalIgnoreCase));
             if (iconEntry is null)
-                return null;
+                return true;
 
             Directory.CreateDirectory(iconCacheDirectory);
             var cachePath = GetCachePath(archiveFile, iconEntry.FullName);
             if (File.Exists(cachePath))
-                return new Uri(cachePath).AbsoluteUri;
+            {
+                iconSource = new Uri(cachePath).AbsoluteUri;
+                return true;
+            }
 
             using var iconStream = iconEntry.Open();
             var bitmap = LoadBitmap(iconStream);
@@ -265,7 +334,8 @@ public sealed class LocalResourcePackService : ILocalResourcePackService
             {
             }
 
-            return new Uri(cachePath).AbsoluteUri;
+            iconSource = new Uri(cachePath).AbsoluteUri;
+            return true;
         }
         catch (Exception exception) when (
             exception is InvalidDataException
@@ -277,7 +347,7 @@ public sealed class LocalResourcePackService : ILocalResourcePackService
                 exception,
                 "Failed to cache local resource pack icon. ResourcePackPath={ResourcePackPath}",
                 archiveFile.FullName);
-            return null;
+            return false;
         }
         catch (Exception exception)
         {
@@ -285,7 +355,7 @@ public sealed class LocalResourcePackService : ILocalResourcePackService
                 exception,
                 "Unexpected failure while caching local resource pack icon. ResourcePackPath={ResourcePackPath}",
                 archiveFile.FullName);
-            return null;
+            return false;
         }
     }
 
@@ -344,4 +414,6 @@ public sealed class LocalResourcePackService : ILocalResourcePackService
     {
         return Path.Combine(instance.InstanceDirectory, "resourcepacks");
     }
+
+    private sealed record ResourcePackCacheValue(bool HasIcon, string? IconSource);
 }

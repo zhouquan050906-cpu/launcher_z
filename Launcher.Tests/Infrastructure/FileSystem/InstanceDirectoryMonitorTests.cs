@@ -56,25 +56,33 @@ public sealed class InstanceDirectoryMonitorTests : TestTempDirectory
     }
 
     [Fact]
-    public async Task SavesWatchObservesRecursiveChanges()
+    public async Task SavesWatchIgnoresWorldDataAndObservesWorldIcon()
     {
         var instanceDirectory = Directory.CreateDirectory(Path.Combine(TempRoot, "instance")).FullName;
         var saveDirectory = Directory.CreateDirectory(Path.Combine(instanceDirectory, "saves", "world", "region")).FullName;
         var monitor = new InstanceDirectoryMonitor();
         using var watch = monitor.Watch(CreateInstance(instanceDirectory), InstanceDirectoryKind.Saves);
-        var expectedPath = Path.Combine(saveDirectory, "r.0.0.mca");
+        var regionPath = Path.Combine(saveDirectory, "r.0.0.mca");
+        var iconPath = Path.Combine(instanceDirectory, "saves", "world", "icon.png");
+        var changes = new ConcurrentQueue<InstanceDirectoryChangedEventArgs>();
         var changed = new TaskCompletionSource<InstanceDirectoryChangedEventArgs>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         watch.Changed += (_, args) =>
         {
-            if (string.Equals(args.FullPath, expectedPath, StringComparison.OrdinalIgnoreCase))
+            changes.Enqueue(args);
+            if (string.Equals(args.FullPath, iconPath, StringComparison.OrdinalIgnoreCase))
                 changed.TrySetResult(args);
         };
 
-        await File.WriteAllTextAsync(expectedPath, "region");
+        await File.WriteAllTextAsync(regionPath, "region");
+        await Task.Delay(300);
+        await File.WriteAllTextAsync(iconPath, "icon");
 
         var change = await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(expectedPath, change.FullPath, ignoreCase: true);
+        Assert.Equal(iconPath, change.FullPath, ignoreCase: true);
+        Assert.DoesNotContain(
+            changes,
+            item => string.Equals(item.FullPath, regionPath, StringComparison.OrdinalIgnoreCase));
     }
 
     private static GameInstance CreateInstance(string directory) => new()

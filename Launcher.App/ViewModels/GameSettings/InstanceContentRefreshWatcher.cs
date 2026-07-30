@@ -23,24 +23,28 @@ using Microsoft.Extensions.Logging;
 
 namespace Launcher.App.ViewModels.GameSettings;
 
-/// <summary>
-/// 管理单个实例内容目录的监听生命周期，并把短时间内连续到达的文件事件合并为一次刷新。
-/// </summary>
 internal sealed class InstanceContentRefreshWatcher : IDisposable
 {
     private static readonly TimeSpan RefreshDelay = TimeSpan.FromMilliseconds(200);
+    private readonly object gate = new();
     private readonly IInstanceDirectoryMonitor monitor;
     private readonly InstanceDirectoryKind directoryKind;
     private readonly Func<Task> refreshAsync;
     private readonly Action<Exception> reportFailure;
     private readonly Func<InstanceDirectoryChangedEventArgs, bool>? shouldRefresh;
+    private readonly Action<InstanceDirectoryChangedEventArgs>? invalidated;
+    private readonly Func<bool>? canRefresh;
     private readonly ILogger logger;
     private IInstanceDirectoryWatch? watch;
-    private CancellationTokenSource? pendingRefresh;
+    private CancellationTokenSource? pendingDelay;
     private GameInstance? instance;
+    private InstanceDirectoryChangedEventArgs? latestChange;
     private bool enabled;
-    private bool suspended;
-    private long watchGeneration;
+    private bool refreshRunning;
+    private bool trailingRefresh;
+    private bool rebuildAfterRefresh;
+    private int suspensionCount;
+    private long generation;
 
     public InstanceContentRefreshWatcher(
         IInstanceDirectoryMonitor monitor,
@@ -48,7 +52,9 @@ internal sealed class InstanceContentRefreshWatcher : IDisposable
         Func<Task> refreshAsync,
         Action<Exception> reportFailure,
         ILogger logger,
-        Func<InstanceDirectoryChangedEventArgs, bool>? shouldRefresh = null)
+        Func<InstanceDirectoryChangedEventArgs, bool>? shouldRefresh = null,
+        Action<InstanceDirectoryChangedEventArgs>? invalidated = null,
+        Func<bool>? canRefresh = null)
     {
         this.monitor = monitor;
         this.directoryKind = directoryKind;
@@ -56,65 +62,79 @@ internal sealed class InstanceContentRefreshWatcher : IDisposable
         this.reportFailure = reportFailure;
         this.logger = logger;
         this.shouldRefresh = shouldRefresh;
+        this.invalidated = invalidated;
+        this.canRefresh = canRefresh;
     }
 
     public void SetInstance(GameInstance? value)
     {
-        if (IsSameWatchTarget(instance, value))
+        lock (gate)
         {
-            instance = value;
-            return;
-        }
+            if (IsSameWatchTarget(instance, value))
+            {
+                instance = value;
+                return;
+            }
 
-        instance = value;
-        ResetWatch();
+            instance = value;
+            ResetWatchLocked();
+        }
     }
 
     public void SetEnabled(bool value)
     {
-        if (enabled == value)
-            return;
+        lock (gate)
+        {
+            if (enabled == value)
+                return;
 
-        enabled = value;
-        ResetWatch();
+            enabled = value;
+            ResetWatchLocked();
+        }
     }
 
     public void Suspend()
     {
-        if (suspended)
-            return;
-
-        suspended = true;
-        ResetWatch();
+        lock (gate)
+        {
+            suspensionCount++;
+            if (suspensionCount == 1)
+                ResetWatchLocked();
+        }
     }
 
     public void Resume(bool restart = true)
     {
-        if (!suspended)
-            return;
+        lock (gate)
+        {
+            if (suspensionCount == 0)
+                return;
 
-        suspended = false;
-        if (restart)
-            ResetWatch();
-        else
-            StopWatchAndInvalidate();
+            suspensionCount--;
+            if (suspensionCount != 0)
+                return;
+
+            if (restart)
+                ResetWatchLocked();
+            else
+                StopWatchAndInvalidateLocked();
+        }
     }
 
     public void Dispose()
     {
-        enabled = false;
-        suspended = true;
-        StopWatchAndInvalidate();
+        lock (gate)
+        {
+            enabled = false;
+            suspensionCount++;
+            StopWatchAndInvalidateLocked();
+        }
     }
 
-    /// <summary>
-    /// 根据当前实例、启用状态和挂起状态重新建立或关闭底层目录监听。
-    /// </summary>
-    private void ResetWatch()
+    private void ResetWatchLocked()
     {
-        // 实例、启用状态或挂起状态任一变化时都重新建立监听，避免旧目录继续向新页面发送事件。
-        StopWatchAndInvalidate();
-        if (!enabled || suspended || instance is null || string.IsNullOrWhiteSpace(instance.InstanceDirectory))
+        StopWatchAndInvalidateLocked();
+        if (!enabled || suspensionCount > 0 || instance is null || string.IsNullOrWhiteSpace(instance.InstanceDirectory))
             return;
 
         try
@@ -132,57 +152,95 @@ internal sealed class InstanceContentRefreshWatcher : IDisposable
         }
     }
 
-    private void StopWatch()
+    private void StopWatchAndInvalidateLocked()
     {
-        CancelPendingRefresh();
-        if (watch is not null)
-        {
-            watch.Changed -= Watch_Changed;
-            watch.Dispose();
-            watch = null;
-        }
+        generation++;
+        trailingRefresh = false;
+        rebuildAfterRefresh = false;
+        latestChange = null;
+        CancelPendingDelayLocked();
+        if (watch is null)
+            return;
+
+        watch.Changed -= Watch_Changed;
+        watch.Dispose();
+        watch = null;
     }
 
     private void Watch_Changed(object? sender, InstanceDirectoryChangedEventArgs e)
     {
-        if (!ReferenceEquals(sender, watch) || !enabled || suspended || instance is null)
-            return;
+        lock (gate)
+        {
+            var isError = e.ChangeType.Equals("Error", StringComparison.OrdinalIgnoreCase);
+            if (!ReferenceEquals(sender, watch)
+                || !IsActiveLocked()
+                || !isError && shouldRefresh?.Invoke(e) == false)
+            {
+                return;
+            }
 
-        if (shouldRefresh?.Invoke(e) == false)
-            return;
+            latestChange = e;
+            rebuildAfterRefresh |= isError;
+            invalidated?.Invoke(e);
+            if (canRefresh?.Invoke() == false)
+            {
+                if (rebuildAfterRefresh)
+                {
+                    rebuildAfterRefresh = false;
+                    ResetWatchLocked();
+                }
+                return;
+            }
 
-        // 解压、重命名等操作通常会连续触发多次事件；每个新事件都会重置延迟窗口。
-        CancelPendingRefresh();
-        var cancellation = new CancellationTokenSource();
-        pendingRefresh = cancellation;
-        _ = RefreshAfterDelayAsync(
-            e,
-            cancellation,
-            Volatile.Read(ref watchGeneration),
-            instance);
+            if (refreshRunning)
+            {
+                trailingRefresh = true;
+                return;
+            }
+
+            ScheduleRefreshLocked();
+        }
     }
 
-    /// <summary>
-    /// 等待防抖窗口结束后刷新页面；期间出现的新事件会取消本次等待。
-    /// </summary>
-    private async Task RefreshAfterDelayAsync(
-        InstanceDirectoryChangedEventArgs change,
+    private void ScheduleRefreshLocked()
+    {
+        CancelPendingDelayLocked();
+        var cancellation = new CancellationTokenSource();
+        pendingDelay = cancellation;
+        _ = RunAfterDelayAsync(cancellation, generation, instance!);
+    }
+
+    private async Task RunAfterDelayAsync(
         CancellationTokenSource cancellation,
-        long generation,
+        long expectedGeneration,
         GameInstance watchedInstance)
     {
         try
         {
             await Task.Delay(RefreshDelay, cancellation.Token).ConfigureAwait(false);
-            if (!IsCurrent(generation, watchedInstance))
-                return;
+
+            InstanceDirectoryChangedEventArgs? change;
+            lock (gate)
+            {
+                if (!IsCurrentLocked(expectedGeneration, watchedInstance)
+                    || !ReferenceEquals(pendingDelay, cancellation)
+                    || canRefresh?.Invoke() == false)
+                {
+                    return;
+                }
+
+                pendingDelay = null;
+                refreshRunning = true;
+                trailingRefresh = false;
+                change = latestChange;
+            }
 
             logger.LogDebug(
                 "Detected instance content change. InstanceId={InstanceId} DirectoryKind={DirectoryKind} ChangeType={ChangeType} Path={Path}",
                 watchedInstance.Id,
                 directoryKind,
-                change.ChangeType,
-                change.FullPath);
+                change?.ChangeType ?? "<unknown>",
+                change?.FullPath ?? "<unknown>");
             await refreshAsync().ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -190,8 +248,11 @@ internal sealed class InstanceContentRefreshWatcher : IDisposable
         }
         catch (Exception exception)
         {
-            if (!IsCurrent(generation, watchedInstance))
-                return;
+            lock (gate)
+            {
+                if (!IsCurrentLocked(expectedGeneration, watchedInstance))
+                    return;
+            }
 
             logger.LogError(
                 exception,
@@ -202,34 +263,56 @@ internal sealed class InstanceContentRefreshWatcher : IDisposable
         }
         finally
         {
-            // 只有仍被字段持有的任务可以释放 CTS，防止旧任务清理掉后续刷新使用的实例。
-            if (ReferenceEquals(Interlocked.CompareExchange(ref pendingRefresh, null, cancellation), cancellation))
+            lock (gate)
+            {
+                if (ReferenceEquals(pendingDelay, cancellation))
+                    pendingDelay = null;
                 cancellation.Dispose();
+
+                if (refreshRunning)
+                {
+                    refreshRunning = false;
+                    if (IsActiveLocked() && rebuildAfterRefresh)
+                    {
+                        var runTrailingCheck = trailingRefresh;
+                        rebuildAfterRefresh = false;
+                        ResetWatchLocked();
+                        if (runTrailingCheck && IsActiveLocked())
+                            ScheduleRefreshLocked();
+                    }
+                    else if (IsActiveLocked() && trailingRefresh)
+                    {
+                        trailingRefresh = false;
+                        ScheduleRefreshLocked();
+                    }
+
+                    if (!IsActiveLocked())
+                    {
+                        trailingRefresh = false;
+                        rebuildAfterRefresh = false;
+                    }
+                }
+            }
         }
     }
 
-    private void CancelPendingRefresh()
+    private void CancelPendingDelayLocked()
     {
-        var cancellation = Interlocked.Exchange(ref pendingRefresh, null);
+        var cancellation = pendingDelay;
+        pendingDelay = null;
         if (cancellation is null)
             return;
+
         cancellation.Cancel();
-        cancellation.Dispose();
     }
 
-    private void StopWatchAndInvalidate()
-    {
-        Interlocked.Increment(ref watchGeneration);
-        StopWatch();
-    }
+    private bool IsActiveLocked() =>
+        enabled && suspensionCount == 0 && instance is not null;
 
-    private bool IsCurrent(long generation, GameInstance watchedInstance)
-    {
-        return generation == Volatile.Read(ref watchGeneration)
-            && enabled
-            && !suspended
-            && IsSameWatchTarget(instance, watchedInstance);
-    }
+    private bool IsCurrentLocked(long expectedGeneration, GameInstance watchedInstance) =>
+        expectedGeneration == generation
+        && IsActiveLocked()
+        && IsSameWatchTarget(instance, watchedInstance);
 
     private static bool IsSameWatchTarget(GameInstance? left, GameInstance? right)
     {

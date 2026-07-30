@@ -90,7 +90,6 @@ public partial class MainWindow : Window
         LauncherWindowBackdrop.Attach(this, themeService);
         NativeCaptionButtons.Hide(this);
         Loaded += MainWindow_Loaded;
-        Activated += (_, _) => stateSyncService.RequestSync();
         Closing += Window_OnClosing;
         Closed += (_, _) => stateSyncService.Stop();
     }
@@ -193,7 +192,7 @@ public partial class MainWindow : Window
             await viewModel.InitializeCommand.ExecuteAsync(null);
             IsMenuExpanded = viewModel.IsMenuExpanded;
             navigationMenuService.SetExpanded(IsMenuExpanded);
-            stateSyncService.Start(() => viewModel.Settings, viewModel.SyncCurrentStateAsync);
+            stateSyncService.Start(() => viewModel.Settings, viewModel.SyncExternalInstanceCatalogAsync);
             _ = Dispatcher.BeginInvoke(PrewarmTransientUi, DispatcherPriority.ContextIdle);
         }
         catch (Exception exception)

@@ -53,6 +53,9 @@ public sealed class ModService : IModService
     private readonly ILogger<ModService> logger;
     private readonly IUserFileDeletionService userFileDeletionService;
     private readonly string legacyIconCacheDirectory;
+    private readonly SemaphoreSlim snapshotLock = new(1, 1);
+    private readonly BoundedLocalContentSnapshotCache<LocalContentFileIdentity, LocalMod> snapshots = new();
+    private readonly VersionedLocalContentCache<ModMetadataCacheValue> metadataCache;
     private int legacyIconCacheCleanupStarted;
 
     public ModService(
@@ -64,43 +67,65 @@ public sealed class ModService : IModService
         this.logger = logger ?? NullLogger<ModService>.Instance;
         this.userFileDeletionService = userFileDeletionService ?? new UserFileDeletionService();
         legacyIconCacheDirectory = Path.Combine(this.pathProvider.DefaultDataDirectory, "cache", "mods", "icons");
+        metadataCache = new VersionedLocalContentCache<ModMetadataCacheValue>(
+            Path.Combine(this.pathProvider.DefaultDataDirectory, "cache", "local-content", "mods.json"),
+            this.logger);
     }
 
-    public Task<IReadOnlyList<LocalMod>> GetModsAsync(GameInstance instance, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<LocalMod>> GetModsAsync(GameInstance instance, CancellationToken cancellationToken = default)
     {
         // 文件系统枚举在线程池执行，避免大型 mods 目录阻塞 UI；取消在逐文件边界检查。
-        return Task.Run<IReadOnlyList<LocalMod>>(
-            () =>
-            {
-                CleanupLegacyIconCacheDirectory();
-
-                var mods = new List<LocalMod>();
-                var modsDirectory = GetModsDirectory(instance);
-                Directory.CreateDirectory(modsDirectory);
-
-                foreach (var file in Directory.EnumerateFiles(modsDirectory, $"*{EnabledModExtension}"))
+        ArgumentNullException.ThrowIfNull(instance);
+        await snapshotLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var modsDirectory = GetModsDirectory(instance);
+            var result = await Task.Run<IReadOnlyList<LocalMod>>(
+                () =>
                 {
+                    CleanupLegacyIconCacheDirectory();
                     cancellationToken.ThrowIfCancellationRequested();
-                    mods.Add(ToLocalMod(file));
-                }
+                    var inventory = Directory.Exists(modsDirectory)
+                        ? Directory.EnumerateFiles(modsDirectory, "*", SearchOption.TopDirectoryOnly)
+                            .Where(IsSupportedModPath)
+                            .Select(CreateIdentity)
+                            .ToArray()
+                        : [];
+                    var currentPaths = inventory
+                        .Select(item => item.FullPath)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    metadataCache.PruneDirectory(modsDirectory, currentPaths);
+                    if (inventory.Length == 0)
+                    {
+                        snapshots.Remove(modsDirectory);
+                        logger.LogDebug(
+                            "Local mod inventory checked. InstanceId={InstanceId} Count=0",
+                            instance.Id);
+                        return [];
+                    }
 
-                foreach (var file in Directory.EnumerateFiles(modsDirectory, $"*{DisabledModExtension}"))
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    mods.Add(ToLocalMod(file));
-                }
-
-                var result = mods
-                    .OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(m => m.FileName, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                logger.LogDebug(
-                    "Local mods loaded. InstanceId={InstanceId} Count={ModCount}",
-                    instance.Id,
-                    result.Count);
-                return result;
-            },
-            cancellationToken);
+                    var snapshot = snapshots.GetOrCreate(modsDirectory);
+                    var mods = snapshot.Reconcile(
+                            inventory,
+                            static item => item.FullPath,
+                            CreateLocalMod)
+                        .OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(mod => mod.FileName, StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                    logger.LogDebug(
+                        "Local mod inventory checked. InstanceId={InstanceId} Count={ModCount}",
+                        instance.Id,
+                        mods.Length);
+                    return mods;
+                },
+                cancellationToken).ConfigureAwait(false);
+            await metadataCache.SaveIfChangedAsync(cancellationToken).ConfigureAwait(false);
+            return result;
+        }
+        finally
+        {
+            snapshotLock.Release();
+        }
     }
 
     public async Task<LocalMod> ImportAsync(
@@ -139,27 +164,52 @@ public sealed class ModService : IModService
         return ToLocalMod(destination);
     }
 
-    public Task SetEnabledAsync(LocalMod mod, bool enabled, CancellationToken cancellationToken = default)
+    public async Task SetEnabledAsync(LocalMod mod, bool enabled, CancellationToken cancellationToken = default)
     {
         // 启停通过 .disabled 后缀表达，文件内容和原始 Mod 名称均保持不变。
         if (mod.IsEnabled == enabled)
-            return Task.CompletedTask;
+            return;
 
         var current = mod.FullPath;
         var targetPath = enabled
             ? GetEnabledModPath(current)
             : GetDisabledModPath(current);
 
-        if (PathExists(targetPath))
-            throw new ModEnabledStateConflictException(targetPath);
+        await snapshotLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (PathExists(targetPath))
+                throw new ModEnabledStateConflictException(targetPath);
 
-        MoveFileWithoutOverwrite(current, targetPath);
-        logger.LogInformation(
-            "Local mod enabled state changed. FileName={FileName} Enabled={Enabled}",
-            mod.FileName,
-            enabled);
-        logger.LogDebug("Local mod enabled state target. TargetPath={TargetPath}", targetPath);
-        return Task.CompletedTask;
+            MoveFileWithoutOverwrite(current, targetPath);
+            var identity = CreateIdentity(targetPath);
+            var updatedSnapshot = false;
+            var modsDirectory = Path.GetDirectoryName(current);
+            if (!string.IsNullOrWhiteSpace(modsDirectory)
+                && snapshots.TryGet(modsDirectory, out var snapshot))
+            {
+                updatedSnapshot = snapshot.TryMove(
+                    current,
+                    targetPath,
+                    identity,
+                    item => ApplyEnabledState(item, identity, enabled));
+            }
+
+            if (!updatedSnapshot)
+                ApplyEnabledState(mod, identity, enabled);
+            metadataCache.TryMove(current, identity);
+
+            logger.LogInformation(
+                "Local mod enabled state changed. FileName={FileName} Enabled={Enabled}",
+                mod.FileName,
+                enabled);
+            logger.LogDebug("Local mod enabled state target. TargetPath={TargetPath}", targetPath);
+        }
+        finally
+        {
+            snapshotLock.Release();
+        }
     }
 
     internal static void MoveFileWithoutOverwrite(string sourcePath, string targetPath)
@@ -189,25 +239,77 @@ public sealed class ModService : IModService
         return Task.CompletedTask;
     }
 
+    private static bool IsSupportedModPath(string path) =>
+        path.EndsWith(EnabledModExtension, StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(DisabledModExtension, StringComparison.OrdinalIgnoreCase);
+
+    private static void ApplyEnabledState(
+        LocalMod mod,
+        LocalContentFileIdentity identity,
+        bool enabled)
+    {
+        mod.FileName = Path.GetFileName(identity.FullPath);
+        mod.FullPath = identity.FullPath;
+        mod.IsEnabled = enabled;
+        mod.SizeBytes = identity.Length;
+    }
+
+    private static LocalContentFileIdentity CreateIdentity(string path)
+    {
+        var file = new FileInfo(path);
+        return new LocalContentFileIdentity(
+            file.FullName,
+            file.Length,
+            file.LastWriteTimeUtc.Ticks,
+            file.CreationTimeUtc.Ticks);
+    }
+
+    private LocalMod CreateLocalMod(LocalContentFileIdentity identity)
+    {
+        if (!metadataCache.TryGet(identity, validate: null, out var cached))
+        {
+            var metadata = TryResolveMetadata(new FileInfo(identity.FullPath));
+            cached = new ModMetadataCacheValue(
+                metadata.DisplayName,
+                metadata.Loader,
+                metadata.ModId,
+                metadata.Version);
+            metadataCache.Set(identity, cached);
+        }
+
+        return CreateLocalMod(identity, new ResolvedModMetadata(
+            cached.DisplayName,
+            cached.Loader,
+            cached.ModId,
+            cached.Version,
+            null));
+    }
+
     private LocalMod ToLocalMod(string path)
     {
         // 展示对象同时携带规范路径和启用状态，后续命令不再重复猜测扩展名语义。
-        var info = new FileInfo(path);
-        var metadata = TryResolveMetadata(info);
-        var enabled = IsEnabledModPath(path);
+        var identity = CreateIdentity(path);
+        return CreateLocalMod(identity, TryResolveMetadata(new FileInfo(identity.FullPath)));
+    }
+
+    private static LocalMod CreateLocalMod(
+        LocalContentFileIdentity identity,
+        ResolvedModMetadata metadata)
+    {
+        var enabled = IsEnabledModPath(identity.FullPath);
         return new LocalMod
         {
             Name = string.IsNullOrWhiteSpace(metadata.DisplayName)
-                ? GetDisplayFileNameWithoutModExtensions(path)
+                ? GetDisplayFileNameWithoutModExtensions(identity.FullPath)
                 : metadata.DisplayName,
             Loader = metadata.Loader,
             ModId = metadata.ModId,
             Version = metadata.Version,
-            FileName = Path.GetFileName(path),
-            FullPath = path,
+            FileName = Path.GetFileName(identity.FullPath),
+            FullPath = identity.FullPath,
             IconSource = metadata.IconSource,
             IsEnabled = enabled,
-            SizeBytes = info.Length,
+            SizeBytes = identity.Length,
             Source = "Local"
         };
     }
@@ -489,6 +591,12 @@ public sealed class ModService : IModService
         string MetadataEntryName,
         string? Loader,
         string? DisplayName,
+        string? ModId,
+        string? Version);
+
+    private sealed record ModMetadataCacheValue(
+        string? DisplayName,
+        string? Loader,
         string? ModId,
         string? Version);
 

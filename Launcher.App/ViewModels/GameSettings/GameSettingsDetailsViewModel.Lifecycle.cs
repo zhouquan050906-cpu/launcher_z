@@ -74,5 +74,10 @@ public void Dispose()
     {
         OnPropertyChanged(nameof(ScrollSectionViewModel));
         OnPropertyChanged(nameof(FullViewportSectionViewModel));
+        OnPropertyChanged(nameof(NonRetainedFullViewportSectionViewModel));
+        OnPropertyChanged(nameof(IsModManagementSection));
+        OnPropertyChanged(nameof(IsSaveManagementSection));
+        OnPropertyChanged(nameof(IsResourcePackManagementSection));
+        OnPropertyChanged(nameof(IsShaderPackManagementSection));
     }
 }

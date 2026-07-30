@@ -25,10 +25,13 @@ namespace Launcher.App.ViewModels.GameSettings;
 
 public sealed partial class GameSettingsInstanceItem : ObservableObject
 {
+    private InstanceCatalogEntrySnapshot catalogSnapshot;
+
     public GameSettingsInstanceItem(GameInstance instance, string versionType)
     {
         Instance = instance;
         VersionType = NormalizeVersionType(versionType);
+        catalogSnapshot = InstanceCatalogEntrySnapshot.Create(instance);
     }
 
     public GameInstance Instance { get; private set; }
@@ -71,21 +74,21 @@ public sealed partial class GameSettingsInstanceItem : ObservableObject
     [ObservableProperty]
     private bool isSelected;
 
-    public void Update(GameInstance instance, string versionType)
+    public bool Update(GameInstance instance, string versionType)
     {
         var normalizedVersionType = NormalizeVersionType(versionType);
-        if (ReferenceEquals(Instance, instance)
-            && string.Equals(VersionType, normalizedVersionType, StringComparison.OrdinalIgnoreCase))
-        {
-            // The mutable instance may have been saved in place. Refresh derived bindings without
-            // pretending that the selected instance context itself was replaced.
-            NotifyDisplayPropertiesChanged();
-            return;
-        }
+        var nextSnapshot = InstanceCatalogEntrySnapshot.Create(instance);
+        var changed = catalogSnapshot != nextSnapshot
+            || !string.Equals(VersionType, normalizedVersionType, StringComparison.OrdinalIgnoreCase);
 
         Instance = instance;
         VersionType = normalizedVersionType;
+        catalogSnapshot = nextSnapshot;
+        if (!changed)
+            return false;
+
         NotifyDisplayPropertiesChanged();
+        return true;
     }
 
     public bool MatchesSearch(string query)

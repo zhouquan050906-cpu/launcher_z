@@ -51,5 +51,62 @@ internal static class ObservableCollectionExtensions
         collection.ReplaceWith(items);
         return true;
     }
+
+    public static bool SynchronizeByKey<T, TKey>(
+        this ObservableCollection<T> collection,
+        IReadOnlyList<T> items,
+        Func<T, TKey> keySelector,
+        IEqualityComparer<TKey>? comparer = null)
+    {
+        comparer ??= EqualityComparer<TKey>.Default;
+        var changed = false;
+
+        for (var targetIndex = 0; targetIndex < items.Count; targetIndex++)
+        {
+            var desired = items[targetIndex];
+            var desiredKey = keySelector(desired);
+            if (targetIndex < collection.Count
+                && comparer.Equals(keySelector(collection[targetIndex]), desiredKey))
+            {
+                if (!ReferenceEquals(collection[targetIndex], desired))
+                {
+                    collection[targetIndex] = desired;
+                    changed = true;
+                }
+                continue;
+            }
+
+            var existingIndex = -1;
+            for (var candidateIndex = targetIndex + 1; candidateIndex < collection.Count; candidateIndex++)
+            {
+                if (comparer.Equals(keySelector(collection[candidateIndex]), desiredKey))
+                {
+                    existingIndex = candidateIndex;
+                    break;
+                }
+            }
+
+            if (existingIndex >= 0)
+            {
+                collection.Move(existingIndex, targetIndex);
+                changed = true;
+                if (!ReferenceEquals(collection[targetIndex], desired))
+                    collection[targetIndex] = desired;
+            }
+            else
+            {
+                collection.Insert(targetIndex, desired);
+                changed = true;
+            }
+        }
+
+        while (collection.Count > items.Count)
+        {
+            collection.RemoveAt(collection.Count - 1);
+            changed = true;
+        }
+
+        return changed;
+    }
 }
 

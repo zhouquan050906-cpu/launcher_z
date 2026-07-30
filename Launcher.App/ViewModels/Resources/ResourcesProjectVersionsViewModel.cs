@@ -39,7 +39,7 @@ public sealed partial class ResourcesProjectVersionsViewModel : ObservableObject
     private readonly HashSet<string> loadedVersionIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly ResourcesOnlineProjectPageOptions options;
     private readonly IResourceCatalogService? resourceCatalogService;
-    private readonly IGameInstanceService? gameInstanceService;
+    private readonly Func<IReadOnlyList<GameInstance>>? getInstanceCatalogSnapshot;
     private readonly IUiDispatcher uiDispatcher;
     private readonly ILogger? logger;
     // 目标列表与版本列表具有独立生命周期，切换目标时只需使版本请求失效。
@@ -51,13 +51,13 @@ public sealed partial class ResourcesProjectVersionsViewModel : ObservableObject
     internal ResourcesProjectVersionsViewModel(
         ResourcesOnlineProjectPageOptions options,
         IResourceCatalogService? resourceCatalogService,
-        IGameInstanceService? gameInstanceService,
+        Func<IReadOnlyList<GameInstance>>? getInstanceCatalogSnapshot,
         IUiDispatcher uiDispatcher,
         ILogger? logger)
     {
         this.options = options;
         this.resourceCatalogService = resourceCatalogService;
-        this.gameInstanceService = gameInstanceService;
+        this.getInstanceCatalogSnapshot = getInstanceCatalogSnapshot;
         this.uiDispatcher = uiDispatcher;
         this.logger = logger;
         Builder = new ResourcesAvailableVersionListBuilder(options);
@@ -298,7 +298,7 @@ public sealed partial class ResourcesProjectVersionsViewModel : ObservableObject
     /// <summary>
     /// 按当前安装模式加载可选实例，并加入新实例或本地下载等虚拟目标。
     /// </summary>
-    private async Task LoadTargetsAsync()
+    private Task LoadTargetsAsync()
     {
         // 新加载先取消旧目标请求，随后立即清空列表，避免用户点击已不属于当前项目的目标。
         // 项目或安装模式变化后，只有最新一次目标加载可以更新选择列表。
@@ -320,10 +320,10 @@ public sealed partial class ResourcesProjectVersionsViewModel : ObservableObject
         {
             // 新实例安装模式不需要读取本地实例，减少一次仓库和磁盘发现操作。
             IReadOnlyList<GameInstance> instances = [];
-            if (gameInstanceService is not null
+            if (getInstanceCatalogSnapshot is not null
                 && options.InstallTargetMode is ResourcesOnlineProjectInstallTargetMode.ExistingInstance)
             {
-                instances = await gameInstanceService.GetInstancesAsync(cancellationToken).ConfigureAwait(false);
+                uiDispatcher.Invoke(() => instances = getInstanceCatalogSnapshot());
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -335,10 +335,12 @@ public sealed partial class ResourcesProjectVersionsViewModel : ObservableObject
         catch (Exception exception)
         {
             if (cancellationToken.IsCancellationRequested)
-                return;
+                return Task.CompletedTask;
             uiDispatcher.Invoke(() => ApplyTargets([], options.InstallTargetsLoadErrorText, cancellationToken));
             logger?.LogError(exception, "Failed to load resource install targets. Kind={Kind}", options.Kind);
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>

@@ -20,7 +20,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Launcher.App.Resources;
-using Launcher.Application.Services;
 using Launcher.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -35,15 +34,10 @@ public sealed partial class GameSettingsInstanceListViewModel : ObservableObject
     public const string LocalImportCategoryId = "local_import";
 
     // AllInstances 是权威 UI 缓存，Instances 仅是当前分类的稳定可观察投影。
-    private readonly IGameInstanceService instanceService;
-    private readonly IGameVersionService gameVersionService;
     private readonly ILogger<GameSettingsInstanceListViewModel> logger;
-    private readonly SemaphoreSlim refreshGate = new(1, 1);
-    private IReadOnlyDictionary<string, string> versionTypesByName =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     private bool hasLoadedInstances;
     private bool preserveFilteredSelection;
-    private long refreshGeneration;
+    private long appliedCatalogRevision = -1;
 
     [ObservableProperty]
     private GameSettingsInstanceCategory? selectedCategory;
@@ -67,12 +61,8 @@ public sealed partial class GameSettingsInstanceListViewModel : ObservableObject
     private int entranceAnimationToken;
 
     public GameSettingsInstanceListViewModel(
-        IGameInstanceService instanceService,
-        IGameVersionService gameVersionService,
         ILogger<GameSettingsInstanceListViewModel>? logger = null)
     {
-        this.instanceService = instanceService;
-        this.gameVersionService = gameVersionService;
         this.logger = logger ?? NullLogger<GameSettingsInstanceListViewModel>.Instance;
 
         Categories.Add(new GameSettingsInstanceCategory("all", Strings.GameSettings_AllCategory, string.Empty, "general/general_all_application"));
@@ -99,23 +89,37 @@ public sealed partial class GameSettingsInstanceListViewModel : ObservableObject
 
     public bool HasEmptyMessage => !string.IsNullOrWhiteSpace(EmptyMessage);
 
-    public async Task EnsureLoadedAsync(CancellationToken cancellationToken = default)
+    public long AppliedCatalogRevision => appliedCatalogRevision;
+
+    public bool ApplyInstanceCatalog(
+        IReadOnlyList<GameInstance> instances,
+        long catalogRevision,
+        bool playEntranceAnimation)
     {
-        // 首次确保加载与显式刷新分开，避免每次页面激活都无条件扫描磁盘。
-        if (hasLoadedInstances)
-            return;
+        if (appliedCatalogRevision == catalogRevision)
+            return false;
 
-        await RefreshCoreAsync(true, true, true, cancellationToken);
+        var wasLoaded = hasLoadedInstances;
+        var selectedId = SelectedInstance?.Instance.Id;
+        IsLoading = false;
+        LoadError = string.Empty;
+        EmptyMessage = string.Empty;
+        var changed = Reconcile(instances);
+        RestoreSelection(selectedId);
+        hasLoadedInstances = true;
+        appliedCatalogRevision = catalogRevision;
+        RefreshVisibleInstances();
+        if (!wasLoaded && playEntranceAnimation)
+            EntranceAnimationToken++;
+
+        logger.LogDebug(
+            "Game settings instance catalog applied. Count={InstanceCount} VisibleCount={VisibleCount} SelectedInstanceId={SelectedInstanceId} CatalogRevision={CatalogRevision}",
+            AllInstances.Count,
+            VisibleInstances.Count,
+            SelectedInstance?.Instance.Id,
+            catalogRevision);
+        return changed;
     }
-
-    public Task RefreshAsync(CancellationToken cancellationToken = default) =>
-        RefreshCoreAsync(true, true, true, cancellationToken);
-
-    public Task RefreshForActivationAsync(CancellationToken cancellationToken = default) =>
-        RefreshCoreAsync(!hasLoadedInstances, !hasLoadedInstances, true, cancellationToken);
-
-    public Task RefreshSilentlyAsync(CancellationToken cancellationToken = default) =>
-        RefreshCoreAsync(false, false, false, cancellationToken);
 
     public void SetPreserveFilteredSelection(bool value)
     {
@@ -206,76 +210,6 @@ public sealed partial class GameSettingsInstanceListViewModel : ObservableObject
 
     partial void OnEmptyMessageChanged(string value) => OnPropertyChanged(nameof(HasEmptyMessage));
 
-    private async Task RefreshCoreAsync(
-        bool playEntranceAnimation,
-        bool clearVisibleInstancesBeforeRefresh,
-        bool logRefreshResult,
-        CancellationToken cancellationToken)
-    {
-        var generation = Interlocked.Increment(ref refreshGeneration);
-        await refreshGate.WaitAsync(cancellationToken);
-        try
-        {
-            // 请求开始时捕获当前选择 Id，磁盘同步完成后按 Id 恢复而不是依赖旧对象引用。
-            IsLoading = true;
-            LoadError = string.Empty;
-            EmptyMessage = string.Empty;
-            if (clearVisibleInstancesBeforeRefresh)
-                ClearVisibleInstances();
-            var selectedId = SelectedInstance?.Instance.Id;
-
-            // Resolve slow remote classification metadata before taking the mutable instance
-            // snapshot, so a click saved during that network wait cannot be overwritten by stale data.
-            var loadedVersionTypes = await LoadVersionTypesAsync(cancellationToken);
-            var instances = await instanceService.GetInstancesAsync(cancellationToken);
-            if (generation != Volatile.Read(ref refreshGeneration))
-            {
-                logger.LogDebug(
-                    "Discarded stale game settings instance refresh. RefreshGeneration={RefreshGeneration} CurrentGeneration={CurrentGeneration}",
-                    generation,
-                    Volatile.Read(ref refreshGeneration));
-                return;
-            }
-
-            versionTypesByName = loadedVersionTypes;
-            Reconcile(instances);
-            RestoreSelection(selectedId);
-            hasLoadedInstances = true;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            if (generation != Volatile.Read(ref refreshGeneration))
-                return;
-
-            logger.LogWarning(exception, "Failed to load game settings instances.");
-            LoadError = Strings.Status_LoadInstancesFailed;
-            hasLoadedInstances = false;
-        }
-        finally
-        {
-            IsLoading = false;
-            if (generation == Volatile.Read(ref refreshGeneration))
-            {
-                RefreshVisibleInstances();
-                if (hasLoadedInstances && playEntranceAnimation)
-                    EntranceAnimationToken++;
-                if (hasLoadedInstances && logRefreshResult)
-                {
-                    logger.LogDebug(
-                        "Game settings instances refreshed. Count={InstanceCount} VisibleCount={VisibleCount} SelectedInstanceId={SelectedInstanceId}",
-                        AllInstances.Count,
-                        VisibleInstances.Count,
-                        SelectedInstance?.Instance.Id);
-                }
-            }
-            refreshGate.Release();
-        }
-    }
-
     private void RefreshVisibleInstances()
     {
         var result = GameSettingsInstanceFilter.Apply(
@@ -300,7 +234,7 @@ public sealed partial class GameSettingsInstanceListViewModel : ObservableObject
         || (!string.IsNullOrWhiteSpace(item.Instance.Id)
             && string.Equals(item.Instance.Id, SelectedInstance.Instance.Id, StringComparison.OrdinalIgnoreCase)));
 
-    private void Reconcile(IReadOnlyList<GameInstance> instances)
+    private bool Reconcile(IReadOnlyList<GameInstance> instances)
     {
         // 原地更新已有条目可保留选择、动画和外部 Binding；仅新增/删除才改变集合结构。
         var existing = AllInstances
@@ -308,24 +242,37 @@ public sealed partial class GameSettingsInstanceListViewModel : ObservableObject
             .GroupBy(item => item.Instance.Id, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         var next = new List<GameSettingsInstanceItem>(instances.Count);
+        var changed = AllInstances.Count != instances.Count;
         foreach (var instance in instances)
         {
             if (!string.IsNullOrWhiteSpace(instance.Id) && existing.TryGetValue(instance.Id, out var item))
             {
-                item.Update(instance, ResolveVersionType(instance));
+                changed |= item.Update(instance, ResolveVersionType(instance));
                 next.Add(item);
             }
             else
             {
                 next.Add(CreateItem(instance));
+                changed = true;
+            }
+        }
+        if (!changed)
+        {
+            for (var index = 0; index < next.Count; index++)
+            {
+                if (ReferenceEquals(AllInstances[index], next[index]))
+                    continue;
+                changed = true;
+                break;
             }
         }
         AllInstances.Clear();
         AllInstances.AddRange(next);
+        return changed;
     }
 
     private void RestoreSelection(string? instanceId) =>
-        SelectInstanceCore(string.IsNullOrWhiteSpace(instanceId) ? null : Find(instanceId), forceNotification: true);
+        SelectInstanceCore(string.IsNullOrWhiteSpace(instanceId) ? null : Find(instanceId));
 
     private void SelectInstanceCore(GameSettingsInstanceItem? instance, bool forceNotification = false)
     {
@@ -335,14 +282,6 @@ public sealed partial class GameSettingsInstanceListViewModel : ObservableObject
             OnPropertyChanged(nameof(SelectedInstance));
         foreach (var item in AllInstances)
             item.IsSelected = ReferenceEquals(item, instance);
-    }
-
-    private void ClearVisibleInstances()
-    {
-        if (VisibleInstances.Count == 0)
-            return;
-        VisibleInstances.Clear();
-        NotifyVisibleInstancesChanged();
     }
 
     private void ApplyVisibleInstances(IReadOnlyList<GameSettingsInstanceItem> instances)
@@ -389,39 +328,5 @@ public sealed partial class GameSettingsInstanceListViewModel : ObservableObject
     private GameSettingsInstanceItem CreateItem(GameInstance instance) =>
         new(instance, ResolveVersionType(instance));
 
-    private string ResolveVersionType(GameInstance instance)
-    {
-        if (!string.IsNullOrWhiteSpace(instance.VersionType))
-            return instance.VersionType;
-        var versionName = string.IsNullOrWhiteSpace(instance.MinecraftVersion)
-            ? instance.VersionName
-            : instance.MinecraftVersion;
-        return !string.IsNullOrWhiteSpace(versionName) && versionTypesByName.TryGetValue(versionName, out var type)
-            ? type
-            : string.Empty;
-    }
-
-    private async Task<IReadOnlyDictionary<string, string>> LoadVersionTypesAsync(CancellationToken cancellationToken)
-    {
-        // 版本类型是辅助展示，失败时返回空映射并让实例继续以默认类型显示。
-        try
-        {
-            var versions = await gameVersionService.GetVersionsAsync(cancellationToken: cancellationToken);
-            return versions
-                .GroupBy(version => version.Name, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(
-                    group => group.Key,
-                    group => GameSettingsInstanceItem.NormalizeVersionType(group.First().Type),
-                    StringComparer.OrdinalIgnoreCase);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            logger.LogDebug(exception, "Failed to load version types for game settings instance classification.");
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        }
-    }
+    private static string ResolveVersionType(GameInstance instance) => instance.VersionType;
 }

@@ -38,13 +38,7 @@ public sealed class InstanceDirectoryMonitor(
 
         var instanceDirectory = Path.GetFullPath(instance.InstanceDirectory);
         if (!Directory.Exists(instanceDirectory))
-        {
-            logger.LogDebug(
-                "Instance directory watcher was not started because the instance root does not exist. InstanceId={InstanceId} DirectoryKind={DirectoryKind}",
-                instance.Id,
-                directoryKind);
             return EmptyInstanceDirectoryWatch.Instance;
-        }
 
         try
         {
@@ -53,8 +47,7 @@ public sealed class InstanceDirectoryMonitor(
                 ResolveDirectoryName(directoryKind),
                 directoryKind,
                 instance.Id,
-                logger,
-                includeTargetSubdirectories: directoryKind is InstanceDirectoryKind.Saves);
+                logger);
         }
         catch (Exception exception) when (
             exception is DirectoryNotFoundException
@@ -69,27 +62,24 @@ public sealed class InstanceDirectoryMonitor(
         }
     }
 
-    private static string ResolveDirectoryName(InstanceDirectoryKind directoryKind)
+    private static string ResolveDirectoryName(InstanceDirectoryKind directoryKind) => directoryKind switch
     {
-        return directoryKind switch
-        {
-            InstanceDirectoryKind.Mods => "mods",
-            InstanceDirectoryKind.Saves => "saves",
-            InstanceDirectoryKind.ResourcePacks => "resourcepacks",
-            InstanceDirectoryKind.ShaderPacks => "shaderpacks",
-            _ => throw new ArgumentOutOfRangeException(nameof(directoryKind), directoryKind, null)
-        };
-    }
+        InstanceDirectoryKind.Mods => "mods",
+        InstanceDirectoryKind.Saves => "saves",
+        InstanceDirectoryKind.ResourcePacks => "resourcepacks",
+        InstanceDirectoryKind.ShaderPacks => "shaderpacks",
+        _ => throw new ArgumentOutOfRangeException(nameof(directoryKind), directoryKind, null)
+    };
 
     private sealed class InstanceDirectoryWatch : IInstanceDirectoryWatch
     {
-        private readonly FileSystemWatcher watcher;
+        private readonly object gate = new();
+        private readonly FileSystemWatcher rootWatcher;
         private readonly ILogger logger;
-        private readonly string instanceDirectory;
-        private readonly string targetDirectoryName;
+        private readonly string targetDirectory;
         private readonly string instanceId;
         private readonly InstanceDirectoryKind directoryKind;
-        private readonly bool includeTargetSubdirectories;
+        private readonly List<FileSystemWatcher> targetWatchers = [];
         private bool disposed;
 
         public InstanceDirectoryWatch(
@@ -97,88 +87,101 @@ public sealed class InstanceDirectoryMonitor(
             string targetDirectoryName,
             InstanceDirectoryKind directoryKind,
             string instanceId,
-            ILogger logger,
-            bool includeTargetSubdirectories)
+            ILogger logger)
         {
-            this.instanceDirectory = instanceDirectory;
-            this.targetDirectoryName = targetDirectoryName;
             this.directoryKind = directoryKind;
             this.instanceId = instanceId;
             this.logger = logger;
-            this.includeTargetSubdirectories = includeTargetSubdirectories;
-            watcher = new FileSystemWatcher(instanceDirectory, "*")
+            targetDirectory = Path.Combine(instanceDirectory, targetDirectoryName);
+
+            rootWatcher = new FileSystemWatcher(instanceDirectory, targetDirectoryName)
             {
-                // Watching the existing root lets us observe a content directory that is created later
-                // without creating that directory as a side effect of starting the watcher.
-                IncludeSubdirectories = true,
+                IncludeSubdirectories = false,
                 NotifyFilter = NotifyFilters.DirectoryName
-                    | NotifyFilters.FileName
-                    | NotifyFilters.LastWrite
-                    | NotifyFilters.Size
-                    | NotifyFilters.CreationTime
             };
-            watcher.Changed += Watcher_Changed;
-            watcher.Created += Watcher_Changed;
-            watcher.Deleted += Watcher_Changed;
-            watcher.Renamed += Watcher_Renamed;
-            watcher.Error += Watcher_Error;
-            watcher.EnableRaisingEvents = true;
-            logger.LogDebug(
-                "Instance directory watcher started. InstanceId={InstanceId} DirectoryKind={DirectoryKind}",
-                instanceId,
-                directoryKind);
+            rootWatcher.Created += RootWatcher_Changed;
+            rootWatcher.Deleted += RootWatcher_Changed;
+            rootWatcher.Renamed += RootWatcher_Renamed;
+            rootWatcher.Error += Watcher_Error;
+
+            rootWatcher.EnableRaisingEvents = true;
+            lock (gate)
+                RebuildTargetWatchersLocked();
         }
 
         public event EventHandler<InstanceDirectoryChangedEventArgs>? Changed;
 
         public void Dispose()
         {
-            if (disposed)
-                return;
-            disposed = true;
-            watcher.EnableRaisingEvents = false;
-            watcher.Changed -= Watcher_Changed;
-            watcher.Created -= Watcher_Changed;
-            watcher.Deleted -= Watcher_Changed;
-            watcher.Renamed -= Watcher_Renamed;
-            watcher.Error -= Watcher_Error;
-            watcher.Dispose();
-        }
-
-        private void Watcher_Changed(object sender, FileSystemEventArgs e)
-        {
-            if (!IsInTargetScope(e.FullPath))
-                return;
-            Changed?.Invoke(this, new InstanceDirectoryChangedEventArgs(e.ChangeType.ToString(), e.FullPath));
-        }
-
-        private void Watcher_Renamed(object sender, RenamedEventArgs e)
-        {
-            if (!IsInTargetScope(e.FullPath) && !IsInTargetScope(e.OldFullPath))
-                return;
-            Changed?.Invoke(this, new InstanceDirectoryChangedEventArgs("Renamed", e.FullPath, e.OldFullPath));
-        }
-
-        private bool IsInTargetScope(string fullPath)
-        {
-            var relativePath = Path.GetRelativePath(instanceDirectory, fullPath);
-            if (Path.IsPathRooted(relativePath)
-                || relativePath.Equals("..", StringComparison.Ordinal)
-                || relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            lock (gate)
             {
-                return false;
+                if (disposed)
+                    return;
+
+                disposed = true;
+                rootWatcher.EnableRaisingEvents = false;
+                rootWatcher.Created -= RootWatcher_Changed;
+                rootWatcher.Deleted -= RootWatcher_Changed;
+                rootWatcher.Renamed -= RootWatcher_Renamed;
+                rootWatcher.Error -= Watcher_Error;
+                rootWatcher.Dispose();
+                DisposeTargetWatchersLocked();
+            }
+        }
+
+        private void RootWatcher_Changed(object sender, FileSystemEventArgs e)
+        {
+            RebuildTargetWatchers();
+            RaiseChanged(new InstanceDirectoryChangedEventArgs(e.ChangeType.ToString(), e.FullPath));
+        }
+
+        private void RootWatcher_Renamed(object sender, RenamedEventArgs e)
+        {
+            RebuildTargetWatchers();
+            RaiseChanged(new InstanceDirectoryChangedEventArgs("Renamed", e.FullPath, e.OldFullPath));
+        }
+
+        private void TargetWatcher_Changed(object sender, FileSystemEventArgs e)
+        {
+            if (!IsRelevantTargetChange(e.FullPath))
+                return;
+
+            RaiseChanged(new InstanceDirectoryChangedEventArgs(e.ChangeType.ToString(), e.FullPath));
+        }
+
+        private void TargetWatcher_Renamed(object sender, RenamedEventArgs e)
+        {
+            if (!IsRelevantTargetChange(e.FullPath) && !IsRelevantTargetChange(e.OldFullPath))
+                return;
+
+            RaiseChanged(new InstanceDirectoryChangedEventArgs("Renamed", e.FullPath, e.OldFullPath));
+        }
+
+        private bool IsRelevantTargetChange(string path)
+        {
+            if (directoryKind is InstanceDirectoryKind.Saves)
+            {
+                var relative = Path.GetRelativePath(targetDirectory, path);
+                if (Path.IsPathRooted(relative)
+                    || relative.Equals("..", StringComparison.Ordinal)
+                    || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                var parent = Path.GetDirectoryName(relative);
+                if (string.IsNullOrEmpty(parent))
+                    return true;
+
+                return Path.GetFileName(path).Equals("icon.png", StringComparison.OrdinalIgnoreCase)
+                    && string.IsNullOrEmpty(Path.GetDirectoryName(parent));
             }
 
-            if (relativePath.Equals(targetDirectoryName, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            var parent = Path.GetDirectoryName(relativePath);
-            if (!includeTargetSubdirectories)
-                return parent?.Equals(targetDirectoryName, StringComparison.OrdinalIgnoreCase) is true;
-
-            return relativePath.StartsWith(
-                targetDirectoryName + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase);
+            var extension = Path.GetExtension(path);
+            return directoryKind is InstanceDirectoryKind.Mods
+                ? path.EndsWith(".jar", StringComparison.OrdinalIgnoreCase)
+                    || path.EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase)
+                : extension.Equals(".zip", StringComparison.OrdinalIgnoreCase);
         }
 
         private void Watcher_Error(object sender, ErrorEventArgs e)
@@ -188,6 +191,82 @@ public sealed class InstanceDirectoryMonitor(
                 "Instance directory watcher reported an error. InstanceId={InstanceId} DirectoryKind={DirectoryKind}",
                 instanceId,
                 directoryKind);
+            RaiseChanged(new InstanceDirectoryChangedEventArgs("Error", targetDirectory));
+        }
+
+        private void RebuildTargetWatchers()
+        {
+            lock (gate)
+            {
+                if (!disposed)
+                    RebuildTargetWatchersLocked();
+            }
+        }
+
+        private void RebuildTargetWatchersLocked()
+        {
+            DisposeTargetWatchersLocked();
+            if (!Directory.Exists(targetDirectory))
+                return;
+
+            if (directoryKind is InstanceDirectoryKind.Saves)
+            {
+                AddTargetWatcher(new FileSystemWatcher(targetDirectory, "*")
+                {
+                    IncludeSubdirectories = false,
+                    NotifyFilter = NotifyFilters.DirectoryName
+                });
+                AddTargetWatcher(new FileSystemWatcher(targetDirectory, "icon.png")
+                {
+                    IncludeSubdirectories = true,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
+                });
+                return;
+            }
+
+            AddTargetWatcher(new FileSystemWatcher(targetDirectory, "*")
+            {
+                IncludeSubdirectories = false,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
+            });
+        }
+
+        private void AddTargetWatcher(FileSystemWatcher watcher)
+        {
+            watcher.Created += TargetWatcher_Changed;
+            watcher.Changed += TargetWatcher_Changed;
+            watcher.Deleted += TargetWatcher_Changed;
+            watcher.Renamed += TargetWatcher_Renamed;
+            watcher.Error += Watcher_Error;
+            targetWatchers.Add(watcher);
+            watcher.EnableRaisingEvents = true;
+        }
+
+        private void DisposeTargetWatchersLocked()
+        {
+            foreach (var watcher in targetWatchers)
+            {
+                watcher.EnableRaisingEvents = false;
+                watcher.Created -= TargetWatcher_Changed;
+                watcher.Changed -= TargetWatcher_Changed;
+                watcher.Deleted -= TargetWatcher_Changed;
+                watcher.Renamed -= TargetWatcher_Renamed;
+                watcher.Error -= Watcher_Error;
+                watcher.Dispose();
+            }
+
+            targetWatchers.Clear();
+        }
+
+        private void RaiseChanged(InstanceDirectoryChangedEventArgs args)
+        {
+            lock (gate)
+            {
+                if (disposed)
+                    return;
+            }
+
+            Changed?.Invoke(this, args);
         }
     }
 

@@ -18,6 +18,7 @@
  */
 
 using System.IO;
+using Launcher.Application;
 using Launcher.Application.Services;
 using Launcher.Domain.Models;
 
@@ -25,45 +26,64 @@ namespace Launcher.Infrastructure.FileSystem;
 
 public sealed class LauncherStateMonitor : ILauncherStateMonitor
 {
+    private readonly object watcherLock = new();
     private FileSystemWatcher? minecraftParentWatcher;
-    private FileSystemWatcher? minecraftVersionsWatcher;
-    private FileSystemWatcher? dataDirectoryWatcher;
+    private FileSystemWatcher? minecraftRootWatcher;
+    private FileSystemWatcher? instanceDirectoryWatcher;
+    private FileSystemWatcher? instanceMetadataWatcher;
+    private string? watchedVersionsDirectory;
 
     public event EventHandler? StateChanged;
 
     public void Watch(LauncherSettings settings)
     {
-        Stop();
-
-        var minecraftDirectory = settings.MinecraftDirectory;
-        var minecraftParent = Path.GetDirectoryName(minecraftDirectory);
-        var minecraftFolderName = Path.GetFileName(minecraftDirectory);
-        if (!string.IsNullOrWhiteSpace(minecraftParent)
-            && !string.IsNullOrWhiteSpace(minecraftFolderName))
+        lock (watcherLock)
         {
-            minecraftParentWatcher = TryCreateWatcher(
-                minecraftParent,
-                minecraftFolderName,
+            StopCore();
+
+            var minecraftDirectory = Path.GetFullPath(settings.MinecraftDirectory);
+            var minecraftParent = Path.GetDirectoryName(minecraftDirectory);
+            var minecraftFolderName = Path.GetFileName(minecraftDirectory);
+            if (!string.IsNullOrWhiteSpace(minecraftParent)
+                && !string.IsNullOrWhiteSpace(minecraftFolderName))
+            {
+                minecraftParentWatcher = TryCreateStructureWatcher(
+                    minecraftParent,
+                    minecraftFolderName,
+                    includeSubdirectories: false);
+            }
+
+            minecraftRootWatcher = TryCreateStructureWatcher(
+                minecraftDirectory,
+                "versions",
                 includeSubdirectories: false);
+
+            watchedVersionsDirectory = Path.Combine(minecraftDirectory, "versions");
+            instanceDirectoryWatcher = TryCreateStructureWatcher(
+                watchedVersionsDirectory,
+                "*",
+                includeSubdirectories: false);
+            instanceMetadataWatcher = TryCreateMetadataWatcher(watchedVersionsDirectory);
         }
-
-        var versionsDirectory = Path.Combine(minecraftDirectory, "versions");
-        minecraftVersionsWatcher = TryCreateWatcher(versionsDirectory, "*", includeSubdirectories: true);
-
-        dataDirectoryWatcher = TryCreateWatcher(
-            settings.DataDirectory,
-            "settings.json",
-            includeSubdirectories: false);
     }
 
     public void Stop()
     {
+        lock (watcherLock)
+            StopCore();
+    }
+
+    private void StopCore()
+    {
         minecraftParentWatcher?.Dispose();
-        minecraftVersionsWatcher?.Dispose();
-        dataDirectoryWatcher?.Dispose();
+        minecraftRootWatcher?.Dispose();
+        instanceDirectoryWatcher?.Dispose();
+        instanceMetadataWatcher?.Dispose();
         minecraftParentWatcher = null;
-        minecraftVersionsWatcher = null;
-        dataDirectoryWatcher = null;
+        minecraftRootWatcher = null;
+        instanceDirectoryWatcher = null;
+        instanceMetadataWatcher = null;
+        watchedVersionsDirectory = null;
     }
 
     public void Dispose()
@@ -71,28 +91,101 @@ public sealed class LauncherStateMonitor : ILauncherStateMonitor
         Stop();
     }
 
-    private FileSystemWatcher? TryCreateWatcher(string path, string filter, bool includeSubdirectories)
+    internal static bool IsRelevantMetadataPath(string versionsDirectory, string fullPath)
+    {
+        if (string.IsNullOrWhiteSpace(versionsDirectory) || string.IsNullOrWhiteSpace(fullPath))
+            return false;
+
+        string relativePath;
+        try
+        {
+            relativePath = Path.GetRelativePath(
+                Path.GetFullPath(versionsDirectory),
+                Path.GetFullPath(fullPath));
+        }
+        catch (Exception exception) when (exception is ArgumentException
+                                         or NotSupportedException
+                                         or PathTooLongException)
+        {
+            return false;
+        }
+
+        if (relativePath is "." or ".."
+            || relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var segments = relativePath.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 2)
+            return string.Equals(Path.GetExtension(segments[1]), ".json", StringComparison.OrdinalIgnoreCase);
+
+        return segments.Length == 3
+            && string.Equals(
+                segments[1],
+                LauncherApplicationIdentity.StorageDirectoryName,
+                StringComparison.OrdinalIgnoreCase)
+            && string.Equals(segments[2], "instance-settings.json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private FileSystemWatcher? TryCreateStructureWatcher(
+        string path,
+        string filter,
+        bool includeSubdirectories)
+    {
+        var watcher = TryCreateWatcher(
+            path,
+            filter,
+            includeSubdirectories,
+            NotifyFilters.DirectoryName);
+        if (watcher is null)
+            return null;
+
+        watcher.Created += WatcherStateChanged;
+        watcher.Deleted += WatcherStateChanged;
+        watcher.Renamed += WatcherStateRenamed;
+        watcher.Error += WatcherError;
+        watcher.EnableRaisingEvents = true;
+        return watcher;
+    }
+
+    private FileSystemWatcher? TryCreateMetadataWatcher(string versionsDirectory)
+    {
+        var watcher = TryCreateWatcher(
+            versionsDirectory,
+            "*.json",
+            includeSubdirectories: true,
+            NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size);
+        if (watcher is null)
+            return null;
+
+        watcher.Changed += MetadataWatcherStateChanged;
+        watcher.Created += MetadataWatcherStateChanged;
+        watcher.Deleted += MetadataWatcherStateChanged;
+        watcher.Renamed += MetadataWatcherStateRenamed;
+        watcher.Error += WatcherError;
+        watcher.EnableRaisingEvents = true;
+        return watcher;
+    }
+
+    private static FileSystemWatcher? TryCreateWatcher(
+        string path,
+        string filter,
+        bool includeSubdirectories,
+        NotifyFilters notifyFilter)
     {
         if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
             return null;
 
         try
         {
-            var watcher = new FileSystemWatcher(path, filter)
+            return new FileSystemWatcher(path, filter)
             {
                 IncludeSubdirectories = includeSubdirectories,
-                NotifyFilter = NotifyFilters.DirectoryName
-                    | NotifyFilters.FileName
-                    | NotifyFilters.LastWrite
-                    | NotifyFilters.Size
+                NotifyFilter = notifyFilter
             };
-
-            watcher.Changed += WatcherStateChanged;
-            watcher.Created += WatcherStateChanged;
-            watcher.Deleted += WatcherStateChanged;
-            watcher.Renamed += WatcherStateRenamed;
-            watcher.EnableRaisingEvents = true;
-            return watcher;
         }
         catch (IOException)
         {
@@ -110,24 +203,52 @@ public sealed class LauncherStateMonitor : ILauncherStateMonitor
 
     private void WatcherStateChanged(object sender, FileSystemEventArgs e)
     {
-        if (!IsCurrentWatcher(sender))
-            return;
-
-        StateChanged?.Invoke(this, EventArgs.Empty);
+        if (IsCurrentWatcher(sender))
+            StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void WatcherStateRenamed(object sender, RenamedEventArgs e)
     {
-        if (!IsCurrentWatcher(sender))
-            return;
+        if (IsCurrentWatcher(sender))
+            StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
-        StateChanged?.Invoke(this, EventArgs.Empty);
+    private void MetadataWatcherStateChanged(object sender, FileSystemEventArgs e)
+    {
+        if (ReferenceEquals(sender, instanceMetadataWatcher)
+            && watchedVersionsDirectory is not null
+            && IsRelevantMetadataPath(watchedVersionsDirectory, e.FullPath))
+        {
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void MetadataWatcherStateRenamed(object sender, RenamedEventArgs e)
+    {
+        if (!ReferenceEquals(sender, instanceMetadataWatcher)
+            || watchedVersionsDirectory is null)
+        {
+            return;
+        }
+
+        if (IsRelevantMetadataPath(watchedVersionsDirectory, e.FullPath)
+            || IsRelevantMetadataPath(watchedVersionsDirectory, e.OldFullPath))
+        {
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void WatcherError(object sender, ErrorEventArgs e)
+    {
+        if (IsCurrentWatcher(sender))
+            StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private bool IsCurrentWatcher(object sender)
     {
         return ReferenceEquals(sender, minecraftParentWatcher)
-            || ReferenceEquals(sender, minecraftVersionsWatcher)
-            || ReferenceEquals(sender, dataDirectoryWatcher);
+            || ReferenceEquals(sender, minecraftRootWatcher)
+            || ReferenceEquals(sender, instanceDirectoryWatcher)
+            || ReferenceEquals(sender, instanceMetadataWatcher);
     }
 }

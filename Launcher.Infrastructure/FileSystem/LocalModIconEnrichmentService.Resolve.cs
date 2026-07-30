@@ -62,6 +62,17 @@ public sealed partial class LocalModIconEnrichmentService
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var staleResults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var unresolved = new List<ModIconLookupCandidate>();
+        var lookups = new List<ModIconLookupCandidate>(candidates.Count);
+
+        // JAR 哈希是此流程最昂贵的本地操作。不能在缓存索引锁内执行，否则列表的轻量
+        // 缓存查询（例如 Mod 启停后的图标复用）会被大型整合包的全量哈希阻塞数秒。
+        foreach (var mod in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var lookup = await CreateLookupCandidateAsync(mod, cancellationToken).ConfigureAwait(false);
+            if (lookup is not null)
+                lookups.Add(lookup);
+        }
 
         await cacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         RemoteIconCacheIndex index;
@@ -70,13 +81,9 @@ public sealed partial class LocalModIconEnrichmentService
             Directory.CreateDirectory(cacheDirectory);
             index = await cacheIndexStore.LoadAsync(cancellationToken).ConfigureAwait(false);
 
-            foreach (var mod in candidates)
+            foreach (var lookup in lookups)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var lookup = await CreateLookupCandidateAsync(mod, cancellationToken).ConfigureAwait(false);
-                if (lookup is null)
-                    continue;
-
                 var cachedIcon = TryGetCachedIcon(
                     index,
                     lookup.Sha1Alias,
@@ -89,12 +96,12 @@ public sealed partial class LocalModIconEnrichmentService
                     CacheFileAlias(index, lookup);
                     if (isStale)
                     {
-                        staleResults[mod.FullPath] = cachedIcon;
+                        staleResults[lookup.FullPath] = cachedIcon;
                         unresolved.Add(lookup);
                     }
                     else
                     {
-                        result[mod.FullPath] = cachedIcon;
+                        result[lookup.FullPath] = cachedIcon;
                     }
                 }
                 else

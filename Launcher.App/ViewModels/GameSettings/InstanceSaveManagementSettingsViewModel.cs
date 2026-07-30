@@ -52,7 +52,6 @@ public sealed partial class InstanceSaveManagementSettingsViewModel : GameSettin
     private bool isSectionActive;
     private bool isInitialProjectionReady;
     private bool suppressLocalCollectionEvents;
-    private bool needsRefreshOnActivation = true;
     private long lifecycleGeneration;
 
     // 以下属性是 XAML 所需的派生页面状态，不是第二份业务数据源。
@@ -168,7 +167,6 @@ public sealed partial class InstanceSaveManagementSettingsViewModel : GameSettin
         // 切换监听目标时会触发集合清空事件；暂时抑制回调，最后由本方法一次性重置页面。
         Interlocked.Increment(ref lifecycleGeneration);
         selectedInstance = instance;
-        needsRefreshOnActivation = true;
         loadTask = null;
         hasPendingVisualRefresh = false;
         isVisibleRefreshQueued = false;
@@ -176,7 +174,7 @@ public sealed partial class InstanceSaveManagementSettingsViewModel : GameSettin
         try
         {
             localSavesViewModel.SetSelectedInstance(instance);
-            localSavesViewModel.SetWatcherEnabled(isSectionActive && selectedInstance is not null);
+            localSavesViewModel.SetSectionActive(isSectionActive && selectedInstance is not null);
         }
         finally
         {
@@ -213,9 +211,17 @@ public sealed partial class InstanceSaveManagementSettingsViewModel : GameSettin
         isSectionActive = false;
         Interlocked.Increment(ref lifecycleGeneration);
         loadTask = null;
-        needsRefreshOnActivation = true;
         IsLoadingSaves = false;
-        localSavesViewModel.SetWatcherEnabled(false);
+        localSavesViewModel.SetSectionActive(false);
+    }
+
+    public void ReleaseLocalObservation()
+    {
+        isSectionActive = false;
+        Interlocked.Increment(ref lifecycleGeneration);
+        loadTask = null;
+        IsLoadingSaves = false;
+        localSavesViewModel.ReleaseObservation();
     }
 
     public void SuspendLocalWatchersForInstanceRename()
@@ -229,7 +235,7 @@ public sealed partial class InstanceSaveManagementSettingsViewModel : GameSettin
         {
             Interlocked.Increment(ref lifecycleGeneration);
             loadTask = null;
-            needsRefreshOnActivation = true;
+            localSavesViewModel.InvalidateSnapshot();
         }
         localSavesViewModel.ResumeWatcherAfterInstanceRename(restart);
     }
@@ -238,17 +244,13 @@ public sealed partial class InstanceSaveManagementSettingsViewModel : GameSettin
     {
         if (!isSectionActive)
         {
-            // 只在页面可见时监听目录，避免后台页面持续刷新和播放动画。
+            // 首次进入后保留轻量监听；隐藏期间 watcher 只标记失效，不扫描目录或重建页面。
             isSectionActive = true;
             Interlocked.Increment(ref lifecycleGeneration);
             loadTask = null;
-            localSavesViewModel.SetWatcherEnabled(selectedInstance is not null);
+            localSavesViewModel.SetSectionActive(selectedInstance is not null);
         }
 
-        if (!needsRefreshOnActivation)
-            return EnsureLoadedForSelectedInstanceAsync();
-
-        needsRefreshOnActivation = false;
         if (selectedInstance is null)
             return Task.CompletedTask;
 

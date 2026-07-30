@@ -92,6 +92,82 @@ public sealed class LocalResourceCategoryEnrichmentServiceTests : TestTempDirect
             "index.json")));
     }
 
+    [Fact]
+    public async Task ResourcePackMetadataDownloadsMatchedRemoteProjectIcon()
+    {
+        Directory.CreateDirectory(TempRoot);
+        var path = Path.Combine(TempRoot, "matched-resource-pack.zip");
+        var bytes = Encoding.UTF8.GetBytes("recognized resource pack");
+        File.WriteAllBytes(path, bytes);
+        var sha1 = Convert.ToHexString(SHA1.HashData(bytes)).ToLowerInvariant();
+        var thumbnailService = new RecordingThumbnailService(
+            downloadedSource: "file:///cache/remote-resource-pack.png");
+        using var httpClient = new HttpClient(new ModrinthMatchHandler(sha1));
+        var service = new LocalResourceCategoryEnrichmentService(
+            new LauncherPathProvider(TempRoot),
+            httpClient,
+            logger: NullLogger<LocalResourceCategoryEnrichmentService>.Instance,
+            thumbnailService: thumbnailService);
+
+        var result = await service.ResolveMetadataAsync(
+            [new LocalResourceCategoryCandidate(path, ResourceProjectKind.ResourcePack)]);
+
+        var metadata = Assert.Single(result).Value;
+        Assert.Equal("file:///cache/remote-resource-pack.png", metadata.IconSource);
+        Assert.Equal(
+            [ResourceProjectCategory.Realistic],
+            metadata.Categories);
+        Assert.Equal(
+            new ResourceProjectReference(
+                ResourceProjectKind.ResourcePack,
+                ResourceProjectSource.Modrinth,
+                "shader-project"),
+            metadata.ProjectReference);
+        var project = Assert.Single(thumbnailService.DownloadedProjects);
+        Assert.Equal(ResourceProjectKind.ResourcePack, project.Kind);
+        Assert.Equal("https://cdn.example/shader.png", project.IconUrl);
+    }
+
+    [Fact]
+    public async Task CachedResourcePackMetadataUsesCachedThumbnailWithoutNetworkOrDownload()
+    {
+        Directory.CreateDirectory(TempRoot);
+        var path = Path.Combine(TempRoot, "cached-resource-pack.zip");
+        var bytes = Encoding.UTF8.GetBytes("cached resource pack");
+        File.WriteAllBytes(path, bytes);
+        var sha1 = Convert.ToHexString(SHA1.HashData(bytes)).ToLowerInvariant();
+        var pathProvider = new LauncherPathProvider(TempRoot);
+        using (var firstClient = new HttpClient(new ModrinthMatchHandler(sha1)))
+        {
+            var firstService = new LocalResourceCategoryEnrichmentService(
+                pathProvider,
+                firstClient,
+                logger: NullLogger<LocalResourceCategoryEnrichmentService>.Instance,
+                thumbnailService: new RecordingThumbnailService(
+                    downloadedSource: "file:///cache/first-download.png"));
+            await firstService.ResolveMetadataAsync(
+                [new LocalResourceCategoryCandidate(path, ResourceProjectKind.ResourcePack)]);
+        }
+
+        var thumbnailService = new RecordingThumbnailService(
+            cachedSource: "file:///cache/cached-resource-pack.png");
+        using var rejectingClient = new HttpClient(new RejectingHandler());
+        var restartedService = new LocalResourceCategoryEnrichmentService(
+            pathProvider,
+            rejectingClient,
+            logger: NullLogger<LocalResourceCategoryEnrichmentService>.Instance,
+            thumbnailService: thumbnailService);
+
+        var result = await restartedService.ResolveCachedMetadataAsync(
+            [new LocalResourceCategoryCandidate(path, ResourceProjectKind.ResourcePack)]);
+
+        var metadata = Assert.Single(result).Value;
+        Assert.Equal("file:///cache/cached-resource-pack.png", metadata.IconSource);
+        Assert.Equal(ResourceProjectKind.ResourcePack, metadata.ProjectReference?.Kind);
+        Assert.Empty(thumbnailService.DownloadedProjects);
+        Assert.Single(thumbnailService.CachedProjects);
+    }
+
     private sealed class ModrinthMatchHandler(string sha1) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
@@ -117,6 +193,29 @@ public sealed class LocalResourceCategoryEnrichmentServiceTests : TestTempDirect
             HttpRequestMessage request,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Directory resources must not trigger remote matching.");
+    }
+
+    private sealed class RecordingThumbnailService(
+        string? cachedSource = null,
+        string? downloadedSource = null) : IResourceThumbnailService
+    {
+        public List<ResourceProject> CachedProjects { get; } = [];
+
+        public List<ResourceProject> DownloadedProjects { get; } = [];
+
+        public string? TryGetCachedThumbnailSource(ResourceProject project)
+        {
+            CachedProjects.Add(project);
+            return cachedSource;
+        }
+
+        public Task<string?> GetOrCreateThumbnailSourceAsync(
+            ResourceProject project,
+            CancellationToken cancellationToken = default)
+        {
+            DownloadedProjects.Add(project);
+            return Task.FromResult(downloadedSource);
+        }
     }
 
 }

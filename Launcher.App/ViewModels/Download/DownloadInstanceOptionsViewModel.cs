@@ -245,6 +245,7 @@ public sealed partial class DownloadInstanceOptionsViewModel : ObservableObject,
             : InstanceName.Trim();
         return new DownloadInstallRequest(
             selectedMinecraftVersion.Name,
+            selectedMinecraftVersion.Type,
             instanceName,
             selectedLoader.Kind,
             selectedLoader.Kind is LoaderKind.Vanilla ? null : SelectedLoaderVersion?.Version,

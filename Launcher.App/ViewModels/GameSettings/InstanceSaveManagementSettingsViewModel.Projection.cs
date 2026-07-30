@@ -93,14 +93,18 @@ public sealed partial class InstanceSaveManagementSettingsViewModel
         if (selectedInstance is null)
             return;
         var expectedInstance = selectedInstance;
+        var previousRevision = localSavesViewModel.Revision;
 
         try
         {
-            if (!await localSavesViewModel.RefreshSavesAsync()
+            if (!await localSavesViewModel.RefreshIfInvalidatedAsync()
                 || !IsCurrentLifecycle(generation, expectedInstance))
             {
                 return;
             }
+
+            if (localSavesViewModel.Revision == previousRevision)
+                return;
 
             hasPendingVisualRefresh = false;
             RefreshFromLocalSaves();

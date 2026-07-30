@@ -105,6 +105,6 @@ public sealed partial class MainViewModel
     partial void OnCurrentPageChanged(string value)
     {
         UpdateNavigationSelection();
-        ObserveShellTask(SyncCurrentStateAsync(), "synchronize current page state");
+        ObserveShellTask(ActivateCurrentPageAsync(), "activate current page");
     }
 }

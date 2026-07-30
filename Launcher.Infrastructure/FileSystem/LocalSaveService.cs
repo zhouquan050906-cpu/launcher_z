@@ -33,6 +33,8 @@ public sealed class LocalSaveService : ILocalSaveService
     private readonly IUserFileDeletionService userFileDeletionService;
     private readonly LocalSaveArchiveImporter archiveImporter;
     private readonly string iconCacheDirectory;
+    private readonly SemaphoreSlim snapshotLock = new(1, 1);
+    private readonly BoundedLocalContentSnapshotCache<LocalSaveIdentity, LocalSave> snapshots = new();
 
     public LocalSaveService(
         LauncherPathProvider? pathProvider = null,
@@ -46,14 +48,23 @@ public sealed class LocalSaveService : ILocalSaveService
         iconCacheDirectory = Path.Combine(effectivePathProvider.DefaultDataDirectory, "cache", "saves", "icons");
     }
 
-    public Task<IReadOnlyList<LocalSave>> GetSavesAsync(
+    public async Task<IReadOnlyList<LocalSave>> GetSavesAsync(
         GameInstance instance,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(instance);
-        return Task.Run<IReadOnlyList<LocalSave>>(
-            () => LoadSaves(instance, cancellationToken),
-            cancellationToken);
+        await snapshotLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await Task.Run<IReadOnlyList<LocalSave>>(
+                    () => LoadSaves(instance, cancellationToken),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            snapshotLock.Release();
+        }
     }
 
     public Task<LocalSaveImportResult> ImportFromArchiveAsync(
@@ -93,6 +104,7 @@ public sealed class LocalSaveService : ILocalSaveService
         var savesDirectory = GetSavesDirectory(instance);
         if (!Directory.Exists(savesDirectory))
         {
+            snapshots.Remove(savesDirectory);
             logger.LogDebug(
                 "No local saves directory found. InstanceId={InstanceId} SavesDirectory={SavesDirectory}",
                 instance.Id,
@@ -100,12 +112,21 @@ public sealed class LocalSaveService : ILocalSaveService
             return [];
         }
 
-        var saves = Directory.EnumerateDirectories(savesDirectory, "*", SearchOption.TopDirectoryOnly)
-            .Select(ToLocalSave)
-            .OrderByDescending(save => save.CreatedAt)
-            .ThenBy(save => save.Name, StringComparer.OrdinalIgnoreCase)
+        var inventory = Directory.EnumerateDirectories(savesDirectory, "*", SearchOption.TopDirectoryOnly)
+            .Select(CreateIdentity)
+            .OrderByDescending(item => item.CreationTimeUtcTicks)
+            .ThenBy(item => Path.GetFileName(item.FullPath), StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        logger.LogDebug("Local saves loaded. InstanceId={InstanceId} Count={SaveCount}", instance.Id, saves.Length);
+        if (inventory.Length == 0)
+        {
+            snapshots.Remove(savesDirectory);
+            logger.LogDebug("Local save inventory checked. InstanceId={InstanceId} Count=0", instance.Id);
+            return [];
+        }
+
+        var snapshot = snapshots.GetOrCreate(savesDirectory);
+        var saves = snapshot.Reconcile(inventory, static item => item.FullPath, ToLocalSave);
+        logger.LogDebug("Local save inventory checked. InstanceId={InstanceId} Count={SaveCount}", instance.Id, saves.Count);
         return saves;
     }
 
@@ -132,16 +153,41 @@ public sealed class LocalSaveService : ILocalSaveService
         }
     }
 
-    private LocalSave ToLocalSave(string path)
+    private LocalSave ToLocalSave(string path) => ToLocalSave(CreateIdentity(path));
+
+    private static LocalSaveIdentity CreateIdentity(string path)
     {
         var directory = new DirectoryInfo(path);
+        var iconPath = Path.Combine(directory.FullName, "icon.png");
+        if (!File.Exists(iconPath))
+        {
+            return new LocalSaveIdentity(
+                directory.FullName,
+                directory.CreationTimeUtc.Ticks,
+                false,
+                0,
+                0);
+        }
+
+        var icon = new FileInfo(iconPath);
+        return new LocalSaveIdentity(
+            directory.FullName,
+            directory.CreationTimeUtc.Ticks,
+            true,
+            icon.Length,
+            icon.LastWriteTimeUtc.Ticks);
+    }
+
+    private LocalSave ToLocalSave(LocalSaveIdentity identity)
+    {
+        var name = Path.GetFileName(identity.FullPath);
         return new LocalSave
         {
-            Name = directory.Name,
-            DirectoryName = directory.Name,
-            FullPath = directory.FullName,
-            IconSource = TryGetCachedIconSource(directory),
-            CreatedAt = new DateTimeOffset(directory.CreationTimeUtc)
+            Name = name,
+            DirectoryName = name,
+            FullPath = identity.FullPath,
+            IconSource = identity.HasIcon ? TryGetCachedIconSource(new DirectoryInfo(identity.FullPath)) : null,
+            CreatedAt = new DateTimeOffset(identity.CreationTimeUtcTicks, TimeSpan.Zero)
         };
     }
 

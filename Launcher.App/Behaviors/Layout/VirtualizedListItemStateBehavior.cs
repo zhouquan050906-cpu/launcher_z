@@ -52,6 +52,13 @@ public static class VirtualizedListItemStateBehavior
             typeof(VirtualizedListItemStateBehavior),
             new PropertyMetadata(0, OnEntranceAnimationTokenChanged));
 
+    public static readonly DependencyProperty ScrollResetTokenProperty =
+        DependencyProperty.RegisterAttached(
+            "ScrollResetToken",
+            typeof(int),
+            typeof(VirtualizedListItemStateBehavior),
+            new PropertyMetadata(0, OnScrollResetTokenChanged));
+
     public static readonly DependencyProperty ContentTopOffsetProperty =
         DependencyProperty.RegisterAttached(
             "ContentTopOffset",
@@ -66,6 +73,10 @@ public static class VirtualizedListItemStateBehavior
     public static int GetEntranceAnimationToken(DependencyObject element) => (int)element.GetValue(EntranceAnimationTokenProperty);
 
     public static void SetEntranceAnimationToken(DependencyObject element, int value) => element.SetValue(EntranceAnimationTokenProperty, value);
+
+    public static int GetScrollResetToken(DependencyObject element) => (int)element.GetValue(ScrollResetTokenProperty);
+
+    public static void SetScrollResetToken(DependencyObject element, int value) => element.SetValue(ScrollResetTokenProperty, value);
 
     public static double GetContentTopOffset(DependencyObject element) => (double)element.GetValue(ContentTopOffsetProperty);
 
@@ -102,6 +113,16 @@ public static class VirtualizedListItemStateBehavior
             GetState(listBox).QueueEntranceAnimation(token);
     }
 
+    private static void OnScrollResetTokenChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs e)
+    {
+        if (dependencyObject is not ListBox listBox)
+            return;
+
+        var token = (int)e.NewValue;
+        if (token > 0)
+            GetState(listBox).QueueScrollReset(token);
+    }
+
     private static ListBoxState GetState(ListBox listBox)
     {
         if (listBox.GetValue(StateProperty) is ListBoxState state)
@@ -136,6 +157,8 @@ public static class VirtualizedListItemStateBehavior
         private bool isEntranceAnimationPending;
         private int entranceAnimationPassesRemaining;
         private int observedEntranceAnimationToken;
+        private int observedScrollResetToken;
+        private bool isScrollResetPending;
         private object? hoveredItem;
 
         public ListBoxState()
@@ -160,6 +183,8 @@ public static class VirtualizedListItemStateBehavior
             target.SelectionChanged += ListBox_OnSelectionChanged;
             target.ItemContainerGenerator.StatusChanged += ItemContainerGenerator_OnStatusChanged;
             AttachScrollViewer();
+            QueueScrollReset(GetScrollResetToken(target));
+            TryApplyPendingScrollReset();
             QueueRenderedItemStateRefresh();
         }
 
@@ -199,9 +224,23 @@ public static class VirtualizedListItemStateBehavior
             QueueRenderedItemStateRefresh();
         }
 
+        /// <summary>
+        /// 只在新的上下文令牌发布时重置滚动；控件临时卸载后使用同一令牌重新挂载不会改变原位置。
+        /// </summary>
+        public void QueueScrollReset(int token)
+        {
+            if (token <= 0 || token == observedScrollResetToken)
+                return;
+
+            observedScrollResetToken = token;
+            isScrollResetPending = true;
+            TryApplyPendingScrollReset();
+        }
+
         private void ListBox_OnLoaded(object sender, RoutedEventArgs e)
         {
             AttachScrollViewer();
+            TryApplyPendingScrollReset();
             QueueRenderedItemStateRefresh();
 
             if (listBox is { } target)
@@ -246,6 +285,21 @@ public static class VirtualizedListItemStateBehavior
             scrollViewer = nextScrollViewer;
             if (scrollViewer is not null)
                 scrollViewer.ScrollChanged += ScrollViewer_OnScrollChanged;
+        }
+
+        private void TryApplyPendingScrollReset()
+        {
+            if (!isScrollResetPending || listBox is null)
+                return;
+
+            AttachScrollViewer();
+            if (scrollViewer is null)
+                return;
+
+            isScrollResetPending = false;
+            SmoothScrollBehavior.CancelAnimation(scrollViewer);
+            scrollViewer.ScrollToVerticalOffset(0);
+            QueueRenderedItemStateRefresh();
         }
 
         private void DetachScrollViewer()

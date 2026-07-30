@@ -91,6 +91,31 @@ public sealed class LocalSaveServiceTests
     }
 
     [Fact]
+    public async Task GetSavesAsyncIgnoresWorldDataChangesAndReusesSnapshot()
+    {
+        var instanceDirectory = CreateTempDirectory();
+        var appDataDirectory = CreateTempDirectory();
+        try
+        {
+            var worldDirectory = Directory.CreateDirectory(Path.Combine(instanceDirectory, "saves", "World")).FullName;
+            var regionDirectory = Directory.CreateDirectory(Path.Combine(worldDirectory, "region")).FullName;
+            var service = new LocalSaveService(new LauncherPathProvider(appDataDirectory));
+            var instance = CreateInstance(instanceDirectory);
+
+            var first = Assert.Single(await service.GetSavesAsync(instance));
+            await File.WriteAllTextAsync(Path.Combine(regionDirectory, "r.0.0.mca"), "changed");
+            var second = Assert.Single(await service.GetSavesAsync(instance));
+
+            Assert.Same(first, second);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(instanceDirectory);
+            DeleteDirectoryIfExists(appDataDirectory);
+        }
+    }
+
+    [Fact]
     public async Task DeleteAsyncRemovesSingleSaveDirectory()
     {
         var instanceDirectory = CreateTempDirectory();

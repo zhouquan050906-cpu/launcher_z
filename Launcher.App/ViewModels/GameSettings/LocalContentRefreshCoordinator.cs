@@ -38,6 +38,10 @@ internal sealed class LocalContentRefreshCoordinator<TContent> : IDisposable
     private readonly InstanceContentRefreshWatcher watcher;
     private CancellationTokenSource? refreshCancellation;
     private int refreshGeneration;
+    private long invalidationRevision;
+    private long appliedInvalidationRevision;
+    private bool observationArmed;
+    private volatile bool isSectionActive;
 
     public LocalContentRefreshCoordinator(
         IInstanceDirectoryMonitor monitor,
@@ -62,20 +66,36 @@ internal sealed class LocalContentRefreshCoordinator<TContent> : IDisposable
             RefreshAsync,
             reportWatcherFailure,
             logger,
-            shouldRefresh);
+            shouldRefresh,
+            _ => Interlocked.Increment(ref invalidationRevision),
+            () => isSectionActive);
     }
 
     public GameInstance? SelectedInstance { get; private set; }
 
     public IReadOnlyList<TContent> CurrentItems { get; private set; } = [];
 
+    public long Revision { get; private set; }
+
     /// <summary>
     /// 切换内容所属实例，并使旧实例所有在途刷新立即失效。
     /// </summary>
     public void SetInstance(GameInstance? instance)
     {
+        if ((SelectedInstance is not null && IsSameInstancePath(SelectedInstance, instance))
+            || SelectedInstance is null && instance is null)
+        {
+            SelectedInstance = instance;
+            watcher.SetInstance(instance);
+            return;
+        }
+
         // 先使在途结果失效，再切换监听和清空界面，保证旧实例的数据不会回写到新实例。
+        watcher.SetEnabled(false);
+        observationArmed = false;
         SelectedInstance = instance;
+        Interlocked.Exchange(ref invalidationRevision, 0);
+        Interlocked.Exchange(ref appliedInvalidationRevision, 0);
         Interlocked.Increment(ref refreshGeneration);
         CancelRefresh();
         watcher.SetInstance(instance);
@@ -83,14 +103,43 @@ internal sealed class LocalContentRefreshCoordinator<TContent> : IDisposable
         uiDispatcher.Invoke(clear);
     }
 
-    public void SetWatcherEnabled(bool enabled)
+    public void SetSectionActive(bool active)
     {
-        watcher.SetEnabled(enabled);
-        if (!enabled)
+        isSectionActive = active;
+        if (active && SelectedInstance is not null && !observationArmed)
         {
+            observationArmed = true;
+            watcher.SetEnabled(true);
+        }
+
+        if (!active)
+        {
+            if (Volatile.Read(ref refreshCancellation) is not null)
+                Interlocked.Increment(ref invalidationRevision);
             Interlocked.Increment(ref refreshGeneration);
             CancelRefresh();
         }
+    }
+
+    public Task<bool> RefreshIfInvalidatedAsync()
+    {
+        return isSectionActive
+            && Interlocked.Read(ref invalidationRevision) > Interlocked.Read(ref appliedInvalidationRevision)
+                ? RefreshAsync()
+                : Task.FromResult(true);
+    }
+
+    public void InvalidateSnapshot() => Interlocked.Increment(ref invalidationRevision);
+
+    public void ReleaseObservation()
+    {
+        isSectionActive = false;
+        if (observationArmed)
+            Interlocked.Increment(ref invalidationRevision);
+        observationArmed = false;
+        watcher.SetEnabled(false);
+        Interlocked.Increment(ref refreshGeneration);
+        CancelRefresh();
     }
 
     public void SuspendForRename()
@@ -101,11 +150,48 @@ internal sealed class LocalContentRefreshCoordinator<TContent> : IDisposable
 
     public void ResumeAfterRename(bool restart = true) => watcher.Resume(restart);
 
+    public void SuspendForInternalOperation() => watcher.Suspend();
+
+    public void ResumeAfterInternalOperation() => watcher.Resume();
+
+    public async Task<TResult> ExecuteInternalOperationAsync<TResult>(
+        Func<Task<TResult>> operation,
+        Func<TResult, bool>? shouldRefresh = null)
+    {
+        watcher.Suspend();
+        try
+        {
+            var result = await operation().ConfigureAwait(false);
+            if (shouldRefresh?.Invoke(result) != false)
+                await RefreshAsync().ConfigureAwait(false);
+            return result;
+        }
+        finally
+        {
+            watcher.Resume();
+        }
+    }
+
+    public async Task ExecuteInternalOperationAsync(Func<Task> operation)
+    {
+        watcher.Suspend();
+        try
+        {
+            await operation().ConfigureAwait(false);
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            watcher.Resume();
+        }
+    }
+
     /// <summary>
     /// 加载当前实例内容，并且仅在实例和刷新代次仍匹配时发布结果。
     /// </summary>
     public async Task<bool> RefreshAsync()
     {
+        var invalidationAtStart = Interlocked.Read(ref invalidationRevision);
         // generation 与 CTS 同时使用：CTS 尽快停止旧工作，generation 则在依赖不响应取消时阻止陈旧结果发布。
         var generation = Interlocked.Increment(ref refreshGeneration);
         var replacement = new CancellationTokenSource();
@@ -116,10 +202,15 @@ internal sealed class LocalContentRefreshCoordinator<TContent> : IDisposable
 
         if (instance is null)
         {
-            CurrentItems = [];
-            uiDispatcher.Invoke(clear);
+            var changed = CurrentItems.Count > 0;
+            if (CurrentItems.Count > 0)
+            {
+                CurrentItems = [];
+                Revision++;
+                uiDispatcher.Invoke(clear);
+            }
             Release(replacement);
-            return true;
+            return changed;
         }
 
         try
@@ -140,8 +231,17 @@ internal sealed class LocalContentRefreshCoordinator<TContent> : IDisposable
                     || replacement.IsCancellationRequested
                     || !IsSameInstancePath(instance, SelectedInstance))
                     return;
+                if (!HasReferenceChanges(CurrentItems, items))
+                {
+                    AdvanceAppliedInvalidationRevision(invalidationAtStart);
+                    published = true;
+                    return;
+                }
+
                 CurrentItems = items;
+                Revision++;
                 apply(items);
+                AdvanceAppliedInvalidationRevision(invalidationAtStart);
                 published = true;
             });
             return published;
@@ -181,10 +281,39 @@ internal sealed class LocalContentRefreshCoordinator<TContent> : IDisposable
             cancellation.Dispose();
     }
 
+    private void AdvanceAppliedInvalidationRevision(long revision)
+    {
+        while (true)
+        {
+            var current = Interlocked.Read(ref appliedInvalidationRevision);
+            if (current >= revision
+                || Interlocked.CompareExchange(ref appliedInvalidationRevision, revision, current) == current)
+            {
+                return;
+            }
+        }
+    }
+
     private static bool IsSameInstancePath(GameInstance left, GameInstance? right)
     {
         return right is not null
             && string.Equals(left.Id, right.Id, StringComparison.Ordinal)
             && string.Equals(left.InstanceDirectory, right.InstanceDirectory, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasReferenceChanges(
+        IReadOnlyList<TContent> current,
+        IReadOnlyList<TContent> next)
+    {
+        if (current.Count != next.Count)
+            return true;
+
+        for (var index = 0; index < current.Count; index++)
+        {
+            if (!ReferenceEquals(current[index], next[index]))
+                return true;
+        }
+
+        return false;
     }
 }

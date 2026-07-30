@@ -40,7 +40,6 @@ public sealed class LocalModsViewModel : IDisposable
     // 启用状态通过文件后缀表达，因此重命名既是业务操作也会产生目录 watcher 回声。
     private const string EnabledModExtension = ".jar";
     private const string DisabledModExtension = ".jar.disabled";
-    private static readonly TimeSpan IgnoredWatcherPathTtl = TimeSpan.FromSeconds(2);
     // 文件操作和图标解析都在服务层完成；本类只维护当前实例快照及通知顺序。
     private readonly IModService modService;
     private readonly ILocalModIconEnrichmentService? iconEnrichmentService;
@@ -49,15 +48,17 @@ public sealed class LocalModsViewModel : IDisposable
     private readonly IUiDispatcher uiDispatcher;
     private readonly ILogger<LocalModsViewModel> logger;
     private readonly InstanceContentRefreshWatcher contentWatcher;
-    // 忽略表可能由 UI 操作和 watcher 线程同时访问，必须使用独立锁并设置短 TTL。
-    private readonly object ignoredWatcherPathsLock = new();
-    private readonly Dictionary<string, DateTimeOffset> ignoredWatcherPaths = new(StringComparer.OrdinalIgnoreCase);
     // 列表扫描和远程图标补全独立取消：新扫描立即停止旧图标，但缓存图标仍可先发布。
     private CancellationTokenSource? refreshCancellationTokenSource;
     private CancellationTokenSource? iconEnrichmentCancellationTokenSource;
     private GameInstance? selectedInstance;
     private IReadOnlyList<LocalMod> currentMods = Array.Empty<LocalMod>();
     private int modRefreshVersion;
+    private long revision;
+    private long invalidationRevision;
+    private long appliedInvalidationRevision;
+    private bool observationArmed;
+    private volatile bool isSectionActive;
 
     public LocalModsViewModel(
         IModService modService,
@@ -91,7 +92,9 @@ public sealed class LocalModsViewModel : IDisposable
             RefreshModsAsync,
             _ => this.uiDispatcher.Post(() => ReportStatus(Strings.Status_LoadLocalModsFailed)),
             this.logger,
-            ShouldRefreshForDirectoryChange);
+            ShouldRefreshForDirectoryChange,
+            _ => Interlocked.Increment(ref invalidationRevision),
+            () => isSectionActive);
     }
 
     public event EventHandler? ModsChanged;
@@ -100,13 +103,19 @@ public sealed class LocalModsViewModel : IDisposable
 
     public IReadOnlyList<LocalMod> CurrentMods => currentMods;
 
+    public long Revision => revision;
+
     /// <summary>
     /// 切换实例并重置 Mod 快照、监听目标以及图标补全任务。
     /// </summary>
     public void SetSelectedInstance(GameInstance? instance)
     {
         // 切换实例时立即使加载和图标补全失效，避免旧实例结果在稍后覆盖新实例列表。
+        contentWatcher.SetEnabled(false);
+        observationArmed = false;
         selectedInstance = instance;
+        Interlocked.Exchange(ref invalidationRevision, 0);
+        Interlocked.Exchange(ref appliedInvalidationRevision, 0);
         Interlocked.Increment(ref modRefreshVersion);
         CancelRefresh();
         CancelIconEnrichment();
@@ -118,16 +127,48 @@ public sealed class LocalModsViewModel : IDisposable
             instance?.Id ?? "<none>");
     }
 
-    public void SetWatcherEnabled(bool enabled)
+    public void SetSectionActive(bool active)
     {
-        contentWatcher.SetEnabled(enabled);
-        if (!enabled)
+        isSectionActive = active;
+        if (active && selectedInstance is not null && !observationArmed)
         {
+            observationArmed = true;
+            contentWatcher.SetEnabled(true);
+        }
+
+        if (!active)
+        {
+            if (Volatile.Read(ref refreshCancellationTokenSource) is not null)
+                Interlocked.Increment(ref invalidationRevision);
             Interlocked.Increment(ref modRefreshVersion);
             CancelRefresh();
-            CancelIconEnrichment();
-            categoryEnrichmentCoordinator.Cancel();
         }
+    }
+
+    public Task<bool> RefreshIfInvalidatedAsync()
+    {
+        return isSectionActive
+            && Interlocked.Read(ref invalidationRevision) > Interlocked.Read(ref appliedInvalidationRevision)
+                ? RefreshModsAsync()
+                : Task.FromResult(true);
+    }
+
+    public void InvalidateSnapshot()
+    {
+        Interlocked.Increment(ref invalidationRevision);
+    }
+
+    public void ReleaseObservation()
+    {
+        isSectionActive = false;
+        if (observationArmed)
+            Interlocked.Increment(ref invalidationRevision);
+        observationArmed = false;
+        contentWatcher.SetEnabled(false);
+        Interlocked.Increment(ref modRefreshVersion);
+        CancelRefresh();
+        CancelIconEnrichment();
+        categoryEnrichmentCoordinator.Cancel();
     }
 
     public void SuspendWatcherForInstanceRename()
@@ -147,6 +188,7 @@ public sealed class LocalModsViewModel : IDisposable
     public async Task<bool> RefreshModsAsync()
     {
         // 版本号负责兜底拒绝不响应取消的旧请求，CTS 负责尽快停止仍在执行的 I/O。
+        var invalidationAtStart = Interlocked.Read(ref invalidationRevision);
         var refreshVersion = Interlocked.Increment(ref modRefreshVersion);
         var refreshCts = ReplaceRefreshCancellationTokenSource();
         // 捕获实例引用和版本号作为本次请求身份，后续不直接相信可变 selectedInstance。
@@ -160,12 +202,29 @@ public sealed class LocalModsViewModel : IDisposable
         }
 
         IReadOnlyList<LocalMod> loadedMods;
+        IReadOnlyList<LocalMod> changedMods;
+        bool snapshotChanged;
+        bool cachedIconsChanged;
         try
         {
             // 阶段一读取本地 Mod；阶段二只查询缓存，不让远端网络阻塞列表首屏。
             loadedMods = await modService.GetModsAsync(instance, refreshCts.Token);
+            changedMods = FindChangedMods(loadedMods);
+            snapshotChanged = HasReferenceChanges(currentMods, loadedMods);
+            var iconCandidates = snapshotChanged || !IsIconEnrichmentActive
+                ? loadedMods.Where(mod => string.IsNullOrWhiteSpace(mod.IconSource)).ToArray()
+                : [];
             if (IsRefreshCurrent(instance, refreshVersion))
-                await ApplyCachedIconSourcesAsync(instance, loadedMods, refreshCts.Token);
+            {
+                cachedIconsChanged = await ApplyCachedIconSourcesAsync(
+                    instance,
+                    iconCandidates,
+                    refreshCts.Token);
+            }
+            else
+            {
+                cachedIconsChanged = false;
+            }
         }
         catch (OperationCanceledException) when (refreshCts.IsCancellationRequested)
         {
@@ -197,33 +256,67 @@ public sealed class LocalModsViewModel : IDisposable
             if (!IsRefreshCurrent(instance, refreshVersion))
                 return;
 
+            if (!HasReferenceChanges(currentMods, loadedMods))
+            {
+                if (cachedIconsChanged)
+                    ModsChanged?.Invoke(this, EventArgs.Empty);
+                published = true;
+                return;
+            }
+
             currentMods = loadedMods;
-            Mods.ReplaceWith(loadedMods);
+            Mods.SynchronizeByKey(
+                loadedMods,
+                static mod => mod.FullPath,
+                StringComparer.OrdinalIgnoreCase);
+            revision++;
             ModsChanged?.Invoke(this, EventArgs.Empty);
             published = true;
         });
         if (!published)
             return false;
+        AdvanceAppliedInvalidationRevision(invalidationAtStart);
         logger.LogDebug(
             "Local mods view refreshed. InstanceId={InstanceId} Count={ModCount}",
             instance.Id,
             Mods.Count);
         // 远程补全是非阻断增强，失败不会撤回已经可用的本地列表。
-        QueueRemoteIconEnrichment(instance, loadedMods, refreshVersion);
-        categoryEnrichmentCoordinator.Queue(loadedMods);
+        if (snapshotChanged)
+            CancelIconEnrichment();
+        if (!IsIconEnrichmentActive)
+            QueueRemoteIconEnrichment(instance, loadedMods);
+        if (changedMods.Count > 0)
+            categoryEnrichmentCoordinator.Queue(changedMods);
         return true;
+    }
+
+    private void AdvanceAppliedInvalidationRevision(long revisionToApply)
+    {
+        while (true)
+        {
+            var current = Interlocked.Read(ref appliedInvalidationRevision);
+            if (current >= revisionToApply)
+                return;
+            if (Interlocked.CompareExchange(
+                    ref appliedInvalidationRevision,
+                    revisionToApply,
+                    current) == current)
+            {
+                return;
+            }
+        }
     }
 
     /// <summary>
     /// 在列表首次发布前应用已有图标缓存，避免可复用图标再次闪烁加载。
     /// </summary>
-    private async Task ApplyCachedIconSourcesAsync(
+    private async Task<bool> ApplyCachedIconSourcesAsync(
         GameInstance instance,
         IReadOnlyList<LocalMod> loadedMods,
         CancellationToken cancellationToken)
     {
         if (iconEnrichmentService is null || loadedMods.Count == 0)
-            return;
+            return false;
 
         IReadOnlyDictionary<string, string> cachedIcons;
         try
@@ -243,11 +336,11 @@ public sealed class LocalModsViewModel : IDisposable
                 exception,
                 "Failed to resolve cached local mod icons before publishing mods. InstanceId={InstanceId}",
                 instance.Id);
-            return;
+            return false;
         }
 
         if (cachedIcons.Count == 0)
-            return;
+            return false;
 
         var appliedCount = 0;
         // 内嵌图标优先级更高，只给尚无 IconSource 的项目应用远程缓存。
@@ -271,6 +364,7 @@ public sealed class LocalModsViewModel : IDisposable
                 instance.Id,
                 appliedCount);
         }
+        return appliedCount > 0;
     }
 
     /// <summary>
@@ -281,28 +375,38 @@ public sealed class LocalModsViewModel : IDisposable
         ArgumentNullException.ThrowIfNull(mod);
 
         var enabled = !mod.IsEnabled;
-        var sourcePath = mod.FullPath;
-        var targetPath = GetPathForEnabledState(sourcePath, enabled);
-        // 本次重命名会被目录监听器再次观察到；短暂忽略源/目标路径可避免重复刷新和界面闪烁。
-        IgnoreWatcherPaths(sourcePath, targetPath);
+        var targetPath = GetPathForEnabledState(mod.FullPath, enabled);
+        // 内部重命名期间释放 watcher，完成后只发布一次内存变化，避免扫描和界面闪烁。
+        contentWatcher.Suspend();
 
         try
         {
             await modService.SetEnabledAsync(mod, enabled);
+            uiDispatcher.Invoke(() =>
+            {
+                ApplyEnabledStateLocallyCore(mod, targetPath, enabled);
+                revision++;
+                ModsChanged?.Invoke(this, EventArgs.Empty);
+            });
         }
-        catch
+        finally
         {
-            RemoveIgnoredWatcherPaths(sourcePath, targetPath);
-            throw;
+            contentWatcher.Resume();
         }
-
-        ApplyEnabledStateLocally(mod, targetPath, enabled, raiseChanged: true);
     }
 
     public async Task DeleteModAsync(LocalMod mod)
     {
-        await modService.DeleteAsync(mod);
-        await RefreshModsAsync();
+        contentWatcher.Suspend();
+        try
+        {
+            await modService.DeleteAsync(mod);
+            await RefreshModsAsync();
+        }
+        finally
+        {
+            contentWatcher.Resume();
+        }
     }
 
     /// <summary>
@@ -313,6 +417,9 @@ public sealed class LocalModsViewModel : IDisposable
         bool enabled)
     {
         ArgumentNullException.ThrowIfNull(mods);
+        contentWatcher.Suspend();
+        try
+        {
 
         // 先收集成功项，循环结束后一次性更新模型，避免 watcher/界面在中间状态反复刷新。
         var failedCount = 0;
@@ -324,7 +431,6 @@ public sealed class LocalModsViewModel : IDisposable
         {
             var sourcePath = mod.FullPath;
             var targetPath = GetPathForEnabledState(sourcePath, enabled);
-            IgnoreWatcherPaths(sourcePath, targetPath);
             try
             {
                 await modService.SetEnabledAsync(mod, enabled);
@@ -332,7 +438,6 @@ public sealed class LocalModsViewModel : IDisposable
             }
             catch (ModEnabledStateConflictException exception)
             {
-                RemoveIgnoredWatcherPaths(sourcePath, targetPath);
                 failedCount++;
                 firstConflictTargetPath ??= exception.TargetPath;
                 logger.LogWarning(
@@ -344,8 +449,6 @@ public sealed class LocalModsViewModel : IDisposable
             }
             catch (Exception exception)
             {
-                // 单项失败移除忽略路径，否则真实失败后的 watcher 事件会被错误吞掉。
-                RemoveIgnoredWatcherPaths(sourcePath, targetPath);
                 failedCount++;
                 logger.LogWarning(
                     exception,
@@ -363,16 +466,25 @@ public sealed class LocalModsViewModel : IDisposable
                 foreach (var (mod, targetPath) in appliedUpdates)
                     ApplyEnabledStateLocallyCore(mod, targetPath, enabled);
 
+                revision++;
                 ModsChanged?.Invoke(this, EventArgs.Empty);
             });
         }
 
         return new LocalModEnabledStateBatchResult(failedCount, firstConflictTargetPath);
+        }
+        finally
+        {
+            contentWatcher.Resume();
+        }
     }
 
     public async Task<int> DeleteModsAsync(IEnumerable<LocalMod> mods)
     {
         ArgumentNullException.ThrowIfNull(mods);
+        contentWatcher.Suspend();
+        try
+        {
 
         var failedCount = 0;
         foreach (var mod in mods.DistinctBy(mod => mod.FullPath, StringComparer.OrdinalIgnoreCase))
@@ -393,6 +505,11 @@ public sealed class LocalModsViewModel : IDisposable
 
         await RefreshModsAsync();
         return failedCount;
+        }
+        finally
+        {
+            contentWatcher.Resume();
+        }
     }
 
     public async Task<bool> ImportModFromPathAsync(string path, bool overwriteExisting = false, bool reportStatus = true)
@@ -400,21 +517,29 @@ public sealed class LocalModsViewModel : IDisposable
         if (selectedInstance is null || string.IsNullOrWhiteSpace(path))
             return false;
 
+        contentWatcher.Suspend();
         try
         {
-            await modService.ImportAsync(selectedInstance, path, overwriteExisting);
-        }
-        catch (ModFileImportNotFoundException)
-        {
-            if (reportStatus)
-                ReportStatus(Strings.Status_LocalModImportFileNotFound);
-            return false;
-        }
+            try
+            {
+                await modService.ImportAsync(selectedInstance, path, overwriteExisting);
+            }
+            catch (ModFileImportNotFoundException)
+            {
+                if (reportStatus)
+                    ReportStatus(Strings.Status_LocalModImportFileNotFound);
+                return false;
+            }
 
-        await RefreshModsAsync();
-        if (reportStatus)
-            ReportStatus(Strings.Status_LocalModImported);
-        return true;
+            await RefreshModsAsync();
+            if (reportStatus)
+                ReportStatus(Strings.Status_LocalModImported);
+            return true;
+        }
+        finally
+        {
+            contentWatcher.Resume();
+        }
     }
 
     public void Dispose()
@@ -434,8 +559,12 @@ public sealed class LocalModsViewModel : IDisposable
     {
         uiDispatcher.Invoke(() =>
         {
+            if (currentMods.Count == 0 && Mods.Count == 0)
+                return;
+
             currentMods = Array.Empty<LocalMod>();
             Mods.Clear();
+            revision++;
             ModsChanged?.Invoke(this, EventArgs.Empty);
         });
     }
@@ -453,7 +582,6 @@ public sealed class LocalModsViewModel : IDisposable
         var previous = Interlocked.Exchange(ref refreshCancellationTokenSource, next);
         previous?.Cancel();
         previous?.Dispose();
-        CancelIconEnrichment();
         return next;
     }
 
@@ -467,7 +595,7 @@ public sealed class LocalModsViewModel : IDisposable
     /// <summary>
     /// 在后台解析尚无图标的 Mod，并把结果绑定到发起刷新时的实例和代次。
     /// </summary>
-    private void QueueRemoteIconEnrichment(GameInstance instance, IReadOnlyList<LocalMod> loadedMods, int refreshVersion)
+    private void QueueRemoteIconEnrichment(GameInstance instance, IReadOnlyList<LocalMod> loadedMods)
     {
         if (iconEnrichmentService is null)
             return;
@@ -486,11 +614,11 @@ public sealed class LocalModsViewModel : IDisposable
             try
             {
                 var progress = new Progress<IReadOnlyDictionary<string, string>>(resolvedIcons =>
-                    ApplyResolvedIcons(instance, resolvedIcons, enrichmentCts, refreshVersion));
+                    ApplyResolvedIcons(instance, resolvedIcons, enrichmentCts));
                 var resolvedIcons = await iconEnrichmentService
                     .ResolveMissingIconSourcesAsync(missingIconMods, enrichmentCts.Token, progress)
                     .ConfigureAwait(false);
-                ApplyResolvedIcons(instance, resolvedIcons, enrichmentCts, refreshVersion);
+                ApplyResolvedIcons(instance, resolvedIcons, enrichmentCts);
             }
             catch (OperationCanceledException) when (enrichmentCts.IsCancellationRequested)
             {
@@ -516,13 +644,11 @@ public sealed class LocalModsViewModel : IDisposable
     private void ApplyResolvedIcons(
         GameInstance instance,
         IReadOnlyDictionary<string, string> resolvedIcons,
-        CancellationTokenSource enrichmentCts,
-        int refreshVersion)
+        CancellationTokenSource enrichmentCts)
     {
         // 第一次检查避免无效任务排队到 UI 线程。
         if (resolvedIcons.Count == 0
             || enrichmentCts.IsCancellationRequested
-            || refreshVersion != modRefreshVersion
             || !IsSameInstancePath(instance, selectedInstance))
         {
             return;
@@ -532,7 +658,6 @@ public sealed class LocalModsViewModel : IDisposable
         {
             // 排队等待 UI 线程期间所选实例仍可能变化，必须在真正写入模型前再次校验。
             if (enrichmentCts.IsCancellationRequested
-                || refreshVersion != modRefreshVersion
                 || !IsSameInstancePath(instance, selectedInstance))
             {
                 return;
@@ -564,6 +689,33 @@ public sealed class LocalModsViewModel : IDisposable
             && IsSameInstancePath(instance, selectedInstance);
     }
 
+    private IReadOnlyList<LocalMod> FindChangedMods(IReadOnlyList<LocalMod> loadedMods)
+    {
+        var currentByPath = currentMods.ToDictionary(
+            mod => mod.FullPath,
+            StringComparer.OrdinalIgnoreCase);
+        return loadedMods
+            .Where(mod => !currentByPath.TryGetValue(mod.FullPath, out var current)
+                || !ReferenceEquals(current, mod))
+            .ToArray();
+    }
+
+    private static bool HasReferenceChanges(
+        IReadOnlyList<LocalMod> current,
+        IReadOnlyList<LocalMod> next)
+    {
+        if (current.Count != next.Count)
+            return true;
+
+        for (var index = 0; index < current.Count; index++)
+        {
+            if (!ReferenceEquals(current[index], next[index]))
+                return true;
+        }
+
+        return false;
+    }
+
     private static bool IsSameInstancePath(GameInstance left, GameInstance? right)
     {
         return right is not null
@@ -577,6 +729,9 @@ public sealed class LocalModsViewModel : IDisposable
         iconEnrichmentCancellationTokenSource?.Dispose();
         iconEnrichmentCancellationTokenSource = null;
     }
+
+    private bool IsIconEnrichmentActive =>
+        Volatile.Read(ref iconEnrichmentCancellationTokenSource) is not null;
 
     private CancellationTokenSource ReplaceIconEnrichmentCancellationTokenSource()
     {
@@ -602,25 +757,11 @@ public sealed class LocalModsViewModel : IDisposable
     }
 
     /// <summary>
-    /// 过滤与 Mod 无关的目录事件，并忽略由本 ViewModel 主动重命名产生的回声事件。
+    /// 过滤与 Mod 无关的目录事件。启动器内部操作期间 watcher 会整体暂停。
     /// </summary>
     private bool ShouldRefreshForDirectoryChange(InstanceDirectoryChangedEventArgs change)
     {
-        if (!IsTrackedModPath(change.FullPath) && !IsTrackedModPath(change.OldFullPath))
-            return false;
-
-        return !ShouldIgnoreWatcherPath(change.FullPath)
-            && !ShouldIgnoreWatcherPath(change.OldFullPath);
-    }
-
-    private void ApplyEnabledStateLocally(LocalMod mod, string targetPath, bool enabled, bool raiseChanged)
-    {
-        uiDispatcher.Invoke(() =>
-        {
-            ApplyEnabledStateLocallyCore(mod, targetPath, enabled);
-            if (raiseChanged)
-                ModsChanged?.Invoke(this, EventArgs.Empty);
-        });
+        return IsTrackedModPath(change.FullPath) || IsTrackedModPath(change.OldFullPath);
     }
 
     private static void ApplyEnabledStateLocallyCore(LocalMod mod, string targetPath, bool enabled)
@@ -628,62 +769,6 @@ public sealed class LocalModsViewModel : IDisposable
         mod.FullPath = targetPath;
         mod.FileName = Path.GetFileName(targetPath);
         mod.IsEnabled = enabled;
-    }
-
-    private void IgnoreWatcherPaths(params string?[] paths)
-    {
-        // 同一文件重命名通常产生旧路径和新路径两个事件，两者都在短窗口内登记。
-        var expiresAt = DateTimeOffset.UtcNow.Add(IgnoredWatcherPathTtl);
-        lock (ignoredWatcherPathsLock)
-        {
-            PruneIgnoredWatcherPaths(DateTimeOffset.UtcNow);
-            foreach (var path in paths)
-            {
-                if (string.IsNullOrWhiteSpace(path))
-                    continue;
-
-                ignoredWatcherPaths[path] = expiresAt;
-            }
-        }
-    }
-
-    private bool ShouldIgnoreWatcherPath(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            return false;
-
-        var now = DateTimeOffset.UtcNow;
-        lock (ignoredWatcherPathsLock)
-        {
-            PruneIgnoredWatcherPaths(now);
-            // 忽略项只消费一次；TTL 仅用于处理监听器未产生对应事件时的残留记录。
-            return ignoredWatcherPaths.Remove(path);
-        }
-    }
-
-    private void RemoveIgnoredWatcherPaths(params string?[] paths)
-    {
-        lock (ignoredWatcherPathsLock)
-        {
-            foreach (var path in paths)
-            {
-                if (string.IsNullOrWhiteSpace(path))
-                    continue;
-
-                ignoredWatcherPaths.Remove(path);
-            }
-        }
-    }
-
-    private void PruneIgnoredWatcherPaths(DateTimeOffset now)
-    {
-        foreach (var path in ignoredWatcherPaths
-                     .Where(pair => pair.Value <= now)
-                     .Select(pair => pair.Key)
-                     .ToArray())
-        {
-            ignoredWatcherPaths.Remove(path);
-        }
     }
 
     private static string GetPathForEnabledState(string path, bool enabled)

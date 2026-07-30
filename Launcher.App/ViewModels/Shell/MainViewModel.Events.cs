@@ -35,12 +35,19 @@ namespace Launcher.App.ViewModels.Shell;
 
 public sealed partial class MainViewModel
 {
-public Task SyncCurrentStateAsync()
-    {
-        return hasInitialized
-            ? sessionCoordinator.SyncCurrentStateAsync(CurrentPage)
+public Task ActivateCurrentPageAsync()
+{
+    return hasInitialized
+            ? sessionCoordinator.ActivatePageAsync(CurrentPage)
             : Task.CompletedTask;
-    }
+}
+
+public Task SyncExternalInstanceCatalogAsync()
+{
+    return hasInitialized
+        ? sessionCoordinator.RefreshExternalInstanceCatalogAsync()
+        : Task.CompletedTask;
+}
 
     private void AccountPage_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -60,12 +67,30 @@ public Task SyncCurrentStateAsync()
 
     private async Task OpenResourceProjectDetailsAsync(ResourceProjectReference reference)
     {
-        if (!await ResourcesPage.OpenProjectDetailsAsync(reference))
+        var project = await ResourcesPage.LoadProjectDetailsAsync(reference);
+        if (project is null)
             return;
 
         CurrentPage = NavigationCatalog.ResourcesPage;
         UpdateSecondaryItems();
         UpdateNavigationSelection();
+
+        // 以 Background 优先级排到 UI 可见性、模板和 DataContext 绑定之后，再发布详情目标。
+        // 否则首次启动时安装目标的入场状态会在隐藏视图中被消费，列表要到第二次点击才呈现。
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        uiDispatcher.Post(() =>
+        {
+            try
+            {
+                ResourcesPage.ShowProjectDetails(reference, project);
+                completion.TrySetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.TrySetException(exception);
+            }
+        });
+        await completion.Task;
     }
 
     private void UpdateSecondaryItems()

@@ -181,6 +181,29 @@ public sealed partial class GameSettingsDetailsViewModel : ObservableObject, IDi
     public GameSettingsDetailsSectionViewModelBase? FullViewportSectionViewModel =>
         CurrentSectionViewModel?.UsesFullViewportLayout is true ? CurrentSectionViewModel : null;
 
+    public GameSettingsDetailsSectionViewModelBase? NonRetainedFullViewportSectionViewModel =>
+        CurrentSectionViewModel?.UsesFullViewportLayout is true && !IsRetainedLocalContentSection
+            ? CurrentSectionViewModel
+            : null;
+
+    public bool IsModManagementSection =>
+        ReferenceEquals(CurrentSectionViewModel, ModManagement);
+
+    public bool IsSaveManagementSection =>
+        ReferenceEquals(CurrentSectionViewModel, SaveManagement);
+
+    public bool IsResourcePackManagementSection =>
+        ReferenceEquals(CurrentSectionViewModel, ResourcePackManagement);
+
+    public bool IsShaderPackManagementSection =>
+        ReferenceEquals(CurrentSectionViewModel, ShaderPackManagement);
+
+    private bool IsRetainedLocalContentSection =>
+        IsModManagementSection
+        || IsSaveManagementSection
+        || IsResourcePackManagementSection
+        || IsShaderPackManagementSection;
+
     public bool IsGeneralSection => string.Equals(SelectedSection?.Id, "general", StringComparison.OrdinalIgnoreCase);
 
     public bool IsLaunchSection => string.Equals(SelectedSection?.Id, "launch", StringComparison.OrdinalIgnoreCase);
@@ -227,16 +250,32 @@ public sealed partial class GameSettingsDetailsViewModel : ObservableObject, IDi
         SelectedSection = section;
     }
 
-    public void SetPageActive(bool value)
+    public void SetPageActive(bool value, bool releaseLocalContentObservation = false)
     {
         if (isPageActive == value)
+        {
+            if (!value && releaseLocalContentObservation)
+                ReleaseLocalContentObservation();
             return;
+        }
 
         isPageActive = value;
         if (isPageActive)
             ActivateCurrentSection();
         else
+        {
             CurrentSectionViewModel?.OnSectionDeactivated();
+            if (releaseLocalContentObservation)
+                ReleaseLocalContentObservation();
+        }
+    }
+
+    private void ReleaseLocalContentObservation()
+    {
+        ModManagement.ReleaseLocalObservation();
+        SaveManagement.ReleaseLocalObservation();
+        ResourcePackManagement.ReleaseLocalObservation();
+        ShaderPackManagement.ReleaseLocalObservation();
     }
 
     public void NotifyInstanceSettingsSaved(GameInstance instance)

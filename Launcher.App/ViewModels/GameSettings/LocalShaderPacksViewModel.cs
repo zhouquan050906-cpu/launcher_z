@@ -66,10 +66,10 @@ public sealed class LocalShaderPacksViewModel : IDisposable
             () => ShaderPacksChanged?.Invoke(this, EventArgs.Empty),
             dispatcher,
             this.logger,
-            shaderPack => shaderPack.IconSource,
-            static (shaderPack, iconSource) => shaderPack.IconSource = iconSource,
-            shaderPack => shaderPack.ProjectReference,
-            static (shaderPack, reference) => shaderPack.ProjectReference = reference);
+            iconSourceSelector: shaderPack => shaderPack.IconSource,
+            iconSourceSetter: static (shaderPack, iconSource) => shaderPack.IconSource = iconSource,
+            projectReferenceSelector: shaderPack => shaderPack.ProjectReference,
+            projectReferenceSetter: static (shaderPack, reference) => shaderPack.ProjectReference = reference);
     }
 
     public event EventHandler? ShaderPacksChanged;
@@ -78,17 +78,34 @@ public sealed class LocalShaderPacksViewModel : IDisposable
 
     public IReadOnlyList<LocalShaderPack> CurrentShaderPacks => refreshCoordinator.CurrentItems;
 
+    public long Revision => refreshCoordinator.Revision;
+
     public void SetSelectedInstance(GameInstance? instance)
     {
         categoryEnrichmentCoordinator.Cancel();
         refreshCoordinator.SetInstance(instance);
     }
 
-    public void SetWatcherEnabled(bool enabled)
+    public void SetSectionActive(bool active) => refreshCoordinator.SetSectionActive(active);
+
+    public async Task<bool> RefreshIfInvalidatedAsync()
     {
-        if (!enabled)
-            categoryEnrichmentCoordinator.Cancel();
-        refreshCoordinator.SetWatcherEnabled(enabled);
+        var previous = CurrentShaderPacks.ToHashSet(ReferenceEqualityComparer.Instance);
+        var refreshed = await refreshCoordinator.RefreshIfInvalidatedAsync();
+        if (refreshed)
+        {
+            categoryEnrichmentCoordinator.Queue(
+                CurrentShaderPacks.Where(item => !previous.Contains(item)).ToArray());
+        }
+        return refreshed;
+    }
+
+    public void InvalidateSnapshot() => refreshCoordinator.InvalidateSnapshot();
+
+    public void ReleaseObservation()
+    {
+        categoryEnrichmentCoordinator.Cancel();
+        refreshCoordinator.ReleaseObservation();
     }
 
     public void SuspendWatcherForInstanceRename() => refreshCoordinator.SuspendForRename();
@@ -97,21 +114,24 @@ public sealed class LocalShaderPacksViewModel : IDisposable
 
     public async Task<bool> RefreshShaderPacksAsync()
     {
+        var previous = CurrentShaderPacks.ToHashSet(ReferenceEqualityComparer.Instance);
         var refreshed = await refreshCoordinator.RefreshAsync();
         if (refreshed)
-            categoryEnrichmentCoordinator.Queue(CurrentShaderPacks);
+        {
+            categoryEnrichmentCoordinator.Queue(
+                CurrentShaderPacks.Where(item => !previous.Contains(item)).ToArray());
+        }
         return refreshed;
     }
 
     public async Task<int> DeleteShaderPacksAsync(IEnumerable<LocalShaderPack> shaderPacks)
     {
-        var failed = await LocalContentBatchExecutor.ExecuteAsync(
-            shaderPacks,
-            item => item.FullPath,
-            item => service.DeleteAsync(item),
-            (item, exception) => logger.LogWarning(exception, "Failed to delete local shader pack. Path={Path}", item.FullPath));
-        await RefreshShaderPacksAsync();
-        return failed;
+        return await refreshCoordinator.ExecuteInternalOperationAsync(
+            () => LocalContentBatchExecutor.ExecuteAsync(
+                shaderPacks,
+                item => item.FullPath,
+                item => service.DeleteAsync(item),
+                (item, exception) => logger.LogWarning(exception, "Failed to delete local shader pack. Path={Path}", item.FullPath)));
     }
 
     public async Task<LocalShaderPackImportResult> ImportShaderPackAsync(string archivePath, bool reportStatus = true)
@@ -119,7 +139,10 @@ public sealed class LocalShaderPacksViewModel : IDisposable
         var instance = refreshCoordinator.SelectedInstance;
         if (instance is null || string.IsNullOrWhiteSpace(archivePath))
             return LocalShaderPackImportResult.Failure(LocalShaderPackImportFailureReason.UnexpectedError);
-        var result = await service.ImportAsync(instance, archivePath);
+        var previous = CurrentShaderPacks.ToHashSet(ReferenceEqualityComparer.Instance);
+        var result = await refreshCoordinator.ExecuteInternalOperationAsync(
+            () => service.ImportAsync(instance, archivePath),
+            static value => value.IsSuccess);
         if (!result.IsSuccess)
         {
             if (reportStatus)
@@ -130,7 +153,8 @@ public sealed class LocalShaderPacksViewModel : IDisposable
             }
             return result;
         }
-        await RefreshShaderPacksAsync();
+        categoryEnrichmentCoordinator.Queue(
+            CurrentShaderPacks.Where(item => !previous.Contains(item)).ToArray());
         if (reportStatus)
             ReportStatus(Strings.Status_LocalShaderPackImported);
         return result;
@@ -144,12 +168,19 @@ public sealed class LocalShaderPacksViewModel : IDisposable
 
     private void Apply(IReadOnlyList<LocalShaderPack> items)
     {
-        ShaderPacks.ReplaceWith(items);
-        ShaderPacksChanged?.Invoke(this, EventArgs.Empty);
+        if (ShaderPacks.SynchronizeByKey(
+                items,
+                static item => item.FullPath,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            ShaderPacksChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void Clear()
     {
+        if (ShaderPacks.Count == 0)
+            return;
         ShaderPacks.Clear();
         ShaderPacksChanged?.Invoke(this, EventArgs.Empty);
     }

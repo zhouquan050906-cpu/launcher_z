@@ -58,7 +58,6 @@ public sealed partial class InstanceModManagementSettingsViewModel : GameSetting
     private bool isSectionActive;
     private bool isInitialProjectionReady;
     private bool suppressLocalCollectionEvents;
-    private bool needsRefreshOnActivation = true;
     private long lifecycleGeneration;
 
     // 可观察属性是本地快照的 UI 投影，不直接拥有任何文件系统状态。
@@ -191,7 +190,6 @@ public sealed partial class InstanceModManagementSettingsViewModel : GameSetting
         // 实例引用变化意味着现有选择、冲突对话框和可见项都不再有效，必须作为一个状态边界整体重置。
         Interlocked.Increment(ref lifecycleGeneration);
         selectedInstance = instance;
-        needsRefreshOnActivation = true;
         ResolvePendingImportConflict(false);
         loadTask = null;
         hasPendingVisualRefresh = false;
@@ -200,7 +198,7 @@ public sealed partial class InstanceModManagementSettingsViewModel : GameSetting
         try
         {
             localModsViewModel.SetSelectedInstance(instance);
-            localModsViewModel.SetWatcherEnabled(isSectionActive && IsModManagementSupported);
+            localModsViewModel.SetSectionActive(isSectionActive && IsModManagementSupported);
         }
         finally
         {
@@ -235,9 +233,17 @@ public sealed partial class InstanceModManagementSettingsViewModel : GameSetting
         isSectionActive = false;
         Interlocked.Increment(ref lifecycleGeneration);
         loadTask = null;
-        needsRefreshOnActivation = true;
         IsLoadingMods = false;
-        localModsViewModel.SetWatcherEnabled(false);
+        localModsViewModel.SetSectionActive(false);
+    }
+
+    public void ReleaseLocalObservation()
+    {
+        isSectionActive = false;
+        Interlocked.Increment(ref lifecycleGeneration);
+        loadTask = null;
+        IsLoadingMods = false;
+        localModsViewModel.ReleaseObservation();
     }
 
     public void SuspendLocalWatchersForInstanceRename()
@@ -251,7 +257,7 @@ public sealed partial class InstanceModManagementSettingsViewModel : GameSetting
         {
             Interlocked.Increment(ref lifecycleGeneration);
             loadTask = null;
-            needsRefreshOnActivation = true;
+            localModsViewModel.InvalidateSnapshot();
         }
         localModsViewModel.ResumeWatcherAfterInstanceRename(restart);
     }
@@ -266,13 +272,8 @@ public sealed partial class InstanceModManagementSettingsViewModel : GameSetting
             isSectionActive = true;
             Interlocked.Increment(ref lifecycleGeneration);
             loadTask = null;
-            localModsViewModel.SetWatcherEnabled(IsModManagementSupported);
+            localModsViewModel.SetSectionActive(IsModManagementSupported);
         }
-
-        if (!needsRefreshOnActivation)
-            return EnsureLoadedForSelectedInstanceAsync();
-
-        needsRefreshOnActivation = false;
         if (selectedInstance is null || !IsModManagementSupported)
             return Task.CompletedTask;
 

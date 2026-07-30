@@ -47,6 +47,7 @@ public sealed partial class LocalModIconEnrichmentService : ILocalModIconEnrichm
     private readonly RemoteThumbnailDownloadClient thumbnailDownloader;
     private readonly LauncherPathProvider pathProvider;
     private readonly RemoteModIconProviderClient providerClient;
+    private readonly LocalFileFingerprintService fingerprintService;
     private readonly ILogger<LocalModIconEnrichmentService> logger;
     private readonly SemaphoreSlim cacheLock = new(1, 1);
     private readonly string cacheDirectory;
@@ -59,7 +60,8 @@ public sealed partial class LocalModIconEnrichmentService : ILocalModIconEnrichm
         ICurseForgeApiKeyResolver? curseForgeApiKeyResolver = null,
         ILogger<LocalModIconEnrichmentService>? logger = null,
         IImportConcurrencyLimiter? limiter = null,
-        IDownloadSpeedLimitState? downloadSpeedLimitState = null)
+        IDownloadSpeedLimitState? downloadSpeedLimitState = null,
+        LocalFileFingerprintService? fingerprintService = null)
     {
         this.pathProvider = pathProvider ?? new LauncherPathProvider();
         this.httpClient = httpClient ?? MinecraftHttpClientFactory.CreateTransportClient();
@@ -71,6 +73,7 @@ public sealed partial class LocalModIconEnrichmentService : ILocalModIconEnrichm
             this.logger);
         var apiKeyResolver = curseForgeApiKeyResolver ?? new CurseForgeApiKeyResolver(this.pathProvider);
         providerClient = new RemoteModIconProviderClient(this.httpClient, apiKeyResolver, this.logger);
+        this.fingerprintService = fingerprintService ?? new LocalFileFingerprintService();
         cacheDirectory = Path.Combine(this.pathProvider.DefaultDataDirectory, "cache", "mods", "remote-icons");
         cacheIndexStore = new RemoteIconCacheIndexStore(cacheDirectory, this.logger);
     }

@@ -66,6 +66,39 @@ public sealed class DownloadViewModelTests
         Assert.Empty(service.CreatedInstances);
     }
 
+    [Fact]
+    public async Task CompletedInstallPublishesVersionTypeForInstanceCategoryProjection()
+    {
+        var service = new FakeGameInstanceService();
+        var tasks = new DownloadTasksPageViewModel(TimeSpan.FromSeconds(1));
+        var viewModel = CreateInstallViewModel(service, tasks, new DownloadInstanceNameTracker());
+        GameInstance? installed = null;
+        viewModel.InstanceInstalled += (_, instance) => installed = instance;
+
+        await viewModel.InstallAsync(CreateInstallRequest("new-release"));
+
+        Assert.NotNull(installed);
+        Assert.Equal("release", installed.VersionType);
+    }
+
+    [Fact]
+    public async Task InstallRequestRetainsSelectedMinecraftVersionType()
+    {
+        var service = new FakeGameInstanceService();
+        using var viewModel = new DownloadInstanceOptionsViewModel(
+            service,
+            [],
+            new DownloadInstanceNameTracker());
+        await viewModel.PrepareAsync(
+            new DownloadMinecraftVersionItem(
+                new MinecraftVersionInfo("25w01a", "snapshot", false)));
+
+        var request = viewModel.CreateInstallRequest();
+
+        Assert.NotNull(request);
+        Assert.Equal("snapshot", request.MinecraftVersionType);
+    }
+
     private static DownloadInstallViewModel CreateInstallViewModel(
         FakeGameInstanceService service,
         DownloadTasksPageViewModel tasks,
@@ -84,6 +117,7 @@ public sealed class DownloadViewModelTests
     {
         return new DownloadInstallRequest(
             "1.20.1",
+            "release",
             instanceName,
             LoaderKind.Vanilla,
             null,

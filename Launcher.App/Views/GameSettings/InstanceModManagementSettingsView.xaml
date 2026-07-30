@@ -220,6 +220,7 @@
                      ScrollViewer.CanContentScroll="True"
                      behaviors:VirtualizedListItemStateBehavior.IsEnabled="True"
                      behaviors:VirtualizedListItemStateBehavior.EntranceAnimationToken="{Binding ListEntranceAnimationToken}"
+                     behaviors:VirtualizedListItemStateBehavior.ScrollResetToken="{Binding ListEntranceAnimationToken}"
                      behaviors:VirtualizedListItemStateBehavior.ContentTopOffset="132">
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>

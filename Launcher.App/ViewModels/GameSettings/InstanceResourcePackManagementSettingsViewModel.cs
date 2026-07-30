@@ -52,7 +52,6 @@ public sealed partial class InstanceResourcePackManagementSettingsViewModel : Ga
     private bool isSectionActive;
     private bool isInitialProjectionReady;
     private bool suppressLocalCollectionEvents;
-    private bool needsRefreshOnActivation = true;
     private long lifecycleGeneration;
 
     // 可观察属性均为界面投影，任何磁盘变化都必须先进入共享本地内容 ViewModel。
@@ -169,7 +168,6 @@ public sealed partial class InstanceResourcePackManagementSettingsViewModel : Ga
         // 切换底层集合时会同步触发事件，抑制回调以避免在半重置状态下重建列表。
         Interlocked.Increment(ref lifecycleGeneration);
         selectedInstance = instance;
-        needsRefreshOnActivation = true;
         loadTask = null;
         hasPendingVisualRefresh = false;
         isVisibleRefreshQueued = false;
@@ -177,7 +175,7 @@ public sealed partial class InstanceResourcePackManagementSettingsViewModel : Ga
         try
         {
             localResourcePacksViewModel.SetSelectedInstance(instance);
-            localResourcePacksViewModel.SetWatcherEnabled(isSectionActive && selectedInstance is not null);
+            localResourcePacksViewModel.SetSectionActive(isSectionActive && selectedInstance is not null);
         }
         finally
         {
@@ -214,9 +212,17 @@ public sealed partial class InstanceResourcePackManagementSettingsViewModel : Ga
         isSectionActive = false;
         Interlocked.Increment(ref lifecycleGeneration);
         loadTask = null;
-        needsRefreshOnActivation = true;
         IsLoadingResourcePacks = false;
-        localResourcePacksViewModel.SetWatcherEnabled(false);
+        localResourcePacksViewModel.SetSectionActive(false);
+    }
+
+    public void ReleaseLocalObservation()
+    {
+        isSectionActive = false;
+        Interlocked.Increment(ref lifecycleGeneration);
+        loadTask = null;
+        IsLoadingResourcePacks = false;
+        localResourcePacksViewModel.ReleaseObservation();
     }
 
     public void SuspendLocalWatchersForInstanceRename()
@@ -230,7 +236,7 @@ public sealed partial class InstanceResourcePackManagementSettingsViewModel : Ga
         {
             Interlocked.Increment(ref lifecycleGeneration);
             loadTask = null;
-            needsRefreshOnActivation = true;
+            localResourcePacksViewModel.InvalidateSnapshot();
         }
         localResourcePacksViewModel.ResumeWatcherAfterInstanceRename(restart);
     }
@@ -239,17 +245,13 @@ public sealed partial class InstanceResourcePackManagementSettingsViewModel : Ga
     {
         if (!isSectionActive)
         {
-            // 页面不可见时关闭 watcher，激活后静默补齐离开期间的变化。
+            // 首次进入后保留轻量监听；隐藏期间 watcher 只标记失效，不扫描目录或重建页面。
             isSectionActive = true;
             Interlocked.Increment(ref lifecycleGeneration);
             loadTask = null;
-            localResourcePacksViewModel.SetWatcherEnabled(selectedInstance is not null);
+            localResourcePacksViewModel.SetSectionActive(selectedInstance is not null);
         }
 
-        if (!needsRefreshOnActivation)
-            return EnsureLoadedForSelectedInstanceAsync();
-
-        needsRefreshOnActivation = false;
         if (selectedInstance is null)
             return Task.CompletedTask;
 

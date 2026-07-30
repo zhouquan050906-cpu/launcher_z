@@ -106,6 +106,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISystemMemoryService, WindowsSystemMemoryService>();
         services.AddSingleton<IUserFileDeletionService, UserFileDeletionService>();
         services.AddSingleton<IModService, ModService>();
+        services.AddSingleton<LocalFileFingerprintService>();
         services.AddSingleton<ILocalModIconEnrichmentService, LocalModIconEnrichmentService>();
         services.AddSingleton<ILocalResourceCategoryEnrichmentService, LocalResourceCategoryEnrichmentService>();
         services.AddSingleton<IInstanceBackupService, InstanceBackupService>();

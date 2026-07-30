@@ -19,8 +19,10 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
 {
     [Theory]
     [InlineData("mod_management", InstanceDirectoryKind.Mods)]
+    [InlineData("saves", InstanceDirectoryKind.Saves)]
+    [InlineData("resource_packs", InstanceDirectoryKind.ResourcePacks)]
     [InlineData("shaders", InstanceDirectoryKind.ShaderPacks)]
-    public async Task ResourceSectionOwnsExactlyItsWatcher(string sectionId, InstanceDirectoryKind expectedKind)
+    public async Task ResourceSectionUsesExpectedWatcherLifecycle(string sectionId, InstanceDirectoryKind expectedKind)
     {
         var monitor = new RecordingDirectoryMonitor();
         using var details = CreateDetails(monitor);
@@ -34,7 +36,7 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
         Assert.False(monitor.StartedBeforePreviousWatchWasDisposed);
 
         details.SetSelectedSection(CreateSection("general"));
-        Assert.Empty(monitor.ActiveKinds);
+        Assert.Equal([expectedKind], monitor.ActiveKinds);
         Assert.True(GetHasLoaded(details, expectedKind));
         var entranceAnimationToken = GetEntranceAnimationToken(details, expectedKind);
 
@@ -45,6 +47,290 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
         Assert.Equal(entranceAnimationToken, GetEntranceAnimationToken(details, expectedKind));
         await silentRefresh;
         Assert.Equal(entranceAnimationToken, GetEntranceAnimationToken(details, expectedKind));
+        details.SetPageActive(false);
+    }
+
+    [Fact]
+    public async Task RepeatedModSectionActivationWithoutChangesDoesNotReloadInventory()
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var mod = CreateMod("example.jar");
+        var modService = new RecordingModService([mod]);
+        using var details = CreateDetails(monitor, modService: modService);
+        details.SetSelectedInstance(CreateInstanceItem());
+        details.SetPageActive(true);
+        details.SetSelectedSection(CreateSection("mod_management"));
+        await details.ModManagement.OnSectionActivatedAsync();
+        var item = Assert.Single(details.ModManagement.Mods);
+        var entranceAnimationToken = details.ModManagement.ListEntranceAnimationToken;
+
+        details.SetSelectedSection(CreateSection("general"));
+        details.SetSelectedSection(CreateSection("mod_management"));
+        await details.ModManagement.OnSectionActivatedAsync();
+        details.SetSelectedSection(CreateSection("general"));
+        details.SetSelectedSection(CreateSection("mod_management"));
+        await details.ModManagement.OnSectionActivatedAsync();
+
+        Assert.Equal(1, modService.GetModsCallCount);
+        Assert.Same(item, Assert.Single(details.ModManagement.Mods));
+        Assert.Equal(entranceAnimationToken, details.ModManagement.ListEntranceAnimationToken);
+        Assert.Equal([InstanceDirectoryKind.Mods], monitor.ActiveKinds);
+        details.SetPageActive(false);
+    }
+
+    [Fact]
+    public async Task HiddenModChangesAreCoalescedUntilNextActivation()
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var modService = new RecordingModService([CreateMod("example.jar")]);
+        using var details = CreateDetails(monitor, modService: modService);
+        details.SetSelectedInstance(CreateInstanceItem());
+        details.SetPageActive(true);
+        details.SetSelectedSection(CreateSection("mod_management"));
+        await details.ModManagement.OnSectionActivatedAsync();
+        details.SetSelectedSection(CreateSection("general"));
+
+        monitor.Raise(
+            InstanceDirectoryKind.Mods,
+            new InstanceDirectoryChangedEventArgs(
+                "Changed",
+                Path.Combine(TempRoot, "mods", "example.jar")));
+        monitor.Raise(
+            InstanceDirectoryKind.Mods,
+            new InstanceDirectoryChangedEventArgs(
+                "Changed",
+                Path.Combine(TempRoot, "mods", "example.jar")));
+
+        Assert.Equal(1, modService.GetModsCallCount);
+
+        details.SetSelectedSection(CreateSection("mod_management"));
+        await details.ModManagement.OnSectionActivatedAsync();
+
+        Assert.Equal(2, modService.GetModsCallCount);
+        details.SetPageActive(false);
+    }
+
+    [Fact]
+    public async Task HiddenModWatcherErrorRebuildsObservationAndDefersInventoryCheck()
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var modService = new RecordingModService([CreateMod("example.jar")]);
+        using var details = CreateDetails(monitor, modService: modService);
+        details.SetSelectedInstance(CreateInstanceItem());
+        details.SetPageActive(true);
+        details.SetSelectedSection(CreateSection("mod_management"));
+        await details.ModManagement.OnSectionActivatedAsync();
+        details.SetSelectedSection(CreateSection("general"));
+
+        monitor.Raise(
+            InstanceDirectoryKind.Mods,
+            new InstanceDirectoryChangedEventArgs(
+                "Error",
+                Path.Combine(TempRoot, "mods")));
+
+        Assert.Equal(1, modService.GetModsCallCount);
+        Assert.Equal(2, monitor.WatchStartCount);
+        Assert.Equal([InstanceDirectoryKind.Mods], monitor.ActiveKinds);
+
+        details.SetSelectedSection(CreateSection("mod_management"));
+        await details.ModManagement.OnSectionActivatedAsync();
+
+        Assert.Equal(2, modService.GetModsCallCount);
+        details.SetPageActive(false);
+    }
+
+    [Theory]
+    [InlineData("saves", InstanceDirectoryKind.Saves)]
+    [InlineData("resource_packs", InstanceDirectoryKind.ResourcePacks)]
+    [InlineData("shaders", InstanceDirectoryKind.ShaderPacks)]
+    public async Task RepeatedLocalContentActivationWithoutChangesDoesNotReloadInventory(
+        string sectionId,
+        InstanceDirectoryKind kind)
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var services = new RecordingLocalContentServices();
+        using var details = CreateDetails(
+            monitor,
+            saveService: services,
+            resourcePackService: services,
+            shaderPackService: services);
+        details.SetSelectedInstance(CreateInstanceItem());
+        details.SetPageActive(true);
+        details.SetSelectedSection(CreateSection(sectionId));
+        await details.CurrentSectionViewModel!.OnSectionActivatedAsync();
+        var entranceAnimationToken = GetEntranceAnimationToken(details, kind);
+        var item = GetFirstVisibleItem(details, kind);
+
+        details.SetSelectedSection(CreateSection("general"));
+        details.SetSelectedSection(CreateSection(sectionId));
+        await details.CurrentSectionViewModel!.OnSectionActivatedAsync();
+        details.SetSelectedSection(CreateSection("general"));
+        details.SetSelectedSection(CreateSection(sectionId));
+        await details.CurrentSectionViewModel!.OnSectionActivatedAsync();
+
+        Assert.Equal(1, services.GetCallCount(kind));
+        Assert.Same(item, GetFirstVisibleItem(details, kind));
+        Assert.Equal(entranceAnimationToken, GetEntranceAnimationToken(details, kind));
+        Assert.Equal([kind], monitor.ActiveKinds);
+        details.SetPageActive(false);
+    }
+
+    [Theory]
+    [InlineData("saves", InstanceDirectoryKind.Saves, "saves", "world")]
+    [InlineData("resource_packs", InstanceDirectoryKind.ResourcePacks, "resourcepacks", "pack.zip")]
+    [InlineData("shaders", InstanceDirectoryKind.ShaderPacks, "shaderpacks", "shader.zip")]
+    public async Task HiddenLocalContentChangesAreCoalescedUntilNextActivation(
+        string sectionId,
+        InstanceDirectoryKind kind,
+        string directoryName,
+        string itemName)
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var services = new RecordingLocalContentServices();
+        using var details = CreateDetails(
+            monitor,
+            saveService: services,
+            resourcePackService: services,
+            shaderPackService: services);
+        details.SetSelectedInstance(CreateInstanceItem());
+        details.SetPageActive(true);
+        details.SetSelectedSection(CreateSection(sectionId));
+        await details.CurrentSectionViewModel!.OnSectionActivatedAsync();
+        details.SetSelectedSection(CreateSection("general"));
+
+        var change = new InstanceDirectoryChangedEventArgs(
+            "Changed",
+            Path.Combine(TempRoot, directoryName, itemName));
+        monitor.Raise(kind, change);
+        monitor.Raise(kind, change);
+
+        Assert.Equal(1, services.GetCallCount(kind));
+
+        details.SetSelectedSection(CreateSection(sectionId));
+        await details.CurrentSectionViewModel!.OnSectionActivatedAsync();
+
+        Assert.Equal(2, services.GetCallCount(kind));
+        details.SetPageActive(false);
+    }
+
+    [Theory]
+    [InlineData("saves", InstanceDirectoryKind.Saves)]
+    [InlineData("resource_packs", InstanceDirectoryKind.ResourcePacks)]
+    [InlineData("shaders", InstanceDirectoryKind.ShaderPacks)]
+    public async Task HiddenLocalContentWatcherErrorRebuildsObservationAndDefersInventoryCheck(
+        string sectionId,
+        InstanceDirectoryKind kind)
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var services = new RecordingLocalContentServices();
+        using var details = CreateDetails(
+            monitor,
+            saveService: services,
+            resourcePackService: services,
+            shaderPackService: services);
+        details.SetSelectedInstance(CreateInstanceItem());
+        details.SetPageActive(true);
+        details.SetSelectedSection(CreateSection(sectionId));
+        await details.CurrentSectionViewModel!.OnSectionActivatedAsync();
+        details.SetSelectedSection(CreateSection("general"));
+
+        monitor.Raise(
+            kind,
+            new InstanceDirectoryChangedEventArgs(
+                "Error",
+                Path.Combine(TempRoot, kind.ToString())));
+
+        Assert.Equal(1, services.GetCallCount(kind));
+        Assert.Equal(2, monitor.WatchStartCount);
+        Assert.Equal([kind], monitor.ActiveKinds);
+
+        details.SetSelectedSection(CreateSection(sectionId));
+        await details.CurrentSectionViewModel!.OnSectionActivatedAsync();
+
+        Assert.Equal(2, services.GetCallCount(kind));
+        details.SetPageActive(false);
+    }
+
+    [Fact]
+    public async Task SwitchingInstanceReleasesAllOldLocalContentWatchersAndArmsOnlyVisibleSection()
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var services = new RecordingLocalContentServices();
+        using var details = CreateDetails(
+            monitor,
+            saveService: services,
+            resourcePackService: services,
+            shaderPackService: services);
+        details.SetSelectedInstance(CreateInstanceItem(Path.Combine(TempRoot, "first")));
+        details.SetPageActive(true);
+        details.SetSelectedSection(CreateSection("saves"));
+        await details.SaveManagement.OnSectionActivatedAsync();
+        details.SetSelectedSection(CreateSection("resource_packs"));
+        await details.ResourcePackManagement.OnSectionActivatedAsync();
+        Assert.Equal(
+            [InstanceDirectoryKind.Saves, InstanceDirectoryKind.ResourcePacks],
+            monitor.ActiveKinds);
+
+        details.SetSelectedInstance(CreateInstanceItem(Path.Combine(TempRoot, "second")));
+        await details.ResourcePackManagement.OnSectionActivatedAsync();
+
+        Assert.Equal([InstanceDirectoryKind.ResourcePacks], monitor.ActiveKinds);
+        Assert.All(
+            monitor.ActiveDirectories,
+            directory => Assert.Equal(Path.Combine(TempRoot, "second"), directory));
+        details.SetPageActive(false);
+    }
+
+    [Fact]
+    public async Task LeavingInstanceDetailsReleasesAllArmedWatchers()
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var services = new RecordingLocalContentServices();
+        using var details = CreateDetails(
+            monitor,
+            saveService: services,
+            resourcePackService: services,
+            shaderPackService: services);
+        details.SetSelectedInstance(CreateInstanceItem());
+        details.SetPageActive(true);
+        details.SetSelectedSection(CreateSection("saves"));
+        await details.SaveManagement.OnSectionActivatedAsync();
+        details.SetSelectedSection(CreateSection("resource_packs"));
+        await details.ResourcePackManagement.OnSectionActivatedAsync();
+        Assert.Equal(
+            [InstanceDirectoryKind.Saves, InstanceDirectoryKind.ResourcePacks],
+            monitor.ActiveKinds);
+
+        details.SetPageActive(false, releaseLocalContentObservation: true);
+
+        Assert.Empty(monitor.ActiveKinds);
+        details.SetPageActive(true);
+        await details.ResourcePackManagement.OnSectionActivatedAsync();
+        Assert.Equal([InstanceDirectoryKind.ResourcePacks], monitor.ActiveKinds);
+        Assert.Equal(1, services.GetCallCount(InstanceDirectoryKind.Saves));
+        Assert.Equal(2, services.GetCallCount(InstanceDirectoryKind.ResourcePacks));
+        details.SetPageActive(false, releaseLocalContentObservation: true);
+    }
+
+    [Fact]
+    public async Task OldInstanceInventoryResultCannotReplaceNewInstanceContent()
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var saveService = new BlockingInstanceSwitchSaveService();
+        using var details = CreateDetails(monitor, saveService: saveService);
+        details.SetSelectedInstance(CreateInstanceItem(Path.Combine(TempRoot, "first")));
+        details.SetPageActive(true);
+        details.SetSelectedSection(CreateSection("saves"));
+        await saveService.FirstCallStarted.Task;
+
+        details.SetSelectedInstance(CreateInstanceItem(Path.Combine(TempRoot, "second")));
+        await saveService.SecondCallCompleted.Task;
+        saveService.ReleaseFirstCall.TrySetResult();
+        await saveService.FirstCallCompleted.Task;
+
+        var item = Assert.Single(details.SaveManagement.Saves);
+        Assert.Equal("Second", item.Title);
+        Assert.Equal(Path.Combine(TempRoot, "second", "saves", "second"), item.FullPath);
         details.SetPageActive(false);
     }
 
@@ -65,6 +351,11 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
 
         details.SetSelectedSection(CreateSection("general"));
         saveService.FailSecondCall = true;
+        monitor.Raise(
+            InstanceDirectoryKind.Saves,
+            new InstanceDirectoryChangedEventArgs(
+                "Changed",
+                Path.Combine(TempRoot, "saves", "cached")));
         details.SetSelectedSection(CreateSection("saves"));
         await details.SaveManagement.OnSectionActivatedAsync();
 
@@ -152,7 +443,9 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
         RecordingDirectoryMonitor monitor,
         ILocalSaveService? saveService = null,
         IGameInstanceService? instanceService = null,
-        IModService? modService = null)
+        IModService? modService = null,
+        ILocalResourcePackService? resourcePackService = null,
+        ILocalShaderPackService? shaderPackService = null)
     {
         var statusService = Stub<IStatusService>();
         var resolvedModService = modService ?? Stub<IModService>();
@@ -160,11 +453,11 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
         var localMods = new LocalModsViewModel(resolvedModService, statusService, monitor);
         var localSaves = new LocalSavesViewModel(saveService ?? Stub<ILocalSaveService>(), statusService, monitor);
         var localResourcePacks = new LocalResourcePacksViewModel(
-            Stub<ILocalResourcePackService>(),
+            resourcePackService ?? Stub<ILocalResourcePackService>(),
             statusService,
             monitor);
         var localShaderPacks = new LocalShaderPacksViewModel(
-            Stub<ILocalShaderPackService>(),
+            shaderPackService ?? Stub<ILocalShaderPackService>(),
             statusService,
             monitor);
 
@@ -230,11 +523,27 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
         _ => 0
     };
 
+    private static object GetFirstVisibleItem(GameSettingsDetailsViewModel details, InstanceDirectoryKind kind) => kind switch
+    {
+        InstanceDirectoryKind.Saves => Assert.Single(details.SaveManagement.Saves),
+        InstanceDirectoryKind.ResourcePacks => Assert.Single(details.ResourcePackManagement.ResourcePacks),
+        InstanceDirectoryKind.ShaderPacks => Assert.Single(details.ShaderPackManagement.ShaderPacks),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
+    };
+
     private static LocalSave CreateSave(string name, string fullPath) => new()
     {
         Name = name,
         DirectoryName = Path.GetFileName(fullPath),
         FullPath = fullPath
+    };
+
+    private static LocalMod CreateMod(string fileName) => new()
+    {
+        Name = Path.GetFileNameWithoutExtension(fileName),
+        FileName = fileName,
+        FullPath = Path.Combine("instance", "mods", fileName),
+        IsEnabled = true
     };
 
     private static T Stub<T>() where T : class => DispatchProxy.Create<T, DefaultInterfaceProxy>();
@@ -284,6 +593,10 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
         public bool StartedBeforePreviousWatchWasDisposed { get; private set; }
         public int WatchStartCount { get; private set; }
         public IReadOnlyList<string> WatchedDirectories => activeWatches.Select(watch => watch.Directory).ToList();
+        public IReadOnlyList<string> ActiveDirectories => activeWatches
+            .Where(watch => !watch.IsDisposed)
+            .Select(watch => watch.Directory)
+            .ToList();
 
         public IInstanceDirectoryWatch Watch(GameInstance instance, InstanceDirectoryKind directoryKind)
         {
@@ -293,6 +606,11 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
             var watch = new RecordingWatch(directoryKind, instance.InstanceDirectory);
             activeWatches.Add(watch);
             return watch;
+        }
+
+        public void Raise(InstanceDirectoryKind kind, InstanceDirectoryChangedEventArgs args)
+        {
+            activeWatches.Last(watch => !watch.IsDisposed && watch.Kind == kind).Raise(args);
         }
     }
 
@@ -339,20 +657,197 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
             throw new NotSupportedException();
     }
 
+    private sealed class RecordingLocalContentServices :
+        ILocalSaveService,
+        ILocalResourcePackService,
+        ILocalShaderPackService
+    {
+        private readonly IReadOnlyList<LocalSave> saves =
+        [
+            CreateSave("World", Path.Combine("instance", "saves", "world"))
+        ];
+        private readonly IReadOnlyList<LocalResourcePack> resourcePacks =
+        [
+            new()
+            {
+                Name = "Pack",
+                FileName = "pack.zip",
+                FullPath = Path.Combine("instance", "resourcepacks", "pack.zip")
+            }
+        ];
+        private readonly IReadOnlyList<LocalShaderPack> shaderPacks =
+        [
+            new()
+            {
+                Name = "Shader",
+                FileName = "shader.zip",
+                FullPath = Path.Combine("instance", "shaderpacks", "shader.zip")
+            }
+        ];
+        private int saveCallCount;
+        private int resourcePackCallCount;
+        private int shaderPackCallCount;
+
+        public int GetCallCount(InstanceDirectoryKind kind) => kind switch
+        {
+            InstanceDirectoryKind.Saves => saveCallCount,
+            InstanceDirectoryKind.ResourcePacks => resourcePackCallCount,
+            InstanceDirectoryKind.ShaderPacks => shaderPackCallCount,
+            _ => 0
+        };
+
+        public Task<IReadOnlyList<LocalSave>> GetSavesAsync(
+            GameInstance instance,
+            CancellationToken cancellationToken = default)
+        {
+            saveCallCount++;
+            return Task.FromResult(saves);
+        }
+
+        public Task<IReadOnlyList<LocalResourcePack>> GetResourcePacksAsync(
+            GameInstance instance,
+            CancellationToken cancellationToken = default)
+        {
+            resourcePackCallCount++;
+            return Task.FromResult(resourcePacks);
+        }
+
+        public Task<IReadOnlyList<LocalShaderPack>> GetShaderPacksAsync(
+            GameInstance instance,
+            CancellationToken cancellationToken = default)
+        {
+            shaderPackCallCount++;
+            return Task.FromResult(shaderPacks);
+        }
+
+        public Task<LocalSaveImportResult> ImportFromArchiveAsync(
+            GameInstance instance,
+            string archivePath,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<LocalResourcePackImportResult> ImportAsync(
+            GameInstance instance,
+            string archivePath,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        Task<LocalShaderPackImportResult> ILocalShaderPackService.ImportAsync(
+            GameInstance instance,
+            string archivePath,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task DeleteAsync(LocalSave save, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task DeleteAsync(IEnumerable<LocalSave> saves, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task DeleteAsync(LocalResourcePack resourcePack, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task DeleteAsync(
+            IEnumerable<LocalResourcePack> resourcePacks,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task DeleteAsync(LocalShaderPack shaderPack, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task DeleteAsync(
+            IEnumerable<LocalShaderPack> shaderPacks,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class BlockingInstanceSwitchSaveService : ILocalSaveService
+    {
+        private int callCount;
+
+        public TaskCompletionSource FirstCallStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ReleaseFirstCall { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource FirstCallCompleted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource SecondCallCompleted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<IReadOnlyList<LocalSave>> GetSavesAsync(
+            GameInstance instance,
+            CancellationToken cancellationToken = default)
+        {
+            var call = Interlocked.Increment(ref callCount);
+            if (call == 1)
+            {
+                FirstCallStarted.TrySetResult();
+                await ReleaseFirstCall.Task;
+                FirstCallCompleted.TrySetResult();
+                return
+                [
+                    CreateSave("First", Path.Combine(instance.InstanceDirectory, "saves", "first"))
+                ];
+            }
+
+            SecondCallCompleted.TrySetResult();
+            return
+            [
+                CreateSave("Second", Path.Combine(instance.InstanceDirectory, "saves", "second"))
+            ];
+        }
+
+        public Task<LocalSaveImportResult> ImportFromArchiveAsync(
+            GameInstance instance,
+            string archivePath,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task DeleteAsync(LocalSave save, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task DeleteAsync(IEnumerable<LocalSave> saves, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
     private sealed class RecordingWatch(InstanceDirectoryKind kind, string directory) : IInstanceDirectoryWatch
     {
         public InstanceDirectoryKind Kind { get; } = kind;
         public string Directory { get; } = directory;
         public bool IsDisposed { get; private set; }
-        public event EventHandler<InstanceDirectoryChangedEventArgs>? Changed
-        {
-            add { }
-            remove { }
-        }
+        public event EventHandler<InstanceDirectoryChangedEventArgs>? Changed;
+
+        public void Raise(InstanceDirectoryChangedEventArgs args) => Changed?.Invoke(this, args);
 
         public void Dispose()
         {
             IsDisposed = true;
         }
+    }
+
+    private sealed class RecordingModService(IReadOnlyList<LocalMod> items) : IModService
+    {
+        public int GetModsCallCount { get; private set; }
+
+        public Task<IReadOnlyList<LocalMod>> GetModsAsync(
+            GameInstance instance,
+            CancellationToken cancellationToken = default)
+        {
+            GetModsCallCount++;
+            return Task.FromResult(items);
+        }
+
+        public Task<LocalMod> ImportAsync(
+            GameInstance instance,
+            string sourceJarPath,
+            bool overwriteExisting = false,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task SetEnabledAsync(
+            LocalMod mod,
+            bool enabled,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task DeleteAsync(LocalMod mod, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

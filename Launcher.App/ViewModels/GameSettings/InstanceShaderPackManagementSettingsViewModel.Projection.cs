@@ -93,14 +93,18 @@ public sealed partial class InstanceShaderPackManagementSettingsViewModel
         if (selectedInstance is null)
             return;
         var expectedInstance = selectedInstance;
+        var previousRevision = localShaderPacksViewModel.Revision;
 
         try
         {
-            if (!await localShaderPacksViewModel.RefreshShaderPacksAsync()
+            if (!await localShaderPacksViewModel.RefreshIfInvalidatedAsync()
                 || !IsCurrentLifecycle(generation, expectedInstance))
             {
                 return;
             }
+
+            if (localShaderPacksViewModel.Revision == previousRevision)
+                return;
 
             hasPendingVisualRefresh = false;
             RefreshFromLocalShaderPacks();

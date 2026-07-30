@@ -24,6 +24,7 @@ using CommunityToolkit.Mvvm.Input;
 using Launcher.App.Resources;
 using Launcher.App.Services;
 using Launcher.App.ViewModels.Download;
+using Launcher.App.ViewModels.GameSettings;
 using Launcher.Application.Services;
 using Launcher.Domain.Models;
 using Microsoft.Extensions.Logging;
@@ -46,7 +47,7 @@ public sealed partial class ResourcesPageViewModel : ObservableObject
         ILogger<ResourcesPageViewModel>? logger = null,
         IUiDispatcher? uiDispatcher = null,
         IGameVersionService? gameVersionService = null,
-        IGameInstanceService? gameInstanceService = null,
+        GameManagementViewModel? gameManagement = null,
         IStatusService? statusService = null,
         IFilePickerService? filePickerService = null,
         IFloatingMessageService? floatingMessageService = null,
@@ -59,6 +60,8 @@ public sealed partial class ResourcesPageViewModel : ObservableObject
         this.statusService = statusService;
         this.externalLinkService = externalLinkService;
         this.resourceCatalogService = resourceCatalogService;
+        Func<IReadOnlyList<GameInstance>>? getInstanceCatalogSnapshot =
+            gameManagement is null ? null : gameManagement.GetInstanceCatalogSnapshot;
 
         Sections =
         [
@@ -75,7 +78,7 @@ public sealed partial class ResourcesPageViewModel : ObservableObject
             logger,
             uiDispatcher,
             gameVersionService,
-            gameInstanceService,
+            getInstanceCatalogSnapshot,
             statusService,
             filePickerService,
             floatingMessageService,
@@ -90,7 +93,7 @@ public sealed partial class ResourcesPageViewModel : ObservableObject
             logger,
             uiDispatcher,
             gameVersionService,
-            gameInstanceService,
+            getInstanceCatalogSnapshot,
             statusService,
             filePickerService,
             floatingMessageService,
@@ -105,7 +108,7 @@ public sealed partial class ResourcesPageViewModel : ObservableObject
             logger,
             uiDispatcher,
             gameVersionService,
-            gameInstanceService,
+            getInstanceCatalogSnapshot,
             statusService,
             filePickerService,
             floatingMessageService,
@@ -120,7 +123,7 @@ public sealed partial class ResourcesPageViewModel : ObservableObject
             logger,
             uiDispatcher,
             gameVersionService,
-            gameInstanceService,
+            getInstanceCatalogSnapshot,
             statusService,
             filePickerService,
             floatingMessageService,
@@ -135,7 +138,7 @@ public sealed partial class ResourcesPageViewModel : ObservableObject
             logger,
             uiDispatcher,
             gameVersionService,
-            gameInstanceService,
+            getInstanceCatalogSnapshot,
             statusService,
             filePickerService,
             floatingMessageService,
@@ -296,11 +299,11 @@ public sealed partial class ResourcesPageViewModel : ObservableObject
         CurrentOnlineProjectPage?.BeginEnsureProjectsLoaded();
     }
 
-    public async Task<bool> OpenProjectDetailsAsync(ResourceProjectReference reference)
+    internal async Task<ResourceProject?> LoadProjectDetailsAsync(ResourceProjectReference reference)
     {
         ArgumentNullException.ThrowIfNull(reference);
         if (resourceCatalogService is null)
-            return false;
+            return null;
 
         try
         {
@@ -308,28 +311,10 @@ public sealed partial class ResourcesPageViewModel : ObservableObject
             if (project is null)
             {
                 statusService?.Report(Strings.Status_OpenResourceDetailsFailed);
-                return false;
+                return null;
             }
 
-            var sectionId = reference.Kind switch
-            {
-                ResourceProjectKind.Mod => "mods",
-                ResourceProjectKind.ResourcePack => "resource_packs",
-                ResourceProjectKind.ShaderPack => "shader_packs",
-                _ => string.Empty
-            };
-            var section = Sections.FirstOrDefault(item => item.Id == sectionId);
-            if (section is null)
-                return false;
-
-            SelectSection(section, logSelection: false);
-            CurrentOnlineProjectPage?.ShowProjectDetails(project);
-            logger?.LogInformation(
-                "Opened recognized local resource project details. Kind={Kind} Source={Source} ProjectId={ProjectId}",
-                reference.Kind,
-                reference.Source,
-                reference.ProjectId);
-            return true;
+            return ResolveProjectSection(reference.Kind) is null ? null : project;
         }
         catch (Exception exception)
         {
@@ -340,8 +325,38 @@ public sealed partial class ResourcesPageViewModel : ObservableObject
                 reference.Source,
                 reference.ProjectId);
             statusService?.Report(Strings.Status_OpenResourceDetailsFailed);
-            return false;
+            return null;
         }
+    }
+
+    internal void ShowProjectDetails(ResourceProjectReference reference, ResourceProject project)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        ArgumentNullException.ThrowIfNull(project);
+
+        var section = ResolveProjectSection(reference.Kind);
+        if (section is null)
+            return;
+
+        SelectSection(section, logSelection: false);
+        CurrentOnlineProjectPage?.ShowProjectDetails(project);
+        logger?.LogInformation(
+            "Opened recognized local resource project details. Kind={Kind} Source={Source} ProjectId={ProjectId}",
+            reference.Kind,
+            reference.Source,
+            reference.ProjectId);
+    }
+
+    private ResourcesSectionItem? ResolveProjectSection(ResourceProjectKind kind)
+    {
+        var sectionId = kind switch
+        {
+            ResourceProjectKind.Mod => "mods",
+            ResourceProjectKind.ResourcePack => "resource_packs",
+            ResourceProjectKind.ShaderPack => "shader_packs",
+            _ => string.Empty
+        };
+        return Sections.FirstOrDefault(item => item.Id == sectionId);
     }
 
     public async Task OpenModsForInstanceAsync(GameInstance instance)

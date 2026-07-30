@@ -52,7 +52,6 @@ public sealed partial class InstanceShaderPackManagementSettingsViewModel : Game
     private bool isSectionActive;
     private bool isInitialProjectionReady;
     private bool suppressLocalCollectionEvents;
-    private bool needsRefreshOnActivation = true;
     private long lifecycleGeneration;
 
     // 可观察属性均为界面投影，任何磁盘变化都必须先进入共享本地内容 ViewModel。
@@ -169,7 +168,6 @@ public sealed partial class InstanceShaderPackManagementSettingsViewModel : Game
         // 切换底层集合时会同步触发事件，抑制回调以避免在半重置状态下重建列表。
         Interlocked.Increment(ref lifecycleGeneration);
         selectedInstance = instance;
-        needsRefreshOnActivation = true;
         loadTask = null;
         hasPendingVisualRefresh = false;
         isVisibleRefreshQueued = false;
@@ -177,7 +175,7 @@ public sealed partial class InstanceShaderPackManagementSettingsViewModel : Game
         try
         {
             localShaderPacksViewModel.SetSelectedInstance(instance);
-            localShaderPacksViewModel.SetWatcherEnabled(isSectionActive && selectedInstance is not null);
+            localShaderPacksViewModel.SetSectionActive(isSectionActive && selectedInstance is not null);
         }
         finally
         {
@@ -214,9 +212,17 @@ public sealed partial class InstanceShaderPackManagementSettingsViewModel : Game
         isSectionActive = false;
         Interlocked.Increment(ref lifecycleGeneration);
         loadTask = null;
-        needsRefreshOnActivation = true;
         IsLoadingShaderPacks = false;
-        localShaderPacksViewModel.SetWatcherEnabled(false);
+        localShaderPacksViewModel.SetSectionActive(false);
+    }
+
+    public void ReleaseLocalObservation()
+    {
+        isSectionActive = false;
+        Interlocked.Increment(ref lifecycleGeneration);
+        loadTask = null;
+        IsLoadingShaderPacks = false;
+        localShaderPacksViewModel.ReleaseObservation();
     }
 
     public void SuspendLocalWatchersForInstanceRename()
@@ -230,7 +236,7 @@ public sealed partial class InstanceShaderPackManagementSettingsViewModel : Game
         {
             Interlocked.Increment(ref lifecycleGeneration);
             loadTask = null;
-            needsRefreshOnActivation = true;
+            localShaderPacksViewModel.InvalidateSnapshot();
         }
         localShaderPacksViewModel.ResumeWatcherAfterInstanceRename(restart);
     }
@@ -239,17 +245,13 @@ public sealed partial class InstanceShaderPackManagementSettingsViewModel : Game
     {
         if (!isSectionActive)
         {
-            // 页面不可见时关闭 watcher，激活后静默补齐离开期间的变化。
+            // 首次进入后保留轻量监听；隐藏期间 watcher 只标记失效，不扫描目录或重建页面。
             isSectionActive = true;
             Interlocked.Increment(ref lifecycleGeneration);
             loadTask = null;
-            localShaderPacksViewModel.SetWatcherEnabled(selectedInstance is not null);
+            localShaderPacksViewModel.SetSectionActive(selectedInstance is not null);
         }
 
-        if (!needsRefreshOnActivation)
-            return EnsureLoadedForSelectedInstanceAsync();
-
-        needsRefreshOnActivation = false;
         if (selectedInstance is null)
             return Task.CompletedTask;
 

@@ -80,6 +80,76 @@ public sealed class InstanceContentRefreshWatcherTests
         Assert.Equal(1, monitor.WatchCount);
     }
 
+    [Fact]
+    public async Task ChangeDuringRefreshProducesOneSequentialTrailingRefresh()
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var firstStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondFinished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var refreshCount = 0;
+        var activeCount = 0;
+        var maximumActiveCount = 0;
+        using var watcher = new InstanceContentRefreshWatcher(
+            monitor,
+            InstanceDirectoryKind.Mods,
+            async () =>
+            {
+                var active = Interlocked.Increment(ref activeCount);
+                maximumActiveCount = Math.Max(maximumActiveCount, active);
+                var current = Interlocked.Increment(ref refreshCount);
+                if (current == 1)
+                {
+                    firstStarted.TrySetResult(true);
+                    await releaseFirst.Task;
+                }
+                else
+                {
+                    secondFinished.TrySetResult(true);
+                }
+                Interlocked.Decrement(ref activeCount);
+            },
+            _ => { },
+            NullLogger.Instance);
+        watcher.SetInstance(CreateInstance());
+        watcher.SetEnabled(true);
+
+        monitor.Current.Raise("Created", "first.jar");
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        monitor.Current.Raise("Changed", "first.jar");
+        monitor.Current.Raise("Changed", "first.jar");
+        releaseFirst.TrySetResult(true);
+        await secondFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(2, refreshCount);
+        Assert.Equal(1, maximumActiveCount);
+    }
+
+    [Fact]
+    public async Task WatcherErrorRefreshesAndRebuildsWatch()
+    {
+        var monitor = new RecordingDirectoryMonitor();
+        var refreshed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watcher = new InstanceContentRefreshWatcher(
+            monitor,
+            InstanceDirectoryKind.Mods,
+            () =>
+            {
+                refreshed.TrySetResult(true);
+                return Task.CompletedTask;
+            },
+            _ => { },
+            NullLogger.Instance);
+        watcher.SetInstance(CreateInstance());
+        watcher.SetEnabled(true);
+
+        monitor.Current.Raise("Error", "mods");
+        await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitUntilAsync(() => monitor.WatchCount == 2);
+
+        Assert.Equal(2, monitor.WatchCount);
+    }
+
     private static GameInstance CreateInstance()
     {
         return new GameInstance
@@ -87,6 +157,14 @@ public sealed class InstanceContentRefreshWatcherTests
             Id = Guid.NewGuid().ToString("N"),
             InstanceDirectory = "instance"
         };
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var timeout = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2);
+        while (!condition() && DateTimeOffset.UtcNow < timeout)
+            await Task.Delay(20);
+        Assert.True(condition());
     }
 
     private sealed class RecordingDirectoryMonitor : IInstanceDirectoryMonitor

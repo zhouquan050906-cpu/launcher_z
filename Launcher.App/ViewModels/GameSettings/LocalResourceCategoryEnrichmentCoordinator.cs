@@ -25,6 +25,7 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
     private readonly Action<T, IReadOnlyList<ResourceProjectCategory>> categoriesSetter;
     private readonly Func<T, string?>? iconSourceSelector;
     private readonly Action<T, string>? iconSourceSetter;
+    private readonly bool preferResolvedIconSource;
     private readonly Func<T, ResourceProjectReference?>? projectReferenceSelector;
     private readonly Action<T, ResourceProjectReference>? projectReferenceSetter;
     private readonly Func<IReadOnlyList<T>> currentItemsProvider;
@@ -46,6 +47,7 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
         ILogger logger,
         Func<T, string?>? iconSourceSelector = null,
         Action<T, string>? iconSourceSetter = null,
+        bool preferResolvedIconSource = false,
         Func<T, ResourceProjectReference?>? projectReferenceSelector = null,
         Action<T, ResourceProjectReference>? projectReferenceSetter = null)
     {
@@ -56,6 +58,7 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
         this.categoriesSetter = categoriesSetter;
         this.iconSourceSelector = iconSourceSelector;
         this.iconSourceSetter = iconSourceSetter;
+        this.preferResolvedIconSource = preferResolvedIconSource;
         this.projectReferenceSelector = projectReferenceSelector;
         this.projectReferenceSetter = projectReferenceSetter;
         this.currentItemsProvider = currentItemsProvider;
@@ -66,7 +69,6 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
 
     public void Queue(IReadOnlyList<T> items)
     {
-        Cancel();
         if (service is null || items.Count == 0)
             return;
 
@@ -79,6 +81,7 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
         if (candidates.Length == 0)
             return;
 
+        Cancel();
         var expectedGeneration = generation;
         var cts = new CancellationTokenSource();
         cancellationTokenSource = cts;
@@ -158,11 +161,15 @@ internal sealed class LocalResourceCategoryEnrichmentCoordinator<T> : IDisposabl
 
             if (iconSourceSelector is not null
                 && iconSourceSetter is not null
-                && string.IsNullOrWhiteSpace(iconSourceSelector(item))
                 && !string.IsNullOrWhiteSpace(metadata.IconSource))
             {
-                iconSourceSetter(item, metadata.IconSource);
-                updated = true;
+                var currentIconSource = iconSourceSelector(item);
+                if ((preferResolvedIconSource || string.IsNullOrWhiteSpace(currentIconSource))
+                    && !string.Equals(currentIconSource, metadata.IconSource, StringComparison.Ordinal))
+                {
+                    iconSourceSetter(item, metadata.IconSource);
+                    updated = true;
+                }
             }
 
             if (projectReferenceSelector is not null

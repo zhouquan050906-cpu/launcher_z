@@ -53,10 +53,6 @@ public sealed partial class MainViewModel
         var targetPage = item.Loader is LoaderKind
             ? NavigationCatalog.DownloadPage
             : item.Page;
-        var isRepeatingGameSettingsClick = NavigationCatalog.IsPage(CurrentPage, NavigationCatalog.GameSettingsPage)
-            && NavigationCatalog.IsPage(targetPage, NavigationCatalog.GameSettingsPage);
-        var isRepeatingHomeClick = NavigationCatalog.IsPage(CurrentPage, NavigationCatalog.HomePage)
-            && NavigationCatalog.IsPage(targetPage, NavigationCatalog.HomePage);
 
         if (item.Loader is LoaderKind loader)
         {
@@ -70,14 +66,6 @@ public sealed partial class MainViewModel
 
         UpdateSecondaryItems();
         UpdateNavigationSelection();
-
-        if (isRepeatingGameSettingsClick && hasInitialized)
-            ObserveShellTask(GameSettingsPage.RefreshInstancesSilentlyAsync(), "refresh game settings instances");
-
-        if (isRepeatingHomeClick && hasInitialized)
-            ObserveShellTask(
-                sessionCoordinator.SyncCurrentStateAsync(NavigationCatalog.HomePage),
-                "refresh home instances");
     }
 
     [RelayCommand]

@@ -93,14 +93,18 @@ public sealed partial class InstanceModManagementSettingsViewModel
         if (selectedInstance is null || !IsModManagementSupported)
             return;
         var expectedInstance = selectedInstance;
+        var previousRevision = localModsViewModel.Revision;
 
         try
         {
-            if (!await localModsViewModel.RefreshModsAsync()
+            if (!await localModsViewModel.RefreshIfInvalidatedAsync()
                 || !IsCurrentLifecycle(generation, expectedInstance))
             {
                 return;
             }
+
+            if (localModsViewModel.Revision == previousRevision)
+                return;
 
             hasPendingVisualRefresh = false;
             RefreshFromLocalMods();

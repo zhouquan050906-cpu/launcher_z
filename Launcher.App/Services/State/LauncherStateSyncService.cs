@@ -34,9 +34,12 @@ public sealed class LauncherStateSyncService : IDisposable
     private readonly TimeSpan debounceDelay;
     private Func<LauncherSettings>? settingsProvider;
     private Func<Task>? synchronize;
-    private CancellationTokenSource? pendingCancellation;
+    private CancellationTokenSource? workerCancellation;
     private Task pendingTask = Task.CompletedTask;
     private DateTimeOffset ignoreMonitorChangesUntil;
+    private long requestGeneration;
+    private bool syncRequested;
+    private bool workerRunning;
     private bool isStarted;
     private bool isDisposed;
 
@@ -69,15 +72,19 @@ public sealed class LauncherStateSyncService : IDisposable
 
     public void RequestSync()
     {
-        if (!isStarted)
-            return;
-
-        var cancellation = new CancellationTokenSource();
         lock (syncLock)
         {
-            pendingCancellation?.Cancel();
-            pendingCancellation = cancellation;
-            pendingTask = SynchronizeAfterDelayAsync(cancellation);
+            if (!isStarted)
+                return;
+
+            syncRequested = true;
+            requestGeneration++;
+            if (workerRunning)
+                return;
+
+            workerRunning = true;
+            workerCancellation = new CancellationTokenSource();
+            pendingTask = ProcessRequestsAsync(workerCancellation);
         }
     }
 
@@ -98,8 +105,7 @@ public sealed class LauncherStateSyncService : IDisposable
             // FileSystemWatcher also observes launcher-owned atomic writes. Cancel the refresh
             // already queued for that write and ignore its duplicate notifications briefly.
             ignoreMonitorChangesUntil = DateTimeOffset.UtcNow + debounceDelay;
-            pendingCancellation?.Cancel();
-            pendingCancellation = null;
+            syncRequested = false;
             getSettings = settingsProvider;
         }
 
@@ -119,8 +125,8 @@ public sealed class LauncherStateSyncService : IDisposable
         synchronize = null;
         lock (syncLock)
         {
-            pendingCancellation?.Cancel();
-            pendingCancellation = null;
+            syncRequested = false;
+            workerCancellation?.Cancel();
         }
 
         stateMonitor.Stop();
@@ -146,36 +152,77 @@ public sealed class LauncherStateSyncService : IDisposable
         RequestSync();
     }
 
-    private async Task SynchronizeAfterDelayAsync(CancellationTokenSource cancellation)
+    private async Task ProcessRequestsAsync(CancellationTokenSource cancellation)
     {
         try
         {
-            await Task.Delay(debounceDelay, cancellation.Token).ConfigureAwait(false);
-            var synchronizeCurrentState = synchronize;
-            var getSettings = settingsProvider;
-            if (synchronizeCurrentState is null || getSettings is null)
-                return;
+            while (true)
+            {
+                long observedGeneration;
+                lock (syncLock)
+                {
+                    if (!isStarted || !syncRequested)
+                    {
+                        CompleteWorkerLocked(cancellation);
+                        return;
+                    }
 
-            await uiDispatcher.InvokeAsync(synchronizeCurrentState).ConfigureAwait(false);
-            if (!cancellation.IsCancellationRequested && isStarted)
-                stateMonitor.Watch(getSettings());
+                    observedGeneration = requestGeneration;
+                }
+
+                await Task.Delay(debounceDelay, cancellation.Token).ConfigureAwait(false);
+
+                Func<Task>? synchronizeCurrentState;
+                Func<LauncherSettings>? getSettings;
+                lock (syncLock)
+                {
+                    if (!isStarted || !syncRequested)
+                    {
+                        CompleteWorkerLocked(cancellation);
+                        return;
+                    }
+
+                    if (observedGeneration != requestGeneration)
+                        continue;
+
+                    syncRequested = false;
+                    synchronizeCurrentState = synchronize;
+                    getSettings = settingsProvider;
+                }
+
+                if (synchronizeCurrentState is null || getSettings is null)
+                    continue;
+
+                try
+                {
+                    await uiDispatcher.InvokeAsync(synchronizeCurrentState).ConfigureAwait(false);
+                    if (!cancellation.IsCancellationRequested && isStarted)
+                        stateMonitor.Watch(getSettings());
+                }
+                catch (Exception exception)
+                {
+                    logger.LogWarning(exception, "Failed to synchronize launcher state after a monitored change.");
+                }
+            }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
         }
-        catch (Exception exception)
-        {
-            logger.LogWarning(exception, "Failed to synchronize launcher state after a monitored change.");
-        }
         finally
         {
             lock (syncLock)
-            {
-                if (ReferenceEquals(pendingCancellation, cancellation))
-                    pendingCancellation = null;
-            }
+                CompleteWorkerLocked(cancellation);
 
             cancellation.Dispose();
         }
+    }
+
+    private void CompleteWorkerLocked(CancellationTokenSource cancellation)
+    {
+        if (!ReferenceEquals(workerCancellation, cancellation))
+            return;
+
+        workerCancellation = null;
+        workerRunning = false;
     }
 }

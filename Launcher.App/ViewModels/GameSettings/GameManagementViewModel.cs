@@ -62,6 +62,7 @@ public sealed partial class GameManagementViewModel : ObservableObject
     public ModrinthSearchViewModel ModrinthSearch { get; }
 
     public ObservableCollection<GameInstance> Instances => InstancesViewModel.Instances;
+    public long InstanceCatalogRevision => InstancesViewModel.CatalogRevision;
     public ObservableCollection<MinecraftVersionInfo> MinecraftVersions => LoaderSelection.MinecraftVersions;
     public ObservableCollection<NavigationItem> LoaderItems => LoaderSelection.LoaderItems;
     public ObservableCollection<LoaderVersionInfo> LoaderVersions => LoaderSelection.LoaderVersions;
@@ -71,6 +72,11 @@ public sealed partial class GameManagementViewModel : ObservableObject
     {
         get => InstancesViewModel.SelectedInstance;
         set => InstancesViewModel.SelectedInstance = value;
+    }
+
+    public IReadOnlyList<GameInstance> GetInstanceCatalogSnapshot()
+    {
+        return Instances.ToArray();
     }
 
     public MinecraftVersionInfo? SelectedMinecraftVersion
@@ -149,10 +155,15 @@ public sealed partial class GameManagementViewModel : ObservableObject
         return InstancesViewModel.SelectLaunchInstanceAsync(instance);
     }
 
-    public void ApplyUpdatedInstance(GameInstance instance)
+    public Task ApplyUpdatedInstanceAsync(GameInstance instance)
     {
         // 保存产生的新实例对象按 Id 增量合并，避免全量刷新打断当前页面选择。
-        InstancesViewModel.ApplyUpdatedInstance(instance);
+        return InstancesViewModel.ApplyUpdatedInstanceAsync(instance);
+    }
+
+    public Task<bool> RemoveInstanceAsync(string instanceId)
+    {
+        return InstancesViewModel.RemoveInstanceAsync(instanceId);
     }
 
     [RelayCommand]

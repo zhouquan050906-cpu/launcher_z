@@ -66,6 +66,9 @@ public sealed class LocalResourcePacksViewModel : IDisposable
             () => ResourcePacksChanged?.Invoke(this, EventArgs.Empty),
             dispatcher,
             this.logger,
+            iconSourceSelector: resourcePack => resourcePack.IconSource,
+            iconSourceSetter: static (resourcePack, iconSource) => resourcePack.IconSource = iconSource,
+            preferResolvedIconSource: true,
             projectReferenceSelector: resourcePack => resourcePack.ProjectReference,
             projectReferenceSetter: static (resourcePack, reference) => resourcePack.ProjectReference = reference);
     }
@@ -76,17 +79,34 @@ public sealed class LocalResourcePacksViewModel : IDisposable
 
     public IReadOnlyList<LocalResourcePack> CurrentResourcePacks => refreshCoordinator.CurrentItems;
 
+    public long Revision => refreshCoordinator.Revision;
+
     public void SetSelectedInstance(GameInstance? instance)
     {
         categoryEnrichmentCoordinator.Cancel();
         refreshCoordinator.SetInstance(instance);
     }
 
-    public void SetWatcherEnabled(bool enabled)
+    public void SetSectionActive(bool active) => refreshCoordinator.SetSectionActive(active);
+
+    public async Task<bool> RefreshIfInvalidatedAsync()
     {
-        if (!enabled)
-            categoryEnrichmentCoordinator.Cancel();
-        refreshCoordinator.SetWatcherEnabled(enabled);
+        var previous = CurrentResourcePacks.ToHashSet(ReferenceEqualityComparer.Instance);
+        var refreshed = await refreshCoordinator.RefreshIfInvalidatedAsync();
+        if (refreshed)
+        {
+            categoryEnrichmentCoordinator.Queue(
+                CurrentResourcePacks.Where(item => !previous.Contains(item)).ToArray());
+        }
+        return refreshed;
+    }
+
+    public void InvalidateSnapshot() => refreshCoordinator.InvalidateSnapshot();
+
+    public void ReleaseObservation()
+    {
+        categoryEnrichmentCoordinator.Cancel();
+        refreshCoordinator.ReleaseObservation();
     }
 
     public void SuspendWatcherForInstanceRename() => refreshCoordinator.SuspendForRename();
@@ -95,21 +115,24 @@ public sealed class LocalResourcePacksViewModel : IDisposable
 
     public async Task<bool> RefreshResourcePacksAsync()
     {
+        var previous = CurrentResourcePacks.ToHashSet(ReferenceEqualityComparer.Instance);
         var refreshed = await refreshCoordinator.RefreshAsync();
         if (refreshed)
-            categoryEnrichmentCoordinator.Queue(CurrentResourcePacks);
+        {
+            categoryEnrichmentCoordinator.Queue(
+                CurrentResourcePacks.Where(item => !previous.Contains(item)).ToArray());
+        }
         return refreshed;
     }
 
     public async Task<int> DeleteResourcePacksAsync(IEnumerable<LocalResourcePack> resourcePacks)
     {
-        var failed = await LocalContentBatchExecutor.ExecuteAsync(
-            resourcePacks,
-            item => item.FullPath,
-            item => service.DeleteAsync(item),
-            (item, exception) => logger.LogWarning(exception, "Failed to delete local resource pack. Path={Path}", item.FullPath));
-        await RefreshResourcePacksAsync();
-        return failed;
+        return await refreshCoordinator.ExecuteInternalOperationAsync(
+            () => LocalContentBatchExecutor.ExecuteAsync(
+                resourcePacks,
+                item => item.FullPath,
+                item => service.DeleteAsync(item),
+                (item, exception) => logger.LogWarning(exception, "Failed to delete local resource pack. Path={Path}", item.FullPath)));
     }
 
     public async Task<LocalResourcePackImportResult> ImportResourcePackAsync(string archivePath, bool reportStatus = true)
@@ -117,7 +140,10 @@ public sealed class LocalResourcePacksViewModel : IDisposable
         var instance = refreshCoordinator.SelectedInstance;
         if (instance is null || string.IsNullOrWhiteSpace(archivePath))
             return LocalResourcePackImportResult.Failure(LocalResourcePackImportFailureReason.UnexpectedError);
-        var result = await service.ImportAsync(instance, archivePath);
+        var previous = CurrentResourcePacks.ToHashSet(ReferenceEqualityComparer.Instance);
+        var result = await refreshCoordinator.ExecuteInternalOperationAsync(
+            () => service.ImportAsync(instance, archivePath),
+            static value => value.IsSuccess);
         if (!result.IsSuccess)
         {
             if (reportStatus)
@@ -128,7 +154,8 @@ public sealed class LocalResourcePacksViewModel : IDisposable
             }
             return result;
         }
-        await RefreshResourcePacksAsync();
+        categoryEnrichmentCoordinator.Queue(
+            CurrentResourcePacks.Where(item => !previous.Contains(item)).ToArray());
         if (reportStatus)
             ReportStatus(Strings.Status_LocalResourcePackImported);
         return result;
@@ -142,12 +169,19 @@ public sealed class LocalResourcePacksViewModel : IDisposable
 
     private void Apply(IReadOnlyList<LocalResourcePack> items)
     {
-        ResourcePacks.ReplaceWith(items);
-        ResourcePacksChanged?.Invoke(this, EventArgs.Empty);
+        if (ResourcePacks.SynchronizeByKey(
+                items,
+                static item => item.FullPath,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            ResourcePacksChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void Clear()
     {
+        if (ResourcePacks.Count == 0)
+            return;
         ResourcePacks.Clear();
         ResourcePacksChanged?.Invoke(this, EventArgs.Empty);
     }

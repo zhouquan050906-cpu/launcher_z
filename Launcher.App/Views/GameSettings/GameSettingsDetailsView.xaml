@@ -36,22 +36,6 @@
             <views:InstanceJavaSettingsView />
         </DataTemplate>
 
-        <DataTemplate DataType="{x:Type gameSettings:InstanceModManagementSettingsViewModel}">
-            <views:InstanceModManagementSettingsView />
-        </DataTemplate>
-
-        <DataTemplate DataType="{x:Type gameSettings:InstanceSaveManagementSettingsViewModel}">
-            <views:InstanceSaveManagementSettingsView />
-        </DataTemplate>
-
-        <DataTemplate DataType="{x:Type gameSettings:InstanceResourcePackManagementSettingsViewModel}">
-            <views:InstanceResourcePackManagementSettingsView />
-        </DataTemplate>
-
-        <DataTemplate DataType="{x:Type gameSettings:InstanceShaderPackManagementSettingsViewModel}">
-            <views:InstanceShaderPackManagementSettingsView />
-        </DataTemplate>
-
         <DataTemplate DataType="{x:Type gameSettings:InstanceBackupSettingsViewModel}">
             <views:InstanceBackupSettingsView />
         </DataTemplate>
@@ -89,14 +73,13 @@
             </StackPanel>
         </ScrollViewer>
 
-        <ContentControl x:Name="FullViewportSectionContentRoot"
-                        Content="{Binding FullViewportSectionViewModel}">
-            <ContentControl.RenderTransform>
+        <Grid x:Name="FullViewportSectionContentRoot">
+            <Grid.RenderTransform>
                 <TranslateTransform />
-            </ContentControl.RenderTransform>
+            </Grid.RenderTransform>
 
-            <ContentControl.Style>
-                <Style TargetType="ContentControl">
+            <Grid.Style>
+                <Style TargetType="Grid">
                     <Setter Property="Visibility" Value="Collapsed" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding CurrentSectionViewModel.UsesFullViewportLayout}" Value="True">
@@ -104,7 +87,25 @@
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
-            </ContentControl.Style>
-        </ContentControl>
+            </Grid.Style>
+
+            <ContentControl Content="{Binding NonRetainedFullViewportSectionViewModel}" />
+
+            <views:InstanceModManagementSettingsView
+                DataContext="{Binding ModManagement}"
+                Visibility="{Binding DataContext.IsModManagementSection, RelativeSource={RelativeSource AncestorType={x:Type views:GameSettingsDetailsView}}, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
+
+            <views:InstanceSaveManagementSettingsView
+                DataContext="{Binding SaveManagement}"
+                Visibility="{Binding DataContext.IsSaveManagementSection, RelativeSource={RelativeSource AncestorType={x:Type views:GameSettingsDetailsView}}, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
+
+            <views:InstanceResourcePackManagementSettingsView
+                DataContext="{Binding ResourcePackManagement}"
+                Visibility="{Binding DataContext.IsResourcePackManagementSection, RelativeSource={RelativeSource AncestorType={x:Type views:GameSettingsDetailsView}}, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
+
+            <views:InstanceShaderPackManagementSettingsView
+                DataContext="{Binding ShaderPackManagement}"
+                Visibility="{Binding DataContext.IsShaderPackManagementSection, RelativeSource={RelativeSource AncestorType={x:Type views:GameSettingsDetailsView}}, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
+        </Grid>
     </Grid>
 </UserControl>

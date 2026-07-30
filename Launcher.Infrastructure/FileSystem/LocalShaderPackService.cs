@@ -30,6 +30,8 @@ public sealed class LocalShaderPackService : ILocalShaderPackService
     private const string SupportedArchiveExtension = ".zip";
     private readonly ILogger<LocalShaderPackService> logger;
     private readonly IUserFileDeletionService userFileDeletionService;
+    private readonly SemaphoreSlim snapshotLock = new(1, 1);
+    private readonly BoundedLocalContentSnapshotCache<LocalContentFileIdentity, LocalShaderPack> snapshots = new();
 
     public LocalShaderPackService(
         ILogger<LocalShaderPackService>? logger = null,
@@ -39,43 +41,59 @@ public sealed class LocalShaderPackService : ILocalShaderPackService
         this.userFileDeletionService = userFileDeletionService ?? new UserFileDeletionService();
     }
 
-    public Task<IReadOnlyList<LocalShaderPack>> GetShaderPacksAsync(
+    public async Task<IReadOnlyList<LocalShaderPack>> GetShaderPacksAsync(
         GameInstance instance,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(instance);
-
-        return Task.Run<IReadOnlyList<LocalShaderPack>>(
-            () =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var shaderPacksDirectory = GetShaderPacksDirectory(instance);
-                if (!Directory.Exists(shaderPacksDirectory))
+        await snapshotLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await Task.Run<IReadOnlyList<LocalShaderPack>>(
+                () =>
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var shaderPacksDirectory = GetShaderPacksDirectory(instance);
+                    if (!Directory.Exists(shaderPacksDirectory))
+                    {
+                        snapshots.Remove(shaderPacksDirectory);
+                        return [];
+                    }
+
+                    var inventory = Directory.EnumerateFiles(
+                            shaderPacksDirectory,
+                            $"*{SupportedArchiveExtension}",
+                            SearchOption.TopDirectoryOnly)
+                        .Select(CreateIdentity)
+                        .OrderByDescending(item => item.CreationTimeUtcTicks)
+                        .ThenBy(item => Path.GetFileNameWithoutExtension(item.FullPath), StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                    if (inventory.Length == 0)
+                    {
+                        snapshots.Remove(shaderPacksDirectory);
+                        logger.LogDebug(
+                            "Local shader pack inventory checked. InstanceId={InstanceId} Count=0",
+                            instance.Id);
+                        return [];
+                    }
+
+                    var snapshot = snapshots.GetOrCreate(shaderPacksDirectory);
+                    var shaderPacks = snapshot.Reconcile(
+                        inventory,
+                        static item => item.FullPath,
+                        ToLocalShaderPack);
                     logger.LogDebug(
-                        "No local shader packs directory found. InstanceId={InstanceId} ShaderPacksDirectory={ShaderPacksDirectory}",
+                        "Local shader pack inventory checked. InstanceId={InstanceId} Count={ShaderPackCount}",
                         instance.Id,
-                        shaderPacksDirectory);
-                    return [];
-                }
-
-                var shaderPacks = Directory.EnumerateFiles(
-                        shaderPacksDirectory,
-                        $"*{SupportedArchiveExtension}",
-                        SearchOption.TopDirectoryOnly)
-                    .Select(ToLocalShaderPack)
-                    .OrderByDescending(shaderPack => shaderPack.CreatedAt)
-                    .ThenBy(shaderPack => shaderPack.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-
-                logger.LogDebug(
-                    "Local shader packs loaded. InstanceId={InstanceId} Count={ShaderPackCount}",
-                    instance.Id,
-                    shaderPacks.Length);
-                return shaderPacks;
-            },
-            cancellationToken);
+                        shaderPacks.Count);
+                    return shaderPacks;
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            snapshotLock.Release();
+        }
     }
 
     public Task<LocalShaderPackImportResult> ImportAsync(
@@ -170,7 +188,7 @@ public sealed class LocalShaderPackService : ILocalShaderPackService
             var targetPath = ResolveUniqueFilePath(shaderPacksDirectory, Path.GetFileName(normalizedArchivePath));
             File.Copy(normalizedArchivePath, targetPath, overwrite: false);
 
-            var importedShaderPack = ToLocalShaderPack(targetPath);
+            var importedShaderPack = ToLocalShaderPack(CreateIdentity(targetPath));
             logger.LogDebug(
                 "Local shader pack archive imported. InstanceId={InstanceId} ArchivePath={ArchivePath} ShaderPackPath={ShaderPackPath}",
                 instance.Id,
@@ -211,15 +229,24 @@ public sealed class LocalShaderPackService : ILocalShaderPackService
         }
     }
 
-    private static LocalShaderPack ToLocalShaderPack(string path)
+    private static LocalContentFileIdentity CreateIdentity(string path)
     {
         var file = new FileInfo(path);
+        return new LocalContentFileIdentity(
+            file.FullName,
+            file.Length,
+            file.LastWriteTimeUtc.Ticks,
+            file.CreationTimeUtc.Ticks);
+    }
+
+    private static LocalShaderPack ToLocalShaderPack(LocalContentFileIdentity identity)
+    {
         return new LocalShaderPack
         {
-            Name = Path.GetFileNameWithoutExtension(file.Name),
-            FileName = file.Name,
-            FullPath = file.FullName,
-            CreatedAt = new DateTimeOffset(file.CreationTimeUtc)
+            Name = Path.GetFileNameWithoutExtension(identity.FullPath),
+            FileName = Path.GetFileName(identity.FullPath),
+            FullPath = identity.FullPath,
+            CreatedAt = new DateTimeOffset(identity.CreationTimeUtcTicks, TimeSpan.Zero)
         };
     }
 

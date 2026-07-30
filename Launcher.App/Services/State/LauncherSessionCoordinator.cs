@@ -50,10 +50,11 @@ public sealed class LauncherSessionCoordinator : IDisposable
     private readonly GameManagementViewModel gameManagement;
     private readonly LauncherStateSyncService stateSyncService;
     private readonly ILogger<LauncherSessionCoordinator> logger;
-    // 页面激活可能由导航与窗口恢复同时触发。零等待锁会合并重叠刷新，而不是让刷新请求排队造成旧状态回写。
-    private readonly SemaphoreSlim stateSynchronizationLock = new(1, 1);
+    // 实例目录刷新统一串行化；页面激活只投影内存快照，不参与这把锁。
+    private readonly SemaphoreSlim instanceSynchronizationLock = new(1, 1);
     private HomePageViewModel? homePage;
     private LauncherSettings? settings;
+    private string currentPage = NavigationCatalog.HomePage;
     private bool isAttached;
     private bool isInitialized;
 
@@ -102,6 +103,7 @@ public sealed class LauncherSessionCoordinator : IDisposable
         gameSettingsPage.LaunchInstanceRequested += GameSettingsPage_LaunchInstanceRequested;
         gameSettingsPage.OnlineModInstallRequested += GameSettingsPage_OnlineModInstallRequested;
         gameSettingsPage.InstancesChanged += GameSettingsPage_InstancesChanged;
+        gameSettingsPage.InstanceListActivated += GameSettingsPage_InstanceListActivated;
         settingsPage.LaunchDefaultsChanged += SettingsPage_LaunchDefaultsChanged;
         settingsPage.DownloadSourceChanged += SettingsPage_DownloadSourceChanged;
         settingsPage.MaximumDownloadConcurrencyChanged += SettingsPage_MaximumDownloadConcurrencyChanged;
@@ -118,7 +120,7 @@ public sealed class LauncherSessionCoordinator : IDisposable
         downloadConcurrencyLimitState.SetMaximumDownloadConcurrency(settings.MaximumDownloadConcurrency);
         await gameManagement.PrimeInstancesAsync(settings);
         homePage?.SetSettings(settings);
-        homePage?.SetLaunchInstances(gameManagement.Instances);
+        SynchronizeHomeInstances();
         homePage?.Initialize(settings, gameManagement.SelectedInstance);
         downloadPage.PrimeFromSettings(settings);
         gameSettingsPage.PrimeFromSettings(settings);
@@ -143,35 +145,33 @@ public sealed class LauncherSessionCoordinator : IDisposable
         isInitialized = true;
     }
 
-    public async Task SyncCurrentStateAsync(string currentPage)
+    public async Task ActivatePageAsync(string page)
     {
-        if (!isInitialized || !await stateSynchronizationLock.WaitAsync(0))
+        currentPage = page;
+        gameSettingsPage.SetShellPageActive(
+            NavigationCatalog.IsPage(page, NavigationCatalog.GameSettingsPage));
+        if (!isInitialized)
             return;
 
+        SynchronizeVisibleInstanceProjection();
+        if (NavigationCatalog.IsPage(page, NavigationCatalog.DownloadPage))
+            await downloadPage.EnsureVersionsLoadedAsync();
+    }
+
+    public async Task RefreshExternalInstanceCatalogAsync()
+    {
+        if (!isInitialized)
+            return;
+
+        await instanceSynchronizationLock.WaitAsync();
         try
         {
-            // 当前页面执行更完整的刷新；后台页面只同步共享实例，避免每次导航都触发全部远端请求。
-            if (NavigationCatalog.IsPage(currentPage, NavigationCatalog.HomePage))
-            {
-                await RefreshHomeInstancesAsync();
-            }
-            else
-            {
-                await gameManagement.EnsureInstancesLoadedAsync();
-                if (homePage is not null)
-                    await homePage.EnsureVersionTypesLoadedAsync();
-                SynchronizeHomeInstances();
-            }
-
-            if (NavigationCatalog.IsPage(currentPage, NavigationCatalog.DownloadPage))
-                await downloadPage.EnsureVersionsLoadedAsync();
-
-            if (NavigationCatalog.IsPage(currentPage, NavigationCatalog.GameSettingsPage))
-                await gameSettingsPage.RefreshInstancesForPageActivationAsync();
+            await gameManagement.RefreshInstancesAsync();
+            SynchronizeVisibleInstanceProjection();
         }
         finally
         {
-            stateSynchronizationLock.Release();
+            instanceSynchronizationLock.Release();
         }
     }
 
@@ -221,27 +221,40 @@ public sealed class LauncherSessionCoordinator : IDisposable
         gameSettingsPage.LaunchInstanceRequested -= GameSettingsPage_LaunchInstanceRequested;
         gameSettingsPage.OnlineModInstallRequested -= GameSettingsPage_OnlineModInstallRequested;
         gameSettingsPage.InstancesChanged -= GameSettingsPage_InstancesChanged;
+        gameSettingsPage.InstanceListActivated -= GameSettingsPage_InstanceListActivated;
         settingsPage.LaunchDefaultsChanged -= SettingsPage_LaunchDefaultsChanged;
         settingsPage.DownloadSourceChanged -= SettingsPage_DownloadSourceChanged;
         settingsPage.MaximumDownloadConcurrencyChanged -= SettingsPage_MaximumDownloadConcurrencyChanged;
         settingsPage.DownloadSpeedLimitChanged -= SettingsPage_DownloadSpeedLimitChanged;
         settingsPage.MinecraftDirectoryChanged -= SettingsPage_MinecraftDirectoryChanged;
-        stateSynchronizationLock.Dispose();
+        instanceSynchronizationLock.Dispose();
         isAttached = false;
-    }
-
-    private async Task RefreshHomeInstancesAsync()
-    {
-        await gameManagement.RefreshInstancesAsync();
-        if (homePage is not null)
-            await homePage.EnsureVersionTypesLoadedAsync();
-        SynchronizeHomeInstances();
     }
 
     private void SynchronizeHomeInstances()
     {
-        homePage?.SetLaunchInstances(gameManagement.Instances);
+        homePage?.ApplyInstanceCatalog(
+            gameManagement.Instances,
+            gameManagement.InstanceCatalogRevision);
         homePage?.SetSelectedInstance(gameManagement.SelectedInstance);
+    }
+
+    private void SynchronizeGameSettingsInstances()
+    {
+        if (gameSettingsPage.IsDetailsStep)
+            return;
+
+        gameSettingsPage.ApplyInstanceCatalog(
+            gameManagement.Instances,
+            gameManagement.InstanceCatalogRevision);
+    }
+
+    private void SynchronizeVisibleInstanceProjection()
+    {
+        if (NavigationCatalog.IsPage(currentPage, NavigationCatalog.HomePage))
+            SynchronizeHomeInstances();
+        else if (NavigationCatalog.IsPage(currentPage, NavigationCatalog.GameSettingsPage))
+            SynchronizeGameSettingsInstances();
     }
 
     private void GameManagement_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -260,9 +273,12 @@ public sealed class LauncherSessionCoordinator : IDisposable
 
     private async Task HandleInstalledInstanceAsync(GameInstance instance)
     {
-        // 安装完成事件已经携带权威实例，先就地加入集合，让 UI 无需等待下一次全目录扫描。
-        if (gameManagement.Instances.All(existing => existing.Id != instance.Id))
-            gameManagement.Instances.Add(instance);
+        // Cancel queued watcher work first. If a directory refresh already started before the
+        // installation committed, ApplyUpdatedInstanceAsync waits for it and then reapplies the
+        // authoritative local result so that stale discovery cannot remove the new instance.
+        stateSyncService.AcknowledgeLocalStateChange();
+        await gameManagement.ApplyUpdatedInstanceAsync(instance);
+        SynchronizeVisibleInstanceProjection();
 
         try
         {
@@ -277,9 +293,8 @@ public sealed class LauncherSessionCoordinator : IDisposable
             gameManagement.SelectedInstance = instance;
         }
 
-        gameSettingsPage.AddOrUpdateInstance(instance);
-        homePage?.SetLaunchInstances(gameManagement.Instances);
-        homePage?.SetSelectedInstance(instance);
+        stateSyncService.AcknowledgeLocalStateChange();
+        SynchronizeVisibleInstanceProjection();
     }
 
     private void ResourcesPage_ModpackManualDownloadsRequested(
@@ -305,7 +320,6 @@ public sealed class LauncherSessionCoordinator : IDisposable
                 return;
             }
 
-            SynchronizeHomeInstances();
             NavigationRequested?.Invoke(NavigationCatalog.HomePage);
             statusService.Report(string.Format(Strings.Status_LaunchInstanceSelectedFormat, instance.Name));
         }
@@ -321,6 +335,12 @@ public sealed class LauncherSessionCoordinator : IDisposable
         Observe(OpenResourcesModsForInstanceAsync(instance), "open online resources for an instance");
     }
 
+    private void GameSettingsPage_InstanceListActivated()
+    {
+        if (NavigationCatalog.IsPage(currentPage, NavigationCatalog.GameSettingsPage))
+            SynchronizeGameSettingsInstances();
+    }
+
     private async Task OpenResourcesModsForInstanceAsync(GameInstance instance)
     {
         NavigationRequested?.Invoke(NavigationCatalog.ResourcesPage);
@@ -329,19 +349,32 @@ public sealed class LauncherSessionCoordinator : IDisposable
 
     private void GameSettingsPage_InstancesChanged(GameSettingsInstancesChangedEventArgs args)
     {
+        Observe(HandleGameSettingsInstancesChangedAsync(args), "apply a game settings instance change");
+    }
+
+    private async Task HandleGameSettingsInstancesChangedAsync(GameSettingsInstancesChangedEventArgs args)
+    {
         // Instance mutations are already propagated incrementally below. Rearm the filesystem
         // monitor so the launcher's own metadata write cannot queue a stale full-page refresh.
         stateSyncService.AcknowledgeLocalStateChange();
 
-        // 单实例更新可以增量合并；新增/删除会改变排序和默认选择，必须从仓储重新同步整个集合。
+        // 已完成的本地变更携带权威实例或 ID，直接串行合并，避免再扫描目录。
         if (args.Kind is GameSettingsInstancesChangedKind.Updated && args.UpdatedInstance is not null)
         {
-            gameManagement.ApplyUpdatedInstance(args.UpdatedInstance);
-            SynchronizeHomeInstances();
+            await gameManagement.ApplyUpdatedInstanceAsync(args.UpdatedInstance);
+            SynchronizeVisibleInstanceProjection();
             return;
         }
 
-        Observe(SynchronizeInstancesFromGameSettingsAsync(), "synchronize instances from game settings");
+        if (args.Kind is GameSettingsInstancesChangedKind.Deleted
+            && !string.IsNullOrWhiteSpace(args.DeletedInstanceId))
+        {
+            await gameManagement.RemoveInstanceAsync(args.DeletedInstanceId);
+            SynchronizeVisibleInstanceProjection();
+            return;
+        }
+
+        await SynchronizeInstancesFromGameSettingsAsync();
     }
 
     private async Task SynchronizeInstancesFromGameSettingsAsync()
@@ -349,7 +382,7 @@ public sealed class LauncherSessionCoordinator : IDisposable
         try
         {
             await gameManagement.RefreshInstancesAsync();
-            SynchronizeHomeInstances();
+            SynchronizeVisibleInstanceProjection();
         }
         catch (Exception exception)
         {
@@ -403,6 +436,7 @@ public sealed class LauncherSessionCoordinator : IDisposable
         settings.MinecraftDirectory = e.MinecraftDirectory;
         homePage?.SetSettings(settings);
         gameSettingsPage.PrimeFromSettings(settings);
+        stateSyncService.AcknowledgeLocalStateChange();
         Observe(RefreshMinecraftDirectoryInstancesAsync(), "refresh instances after changing the Minecraft directory");
     }
 
@@ -417,10 +451,8 @@ public sealed class LauncherSessionCoordinator : IDisposable
             {
                 settings.DefaultInstanceId = latestSettings.DefaultInstanceId;
             }
-            if (homePage is not null)
-                await homePage.EnsureVersionTypesLoadedAsync();
-            SynchronizeHomeInstances();
-            await gameSettingsPage.RefreshInstancesSilentlyAsync();
+            SynchronizeVisibleInstanceProjection();
+            stateSyncService.AcknowledgeLocalStateChange();
         }
         catch (Exception exception)
         {

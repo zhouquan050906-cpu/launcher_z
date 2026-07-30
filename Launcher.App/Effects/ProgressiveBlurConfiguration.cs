@@ -31,7 +31,7 @@ internal static class ProgressiveBlurResourceKeys
 internal static class ProgressiveBlurDefaults
 {
     internal const double MaximumRadius = 24d;
-    internal const double RenderScale = 0.4d;
+    internal const double RenderScale = 0.2d;
     internal const double ActiveMinimumOpacity = 0d;
     internal const double ActiveIntermediateOpacity = 0.4d;
     internal const double SamplingGuardLength = 24d;

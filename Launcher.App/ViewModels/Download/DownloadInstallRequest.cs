@@ -23,6 +23,7 @@ namespace Launcher.App.ViewModels.Download;
 
 public sealed record DownloadInstallRequest(
     string MinecraftVersion,
+    string MinecraftVersionType,
     string InstanceName,
     LoaderKind Loader,
     string? LoaderVersion,
