@@ -20,6 +20,7 @@
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using Launcher.App.Controls;
 
 namespace Launcher.App.Services;
 
@@ -43,6 +44,7 @@ public sealed class SlidingContentTransitionCoordinator
     private readonly double transitionScale;
     private bool isSecondaryLayerVisible;
     private int transitionToken;
+    private IDisposable? blurRefreshLease;
 
     public SlidingContentTransitionCoordinator(
         FrameworkElement loadedElement,
@@ -66,6 +68,7 @@ public sealed class SlidingContentTransitionCoordinator
 
     public void Sync(bool showSecondaryLayer)
     {
+        ReleaseBlurRefreshLease();
         // Sync 用于初始状态或禁用动画场景，先停止全部动画再直接设置稳定终值。
         transitionToken++;
         isSecondaryLayerVisible = showSecondaryLayer;
@@ -96,6 +99,8 @@ public sealed class SlidingContentTransitionCoordinator
         var width = Math.Max(contentHost.ActualWidth, 1);
         var token = ++transitionToken;
         isSecondaryLayerVisible = showSecondaryLayer;
+        ReleaseBlurRefreshLease();
+        blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(previousLayer, nextLayer);
 
         var previousTransforms = EnsureLayerTransforms(previousLayer);
         var nextTransforms = EnsureLayerTransforms(nextLayer);
@@ -135,6 +140,7 @@ public sealed class SlidingContentTransitionCoordinator
 
             ResetLayer(previousLayer, isVisible: false);
             ResetLayer(nextLayer, isVisible: true);
+            ReleaseBlurRefreshLease();
         };
 
         previousLayer.BeginAnimation(UIElement.OpacityProperty, previousFade, HandoffBehavior.SnapshotAndReplace);
@@ -145,6 +151,12 @@ public sealed class SlidingContentTransitionCoordinator
         nextTransforms.Translate.BeginAnimation(TranslateTransform.XProperty, nextSlide, HandoffBehavior.SnapshotAndReplace);
         nextTransforms.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, nextScale, HandoffBehavior.SnapshotAndReplace);
         nextTransforms.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, nextScale.Clone(), HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void ReleaseBlurRefreshLease()
+    {
+        blurRefreshLease?.Dispose();
+        blurRefreshLease = null;
     }
 
     private void SyncFloatingElements(bool showSecondaryLayer)

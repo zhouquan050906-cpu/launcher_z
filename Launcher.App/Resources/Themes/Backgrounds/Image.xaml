@@ -25,6 +25,8 @@
                       Opacity="0.92"
                       ShadowDepth="3" />
     <SolidColorBrush x:Key="Brush.Surface.WindowBorder" Color="Transparent" />
+    <SolidColorBrush x:Key="Brush.Button.Secondary.Background"
+                     Color="Transparent" />
     <Thickness x:Key="Thickness.Surface.WindowBorder">0</Thickness>
     <sys:Double x:Key="Opacity.LauncherBackground.Image.NonHomeDim">0.40</sys:Double>
     <sys:Boolean x:Key="Is.ImageBackground.ControlTint.Enabled">True</sys:Boolean>

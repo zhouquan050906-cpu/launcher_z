@@ -71,6 +71,43 @@ public sealed class ImageBackgroundResourceContractTests
         Assert.Equal("0", windowBorderThickness.Value);
     }
 
+    [Fact]
+    public void ImageLayerRemovesSecondaryButtonContrastOverSharedSurfaceTint()
+    {
+        var image = LoadTheme("Backgrounds", "Image.xaml");
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var buttonTint = FindResource(
+            image,
+            xaml,
+            "SolidColorBrush",
+            "Brush.Button.Secondary.Background");
+
+        Assert.Equal(
+            "Transparent",
+            buttonTint.Attribute("Color")?.Value);
+    }
+
+    [Fact]
+    public void ClosedComboBoxUsesTheSharedSurfaceBackdrop()
+    {
+        var inputs = LoadAppXaml("Styles", "ControlStyles.Inputs.xaml");
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var toggleStyle = FindStyle(inputs, xaml, "LauncherComboBoxToggleButtonStyle");
+        var root = Assert.Single(toggleStyle.Descendants().Where(element =>
+            element.Name.LocalName == "Border"
+            && element.Attribute(xaml + "Name")?.Value == "Root"));
+
+        Assert.Equal(
+            "True",
+            root.Attributes().Single(attribute =>
+                attribute.Name.LocalName == "BackdropBlurHost.IsApplied").Value);
+        Assert.Equal(
+            "{DynamicResource Is.Surface.BackdropBlur.Enabled}",
+            root.Attributes().Single(attribute =>
+                attribute.Name.LocalName == "BackdropBlurHost.IsBlurEnabled").Value);
+    }
+
+
     private static readonly string[] HomeForegroundKeys =
     [
         "Brush.Home.Name.Foreground",

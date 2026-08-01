@@ -30,12 +30,12 @@
     </ResourceDictionary.MergedDictionaries>
 
     <Style x:Key="DialogTextBoxStyle" TargetType="TextBox">
-        <Setter Property="Height" Value="34" />
+        <Setter Property="Height" Value="{StaticResource LauncherCompactControlHeight}" />
         <Setter Property="Padding" Value="8,0" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{DynamicResource Brush.F4F4F4}" />
         <Setter Property="Background" Value="{DynamicResource Brush.Card.Surface}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Card.Border}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Input.TextBox.Border}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Effect" Value="{DynamicResource Effect.Card.Surface}" />
         <Setter Property="CaretBrush" Value="{DynamicResource Brush.F4F4F4}" />
@@ -125,12 +125,12 @@
     </Style>
 
     <Style x:Key="DialogPasswordBoxStyle" TargetType="PasswordBox">
-        <Setter Property="Height" Value="34" />
+        <Setter Property="Height" Value="{StaticResource LauncherCompactControlHeight}" />
         <Setter Property="Padding" Value="8,0" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{DynamicResource Brush.F4F4F4}" />
         <Setter Property="Background" Value="{DynamicResource Brush.Card.Surface}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Card.Border}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Input.TextBox.Border}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Effect" Value="{DynamicResource Effect.Card.Surface}" />
         <Setter Property="CaretBrush" Value="{DynamicResource Brush.F4F4F4}" />
@@ -239,6 +239,9 @@
                 <ControlTemplate TargetType="ToggleButton">
                     <Border x:Name="Root"
                             Background="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                            behaviors:BackdropBlurHost.IsApplied="True"
+                            behaviors:BackdropBlurHost.IsBlurEnabled="{DynamicResource Is.Surface.BackdropBlur.Enabled}"
+                            behaviors:BackdropBlurHost.FallbackBrush="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                             BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                             BorderThickness="{Binding BorderThickness, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                             CornerRadius="8">
@@ -335,7 +338,7 @@
            TargetType="TextBox"
            BasedOn="{StaticResource DialogTextBoxStyle}">
         <Setter Property="Height" Value="Auto" />
-        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="MinHeight" Value="{StaticResource LauncherCompactControlHeight}" />
         <Setter Property="Padding" Value="8,0" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="TextWrapping" Value="Wrap" />
@@ -417,13 +420,13 @@
     </Style>
 
     <Style x:Key="LauncherComboBoxStyle" TargetType="controls:AnimatedComboBox">
-        <Setter Property="Height" Value="36" />
+        <Setter Property="Height" Value="{StaticResource LauncherCompactControlHeight}" />
         <Setter Property="MinWidth" Value="160" />
         <Setter Property="Padding" Value="12,0,34,0" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{DynamicResource Brush.F4F4F4}" />
         <Setter Property="Background" Value="{DynamicResource Brush.Card.Surface}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Input.ComboBox.Border}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Input.TextBox.Border}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Effect" Value="{DynamicResource Effect.Card.Surface}" />
         <Setter Property="MaxDropDownHeight" Value="260" />

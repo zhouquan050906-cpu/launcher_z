@@ -275,7 +275,7 @@
     <Color x:Key="Color.Field.ReadOnly.Border">#16FFFFFF</Color>
     <Color x:Key="Color.Input.TextBox.Background">#22FFFFFF</Color>
     <Color x:Key="Color.Input.TextBox.BackgroundFocused">#2AFFFFFF</Color>
-    <Color x:Key="Color.Input.TextBox.Border">#20FFFFFF</Color>
+    <Color x:Key="Color.Input.TextBox.Border">#0CFFFFFF</Color>
     <Color x:Key="Color.Input.TextBox.BorderFocused">#662196F3</Color>
     <Color x:Key="Color.Input.ComboBox.Background">#24FFFFFF</Color>
     <Color x:Key="Color.Input.ComboBox.Hover">#22FFFFFF</Color>

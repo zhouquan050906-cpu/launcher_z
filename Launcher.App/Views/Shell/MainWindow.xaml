@@ -70,38 +70,24 @@
             BorderThickness="{DynamicResource Thickness.Surface.WindowBorder}"
             SnapsToDevicePixels="True">
         <Grid Background="Transparent">
-            <controls:BackdropBlurBorder x:Name="LauncherPreblurredBackdropSource"
-                                         SourceElement="{Binding ElementName=LauncherBackgroundVisualSource}"
-                                         IsHitTestVisible="False"
-                                         Style="{StaticResource SharedBackdropBlurSourceStyle}" />
-
-            <Grid x:Name="LauncherBackgroundVisualSource"
-                  IsHitTestVisible="False">
-                <Border>
-                    <Border.Background>
-                        <ImageBrush ImageSource="{Binding LauncherBackground.ImageSource}"
-                                    Stretch="UniformToFill" />
-                    </Border.Background>
-                </Border>
-
-                <Border x:Name="LauncherBackgroundImageDimLayer"
-                        Background="{DynamicResource Brush.LauncherBackground.Image.DimOverlay}"
-                        IsHitTestVisible="False">
-                    <Border.Style>
-                        <Style TargetType="Border">
-                            <Setter Property="Opacity" Value="0" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding LauncherBackground.IsActive}" Value="True">
-                                    <Setter Property="Opacity" Value="{DynamicResource Opacity.LauncherBackground.Image.NonHomeDim}" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding CurrentPage}" Value="Home">
-                                    <Setter Property="Opacity" Value="0" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Border.Style>
-                </Border>
-            </Grid>
+            <controls:ImageBackdropSource x:Name="LauncherBackgroundVisualSource"
+                                          ImageSource="{Binding LauncherBackground.ImageSource}"
+                                          OverlayBrush="{DynamicResource Brush.LauncherBackground.Image.DimOverlay}">
+                <controls:ImageBackdropSource.Style>
+                    <Style TargetType="{x:Type controls:ImageBackdropSource}">
+                        <Setter Property="OverlayOpacity" Value="0" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding LauncherBackground.IsActive}" Value="True">
+                                <Setter Property="OverlayOpacity"
+                                        Value="{DynamicResource Opacity.LauncherBackground.Image.NonHomeDim}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding CurrentPage}" Value="Home">
+                                <Setter Property="OverlayOpacity" Value="0" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </controls:ImageBackdropSource.Style>
+            </controls:ImageBackdropSource>
 
             <Grid x:Name="WindowContentLayer">
                 <Grid.ColumnDefinitions>

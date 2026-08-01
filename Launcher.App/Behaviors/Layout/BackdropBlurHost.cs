@@ -40,7 +40,8 @@ public static class BackdropBlurHost
             typeof(BackdropBlurHost),
             new FrameworkPropertyMetadata(
                 false,
-                FrameworkPropertyMetadataOptions.Inherits));
+                FrameworkPropertyMetadataOptions.Inherits,
+                OnIsBlurSuppressedChanged));
 
     public static readonly DependencyProperty FallbackBrushProperty =
         DependencyProperty.RegisterAttached(
@@ -100,6 +101,36 @@ public static class BackdropBlurHost
         }
     }
 
+    private static void OnIsBlurSuppressedChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (dependencyObject is not Border border || !GetIsApplied(border))
+            return;
+
+        if (e.NewValue is true)
+        {
+            if (border.GetValue(BackdropProperty) is BackdropBlurBorder backdrop)
+            {
+                BindingOperations.ClearBinding(
+                    backdrop,
+                    BackdropBlurBorder.IsBlurEnabledProperty);
+                backdrop.IsBlurEnabled = false;
+            }
+
+            return;
+        }
+
+        if (border.GetValue(BackdropProperty) is BackdropBlurBorder existingBackdrop)
+        {
+            BindBlurEnabled(existingBackdrop, border);
+        }
+        else if (border.IsLoaded)
+        {
+            ApplyBackdrop(border);
+        }
+    }
+
     private static void Border_Loaded(object sender, RoutedEventArgs e)
     {
         if (sender is Border border)
@@ -108,9 +139,6 @@ public static class BackdropBlurHost
 
     private static void ApplyBackdrop(Border border)
     {
-        if (GetIsBlurSuppressed(border))
-            return;
-
         if (border.GetValue(BackdropProperty) is BackdropBlurBorder)
             return;
 
@@ -125,14 +153,7 @@ public static class BackdropBlurHost
         backdrop.SetResourceReference(
             FrameworkElement.StyleProperty,
             "SurfaceBackdropBlurStyle");
-        BindingOperations.SetBinding(
-            backdrop,
-            BackdropBlurBorder.IsBlurEnabledProperty,
-            new Binding
-            {
-                Source = border,
-                Path = new PropertyPath("(0)", IsBlurEnabledProperty)
-            });
+        BindBlurEnabled(backdrop, border);
         BindingOperations.SetBinding(
             backdrop,
             BackdropBlurBorder.CornerRadiusProperty,
@@ -146,18 +167,43 @@ public static class BackdropBlurHost
         layers.Children.Add(backdrop);
         if (originalChild is not null)
         {
-            layers.Children.Add(new Border
+            var contentHost = new Border
             {
                 Background = Brushes.Transparent,
                 Padding = border.Padding,
                 Child = originalChild
-            });
+            };
+            SetIsBlurSuppressed(contentHost, true);
+            layers.Children.Add(contentHost);
         }
 
         border.Padding = default;
         border.Background = Brushes.Transparent;
         border.Child = layers;
         border.SetValue(BackdropProperty, backdrop);
+    }
+
+    private static void BindBlurEnabled(
+        BackdropBlurBorder backdrop,
+        Border border)
+    {
+        if (GetIsBlurSuppressed(border))
+        {
+            BindingOperations.ClearBinding(
+                backdrop,
+                BackdropBlurBorder.IsBlurEnabledProperty);
+            backdrop.IsBlurEnabled = false;
+            return;
+        }
+
+        BindingOperations.SetBinding(
+            backdrop,
+            BackdropBlurBorder.IsBlurEnabledProperty,
+            new Binding
+            {
+                Source = border,
+                Path = new PropertyPath("(0)", IsBlurEnabledProperty)
+            });
     }
 
 }

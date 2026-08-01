@@ -303,7 +303,8 @@
         <Setter Property="Padding" Value="18,0" />
         <Setter Property="Foreground" Value="{DynamicResource Brush.F4F4F4}" />
         <Setter Property="Background" Value="{DynamicResource Brush.Card.Surface}" />
-        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Input.TextBox.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Effect" Value="{DynamicResource Effect.Card.Surface}" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="FontWeight" Value="SemiBold" />
@@ -313,6 +314,8 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Root"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="8">
                         <Grid>
                             <Border x:Name="BaseBackground"
@@ -323,8 +326,6 @@
                                     CornerRadius="8" />
                             <Border x:Name="SurfaceContrastLayer"
                                     Background="{DynamicResource Brush.Button.Secondary.Background}"
-                                    BorderBrush="{DynamicResource Brush.Input.TextBox.Border}"
-                                    BorderThickness="1"
                                     CornerRadius="8"
                                     IsHitTestVisible="False"
                                     Opacity="0" />
@@ -404,6 +405,8 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Root"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="8">
                         <Grid>
                             <Border x:Name="BaseBackground"
@@ -413,8 +416,6 @@
                                     CornerRadius="8" />
                             <Border x:Name="SurfaceContrastLayer"
                                     Background="{DynamicResource Brush.Button.Secondary.Background}"
-                                    BorderBrush="{DynamicResource Brush.Input.TextBox.Border}"
-                                    BorderThickness="1"
                                     CornerRadius="8"
                                     IsHitTestVisible="False"
                                     Opacity="0" />
@@ -494,6 +495,8 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Root"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="8">
                         <Grid>
                             <Border x:Name="BaseBackground"
@@ -503,8 +506,6 @@
                                     CornerRadius="8" />
                             <Border x:Name="SurfaceContrastLayer"
                                     Background="{DynamicResource Brush.Button.Secondary.Background}"
-                                    BorderBrush="{DynamicResource Brush.Input.TextBox.Border}"
-                                    BorderThickness="1"
                                     CornerRadius="8"
                                     IsHitTestVisible="False"
                                     Opacity="0" />

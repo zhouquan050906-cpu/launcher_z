@@ -30,6 +30,8 @@ public sealed class BackdropBlurBorder : ContentControl
 {
     internal const string BlurLayerPartName = "PART_BlurLayer";
     private const double BlurOverscanFactor = 1.5d;
+    private const double LocalBlurFixedRenderScale = 0.2d;
+    private const double RenderScaleComparisonTolerance = 0.001d;
 
     public static readonly DependencyProperty SourceElementProperty =
         DependencyProperty.Register(
@@ -108,12 +110,18 @@ public sealed class BackdropBlurBorder : ContentControl
             IsCornerRadiusValid);
 
     private Border? blurLayer;
-    private VisualBrush? backdropBrush;
+    private TileBrush? backdropBrush;
+    private BitmapCache? localBlurCache;
     private Rect lastViewbox = Rect.Empty;
     private Rect lastViewport = Rect.Empty;
     private bool isLoaded;
-    private bool isRenderTrackingActive;
+    private bool isRefreshTrackingActive;
     private bool recursiveSourceWarningLogged;
+    private bool hasPreparedGeometry;
+    private BackdropGeometrySnapshot preparedGeometry;
+    private BackdropGeometrySnapshot lastAppliedGeometry;
+    private BackdropBlurRefreshCoordinator? refreshCoordinator;
+    private ScrollViewer? trackedScrollViewer;
 
     public BackdropBlurBorder()
     {
@@ -121,6 +129,8 @@ public sealed class BackdropBlurBorder : ContentControl
         IsTabStop = false;
         Loaded += BackdropBlurBorder_Loaded;
         Unloaded += BackdropBlurBorder_Unloaded;
+        IsVisibleChanged += BackdropBlurBorder_IsVisibleChanged;
+        SizeChanged += BackdropBlurBorder_SizeChanged;
     }
 
     public FrameworkElement? SourceElement
@@ -183,26 +193,50 @@ public sealed class BackdropBlurBorder : ContentControl
         set => SetValue(CornerRadiusProperty, value);
     }
 
-    internal VisualBrush? BackdropBrush => backdropBrush;
+    internal VisualBrush? BackdropBrush => backdropBrush as VisualBrush;
+
+    internal DrawingBrush? BackdropDrawingBrush => backdropBrush as DrawingBrush;
 
     internal BlurEffect? BackdropEffect => blurLayer?.Effect as BlurEffect;
 
     internal bool IsBackdropActive => blurLayer?.Visibility == Visibility.Visible;
 
-    internal bool IsRenderTrackingActive => isRenderTrackingActive;
+    internal bool IsRenderTrackingActive => isRefreshTrackingActive;
+
+    internal bool IsRefreshEligible =>
+        isLoaded
+        && IsVisible
+        && IsBlurEnabled
+        && SourceElement is not null;
 
     internal double BlurOverscan => IsSourcePreblurred
         ? 0d
         : CalculateBlurOverscan(BlurRadius);
 
+    internal double LocalBlurRenderScale =>
+        localBlurCache?.RenderAtScale ?? 1d;
+
+    internal bool IsUsingDrawingSource =>
+        backdropBrush is DrawingBrush { Drawing: not null };
+
     public override void OnApplyTemplate()
     {
-        if (backdropBrush is not null)
-            backdropBrush.Visual = null;
+        ClearBackdropSource();
 
         base.OnApplyTemplate();
 
         blurLayer = GetTemplateChild(BlurLayerPartName) as Border;
+        var templateCache = blurLayer?.CacheMode as BitmapCache;
+        localBlurCache = templateCache?.IsFrozen == true
+            ? templateCache.CloneCurrentValue()
+            : templateCache;
+        if (blurLayer is not null
+            && localBlurCache is not null
+            && !ReferenceEquals(localBlurCache, templateCache))
+        {
+            blurLayer.CacheMode = localBlurCache;
+        }
+
         var templateBrush = blurLayer?.Background as VisualBrush;
         if (blurLayer is not null && templateBrush is not null)
         {
@@ -222,33 +256,230 @@ public sealed class BackdropBlurBorder : ContentControl
         UpdateBlurLayerOverscan();
         lastViewbox = Rect.Empty;
         lastViewport = Rect.Empty;
-        RefreshBackdrop();
+        lastAppliedGeometry = default;
+        InvalidatePreparedGeometry();
+        RequestRefresh(BackdropBlurRefreshReason.Lifecycle);
     }
 
-    internal void RefreshBackdrop()
+    protected override void OnVisualParentChanged(DependencyObject oldParent)
+    {
+        base.OnVisualParentChanged(oldParent);
+        InvalidatePreparedGeometry();
+        UpdateRefreshTracking();
+        RequestRefresh(BackdropBlurRefreshReason.Layout);
+    }
+
+    internal bool RefreshBackdrop()
     {
         if (blurLayer is null || backdropBrush is null)
+            return false;
+
+        var geometry = hasPreparedGeometry
+            ? preparedGeometry
+            : BuildGeometrySnapshot();
+        hasPreparedGeometry = false;
+
+        if (!geometry.IsActive)
+        {
+            if (geometry.HasRecursiveSource && SourceElement is { } recursiveSource)
+                LogRecursiveSourceOnce(recursiveSource);
+            DeactivateBackdrop(geometry);
+            return false;
+        }
+
+        UpdateLocalBlurRenderScale();
+
+        EnsureBackdropBrushForSource(geometry.Source!);
+
+        var viewboxChanged = false;
+        if (lastViewbox != geometry.Viewbox)
+        {
+            backdropBrush.Viewbox = geometry.Viewbox;
+            lastViewbox = geometry.Viewbox;
+            viewboxChanged = true;
+        }
+        if (lastViewport != geometry.Viewport)
+        {
+            backdropBrush.Viewport = geometry.Viewport;
+            lastViewport = geometry.Viewport;
+        }
+
+        lastAppliedGeometry = geometry;
+        blurLayer.Visibility = Visibility.Visible;
+        return viewboxChanged;
+    }
+
+    internal bool PrepareLayoutGeometryRefresh()
+    {
+        var geometry = BuildGeometrySnapshot();
+        if (hasPreparedGeometry && preparedGeometry == geometry)
+            return false;
+
+        preparedGeometry = geometry;
+        hasPreparedGeometry = true;
+        return geometry != lastAppliedGeometry;
+    }
+
+    internal void InvalidatePreparedGeometry()
+    {
+        hasPreparedGeometry = false;
+        preparedGeometry = default;
+    }
+
+    private static void OnBackdropSourceChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (dependencyObject is not BackdropBlurBorder border)
             return;
 
-        var source = SourceElement;
-        if (!IsBlurEnabled
-            || Visibility != Visibility.Visible
+        border.recursiveSourceWarningLogged = false;
+        border.lastViewbox = Rect.Empty;
+        border.lastViewport = Rect.Empty;
+        border.lastAppliedGeometry = default;
+        border.InvalidatePreparedGeometry();
+        border.UpdateRefreshTracking();
+        border.RequestRefresh(BackdropBlurRefreshReason.Source);
+    }
+
+    private static void OnBackdropPresentationChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (dependencyObject is BackdropBlurBorder border)
+        {
+            border.InvalidatePreparedGeometry();
+            border.UpdateRefreshTracking();
+            border.RequestRefresh(BackdropBlurRefreshReason.Lifecycle);
+        }
+    }
+
+    private static void OnBlurRadiusChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (dependencyObject is not BackdropBlurBorder border)
+            return;
+
+        border.UpdateBlurLayerOverscan();
+        border.lastViewbox = Rect.Empty;
+        border.lastViewport = Rect.Empty;
+        border.lastAppliedGeometry = default;
+        border.InvalidatePreparedGeometry();
+        border.RequestRefresh(BackdropBlurRefreshReason.Source);
+    }
+
+    private static void OnIsSourcePreblurredChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (dependencyObject is not BackdropBlurBorder border)
+            return;
+
+        border.UpdateBlurLayerOverscan();
+        border.lastViewbox = Rect.Empty;
+        border.lastViewport = Rect.Empty;
+        border.lastAppliedGeometry = default;
+        border.InvalidatePreparedGeometry();
+        border.UpdateRefreshTracking();
+        border.RequestRefresh(BackdropBlurRefreshReason.Source);
+    }
+
+    private void BackdropBlurBorder_Loaded(object sender, RoutedEventArgs e)
+    {
+        isLoaded = true;
+        InvalidatePreparedGeometry();
+        UpdateRefreshTracking();
+        RequestRefresh(BackdropBlurRefreshReason.Lifecycle);
+    }
+
+    private void BackdropBlurBorder_Unloaded(object sender, RoutedEventArgs e)
+    {
+        isLoaded = false;
+        InvalidatePreparedGeometry();
+        StopRefreshTracking();
+        DeactivateBackdrop();
+    }
+
+    private void BackdropBlurBorder_IsVisibleChanged(
+        object sender,
+        DependencyPropertyChangedEventArgs e)
+    {
+        InvalidatePreparedGeometry();
+        UpdateRefreshTracking();
+        RequestRefresh(BackdropBlurRefreshReason.Lifecycle);
+    }
+
+    private void BackdropBlurBorder_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        InvalidatePreparedGeometry();
+        RequestRefresh(BackdropBlurRefreshReason.Size);
+    }
+
+    private void UpdateRefreshTracking()
+    {
+        if (!IsRefreshEligible)
+        {
+            StopRefreshTracking();
+            DeactivateBackdrop();
+            return;
+        }
+
+        var coordinator = BackdropBlurRefreshCoordinator.TryGet(this);
+        if (coordinator is null)
+        {
+            StopRefreshTracking();
+            return;
+        }
+
+        if (!ReferenceEquals(refreshCoordinator, coordinator))
+        {
+            refreshCoordinator?.Unregister(this);
+            refreshCoordinator = coordinator;
+        }
+
+        trackedScrollViewer = FindNearestScrollViewer();
+        refreshCoordinator.Register(this, SourceElement!, trackedScrollViewer);
+        isRefreshTrackingActive = true;
+    }
+
+    private void StopRefreshTracking()
+    {
+        refreshCoordinator?.Unregister(this);
+        refreshCoordinator = null;
+        trackedScrollViewer = null;
+        isRefreshTrackingActive = false;
+    }
+
+    private ScrollViewer? FindNearestScrollViewer()
+    {
+        DependencyObject? current = this;
+        while ((current = VisualTreeHelper.GetParent(current)) is not null)
+        {
+            if (current is ScrollViewer scrollViewer)
+                return scrollViewer;
+        }
+
+        return null;
+    }
+
+    private BackdropGeometrySnapshot BuildGeometrySnapshot()
+    {
+        if (blurLayer is null
+            || backdropBrush is null
+            || !IsBlurEnabled
+            || !IsVisible
             || ActualWidth <= 0d
             || ActualHeight <= 0d
-            || source is null
+            || SourceElement is not { } source
             || source.ActualWidth <= 0d
             || source.ActualHeight <= 0d)
         {
-            DeactivateBackdrop();
-            return;
+            return default;
         }
 
         if (ReferenceEquals(source, this) || source.IsAncestorOf(this))
-        {
-            LogRecursiveSourceOnce(source);
-            DeactivateBackdrop();
-            return;
-        }
+            return BackdropGeometrySnapshot.Inactive(source, hasRecursiveSource: true);
 
         Rect desiredViewbox;
         try
@@ -263,24 +494,18 @@ public sealed class BackdropBlurBorder : ContentControl
         }
         catch (InvalidOperationException)
         {
-            DeactivateBackdrop();
-            return;
+            return BackdropGeometrySnapshot.Inactive(source);
         }
 
         if (!IsValidViewbox(desiredViewbox))
-        {
-            DeactivateBackdrop();
-            return;
-        }
+            return BackdropGeometrySnapshot.Inactive(source);
 
         var viewbox = Rect.Intersect(
             desiredViewbox,
             new Rect(0d, 0d, source.ActualWidth, source.ActualHeight));
+        viewbox = ClipToScrollViewport(viewbox, source);
         if (!IsValidViewbox(viewbox))
-        {
-            DeactivateBackdrop();
-            return;
-        }
+            return BackdropGeometrySnapshot.Inactive(source);
 
         var overscanSize = BlurOverscan * 2d;
         var viewport = CalculateMirroredViewport(
@@ -289,122 +514,42 @@ public sealed class BackdropBlurBorder : ContentControl
             ActualWidth + overscanSize,
             ActualHeight + overscanSize);
         if (!IsValidViewbox(viewport))
-        {
-            DeactivateBackdrop();
-            return;
-        }
+            return BackdropGeometrySnapshot.Inactive(source);
 
-        if (!ReferenceEquals(backdropBrush.Visual, source))
-            backdropBrush.Visual = source;
-
-        if (lastViewbox != viewbox)
-        {
-            backdropBrush.Viewbox = viewbox;
-            lastViewbox = viewbox;
-        }
-        if (lastViewport != viewport)
-        {
-            backdropBrush.Viewport = viewport;
-            lastViewport = viewport;
-        }
-
-        blurLayer.Visibility = Visibility.Visible;
+        return new BackdropGeometrySnapshot(
+            source,
+            viewbox,
+            viewport,
+            IsActive: true,
+            HasRecursiveSource: false);
     }
 
-    private static void OnBackdropSourceChanged(
-        DependencyObject dependencyObject,
-        DependencyPropertyChangedEventArgs e)
+    private Rect ClipToScrollViewport(Rect viewbox, FrameworkElement source)
     {
-        if (dependencyObject is not BackdropBlurBorder border)
-            return;
-
-        border.recursiveSourceWarningLogged = false;
-        border.lastViewbox = Rect.Empty;
-        border.lastViewport = Rect.Empty;
-        border.UpdateRenderTracking();
-        border.RefreshBackdrop();
-    }
-
-    private static void OnBackdropPresentationChanged(
-        DependencyObject dependencyObject,
-        DependencyPropertyChangedEventArgs e)
-    {
-        if (dependencyObject is BackdropBlurBorder border)
+        var scrollViewer = trackedScrollViewer;
+        if (scrollViewer is null
+            || scrollViewer.ActualWidth <= 0d
+            || scrollViewer.ActualHeight <= 0d)
         {
-            border.UpdateRenderTracking();
-            border.RefreshBackdrop();
+            return viewbox;
+        }
+
+        try
+        {
+            var viewportInSource = scrollViewer.TransformToVisual(source).TransformBounds(
+                new Rect(0d, 0d, scrollViewer.ActualWidth, scrollViewer.ActualHeight));
+            return Rect.Intersect(viewbox, viewportInSource);
+        }
+        catch (InvalidOperationException)
+        {
+            return Rect.Empty;
         }
     }
 
-    private static void OnBlurRadiusChanged(
-        DependencyObject dependencyObject,
-        DependencyPropertyChangedEventArgs e)
+    private void RequestRefresh(BackdropBlurRefreshReason reason)
     {
-        if (dependencyObject is not BackdropBlurBorder border)
-            return;
-
-        border.UpdateBlurLayerOverscan();
-        border.lastViewbox = Rect.Empty;
-        border.lastViewport = Rect.Empty;
-        border.RefreshBackdrop();
-    }
-
-    private static void OnIsSourcePreblurredChanged(
-        DependencyObject dependencyObject,
-        DependencyPropertyChangedEventArgs e)
-    {
-        if (dependencyObject is not BackdropBlurBorder border)
-            return;
-
-        border.UpdateBlurLayerOverscan();
-        border.lastViewbox = Rect.Empty;
-        border.lastViewport = Rect.Empty;
-        border.RefreshBackdrop();
-    }
-
-    private void BackdropBlurBorder_Loaded(object sender, RoutedEventArgs e)
-    {
-        isLoaded = true;
-        UpdateRenderTracking();
-        RefreshBackdrop();
-    }
-
-    private void BackdropBlurBorder_Unloaded(object sender, RoutedEventArgs e)
-    {
-        isLoaded = false;
-        StopRenderTracking();
-        DeactivateBackdrop();
-    }
-
-    private void StartRenderTracking()
-    {
-        if (isRenderTrackingActive)
-            return;
-
-        CompositionTarget.Rendering += CompositionTarget_Rendering;
-        isRenderTrackingActive = true;
-    }
-
-    private void UpdateRenderTracking()
-    {
-        if (isLoaded && IsBlurEnabled && SourceElement is not null)
-            StartRenderTracking();
-        else
-            StopRenderTracking();
-    }
-
-    private void StopRenderTracking()
-    {
-        if (!isRenderTrackingActive)
-            return;
-
-        CompositionTarget.Rendering -= CompositionTarget_Rendering;
-        isRenderTrackingActive = false;
-    }
-
-    private void CompositionTarget_Rendering(object? sender, EventArgs e)
-    {
-        RefreshBackdrop();
+        if (isRefreshTrackingActive && refreshCoordinator is not null)
+            refreshCoordinator.RequestRefresh(this, reason);
     }
 
     private void UpdateBlurLayerOverscan()
@@ -416,11 +561,78 @@ public sealed class BackdropBlurBorder : ContentControl
         blurLayer.Margin = new Thickness(-overscan);
     }
 
-    private void DeactivateBackdrop()
+    private void UpdateLocalBlurRenderScale()
     {
-        if (backdropBrush is not null)
-            backdropBrush.Visual = null;
+        if (IsSourcePreblurred || localBlurCache is not { } cache)
+            return;
 
+        if (Math.Abs(cache.RenderAtScale - LocalBlurFixedRenderScale) > RenderScaleComparisonTolerance)
+            cache.RenderAtScale = LocalBlurFixedRenderScale;
+    }
+
+    private void EnsureBackdropBrushForSource(FrameworkElement source)
+    {
+        if (blurLayer is null)
+            return;
+
+        var visualBrush = backdropBrush as VisualBrush;
+        if (visualBrush is null || !ReferenceEquals(visualBrush.Visual, source))
+        {
+            visualBrush = CreateBackdropBrush<VisualBrush>();
+            visualBrush.Visual = source;
+            ReplaceBackdropBrush(visualBrush);
+        }
+    }
+
+    private void ReplaceBackdropBrush(TileBrush replacement)
+    {
+        ClearBackdropSource();
+        backdropBrush = replacement;
+        if (blurLayer is not null)
+        {
+            blurLayer.Background = replacement;
+        }
+        lastViewbox = Rect.Empty;
+        lastViewport = Rect.Empty;
+    }
+
+    private static TBrush CreateBackdropBrush<TBrush>()
+        where TBrush : TileBrush, new()
+    {
+        var brush = new TBrush
+        {
+            AlignmentX = AlignmentX.Left,
+            AlignmentY = AlignmentY.Top,
+            Stretch = Stretch.Fill,
+            TileMode = TileMode.FlipXY,
+            ViewboxUnits = BrushMappingMode.Absolute,
+            ViewportUnits = BrushMappingMode.Absolute
+        };
+        RenderOptions.SetCachingHint(brush, CachingHint.Cache);
+        RenderOptions.SetCacheInvalidationThresholdMinimum(brush, 0.5d);
+        RenderOptions.SetCacheInvalidationThresholdMaximum(brush, 2d);
+        return brush;
+    }
+
+    private void ClearBackdropSource()
+    {
+        switch (backdropBrush)
+        {
+            case VisualBrush visualBrush:
+                visualBrush.Visual = null;
+                break;
+            case DrawingBrush drawingBrush:
+                drawingBrush.Drawing = null;
+                break;
+        }
+    }
+
+    private void DeactivateBackdrop(BackdropGeometrySnapshot geometry = default)
+    {
+        ClearBackdropSource();
+
+        InvalidatePreparedGeometry();
+        lastAppliedGeometry = geometry;
         lastViewbox = Rect.Empty;
         lastViewport = Rect.Empty;
         if (blurLayer is not null)
@@ -493,4 +705,25 @@ public sealed class BackdropBlurBorder : ContentControl
     {
         return Math.Ceiling(blurRadius * BlurOverscanFactor);
     }
+
+    private readonly record struct BackdropGeometrySnapshot(
+        FrameworkElement? Source,
+        Rect Viewbox,
+        Rect Viewport,
+        bool IsActive,
+        bool HasRecursiveSource)
+    {
+        internal static BackdropGeometrySnapshot Inactive(
+            FrameworkElement source,
+            bool hasRecursiveSource = false)
+        {
+            return new BackdropGeometrySnapshot(
+                source,
+                Rect.Empty,
+                Rect.Empty,
+                IsActive: false,
+                HasRecursiveSource: hasRecursiveSource);
+        }
+    }
+
 }

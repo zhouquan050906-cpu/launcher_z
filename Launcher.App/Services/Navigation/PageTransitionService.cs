@@ -21,6 +21,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using Launcher.App.Controls;
 
 namespace Launcher.App.Services;
 
@@ -45,6 +46,7 @@ public sealed class PageTransitionService
     private readonly IReadOnlyList<string> pageOrder;
     private string? currentPage;
     private int transitionToken;
+    private IDisposable? blurRefreshLease;
 
     public PageTransitionService(
         Dispatcher dispatcher,
@@ -71,6 +73,7 @@ public sealed class PageTransitionService
         if (string.Equals(currentPage, newPage, StringComparison.OrdinalIgnoreCase))
             return;
 
+        ReleaseBlurRefreshLease();
         var oldPage = currentPage;
         currentPage = newPage;
         var startOffset = GetTransitionStartOffset(oldPage, newPage);
@@ -88,6 +91,8 @@ public sealed class PageTransitionService
 
     public void SyncTo(string? page)
     {
+        ReleaseBlurRefreshLease();
+        transitionToken++;
         currentPage = page;
     }
 
@@ -145,6 +150,7 @@ public sealed class PageTransitionService
         transform.BeginAnimation(TranslateTransform.YProperty, null);
         target.Opacity = 0;
         transform.Y = startOffset;
+        blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(target);
 
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
         var fadeAnimation = new DoubleAnimation
@@ -172,10 +178,19 @@ public sealed class PageTransitionService
         slideAnimation.Completed += (_, _) =>
         {
             if (token == transitionToken && string.Equals(currentPage, page, StringComparison.OrdinalIgnoreCase))
+            {
                 transform.Y = 0;
+                ReleaseBlurRefreshLease();
+            }
         };
 
         target.BeginAnimation(UIElement.OpacityProperty, fadeAnimation, HandoffBehavior.SnapshotAndReplace);
         transform.BeginAnimation(TranslateTransform.YProperty, slideAnimation, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void ReleaseBlurRefreshLease()
+    {
+        blurRefreshLease?.Dispose();
+        blurRefreshLease = null;
     }
 }

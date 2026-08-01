@@ -19,6 +19,7 @@
 
 using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
 using Launcher.Application.Accounts;
 using Launcher.Application.DependencyInjection;
 using Launcher.Application.Services;
@@ -40,6 +41,14 @@ public partial class App : System.Windows.Application
     private ServiceProvider? serviceProvider;
     private bool isUpdateApplyMode;
 
+    static App()
+    {
+        EventManager.RegisterClassHandler(
+            typeof(Control),
+            FrameworkElement.LoadedEvent,
+            new RoutedEventHandler(SuppressControlFocusVisual));
+    }
+
     public App()
     {
         bootstrapPreferences = new LauncherBootstrapPreferences(
@@ -52,6 +61,12 @@ public partial class App : System.Windows.Application
             bootstrapPreferences = new JsonSettingsService().LoadLauncherBootstrapPreferences();
             ApplyLauncherCulture(bootstrapPreferences.LauncherLanguage);
         }
+    }
+
+    private static void SuppressControlFocusVisual(object sender, RoutedEventArgs e)
+    {
+        if (sender is Control { FocusVisualStyle: not null } control)
+            control.FocusVisualStyle = null;
     }
 
     protected override async void OnStartup(StartupEventArgs e)

@@ -42,10 +42,12 @@ public sealed class MainWindowBackgroundContractTests
             "Shell",
             "MainWindow.xaml"));
 
-        var imageBrush = Assert.Single(document.Descendants().Where(element =>
-            element.Name.LocalName == "ImageBrush"
+        var imageSource = Assert.Single(document.Descendants().Where(element =>
+            element.Name.LocalName == "ImageBackdropSource"
             && element.Attribute("ImageSource")?.Value == "{Binding LauncherBackground.ImageSource}"));
-        Assert.Equal("UniformToFill", imageBrush.Attribute("Stretch")?.Value);
+        Assert.Equal(
+            "{DynamicResource Brush.LauncherBackground.Image.DimOverlay}",
+            imageSource.Attribute("OverlayBrush")?.Value);
 
         var pageBackdrop = Assert.Single(document.Descendants().Where(element =>
             element.Name.LocalName == "Border"
@@ -58,6 +60,44 @@ public sealed class MainWindowBackgroundContractTests
             element.Name.LocalName == "Setter"
             && element.Attribute("Property")?.Value == "Opacity"));
         Assert.Equal("0", opacitySetter.Attribute("Value")?.Value);
+    }
+
+    [Fact]
+    public void ControlBlurSamplesTheBackgroundWithoutAnAlwaysRenderedWholeWindowBlurSurface()
+    {
+        var repositoryRoot = FindRepositoryRoot().FullName;
+        var windowDocument = XDocument.Load(Path.Combine(
+            repositoryRoot,
+            "Launcher.App",
+            "Views",
+            "Shell",
+            "MainWindow.xaml"));
+        var effectDocument = XDocument.Load(Path.Combine(
+            repositoryRoot,
+            "Launcher.App",
+            "Styles",
+            "ControlStyles.Effects.xaml"));
+
+        Assert.DoesNotContain(windowDocument.Descendants(), element =>
+            element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value
+                == "LauncherPreblurredBackdropSource");
+        var sourceElement = Assert.Single(windowDocument.Descendants().Where(element =>
+            element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value
+                == "LauncherBackgroundVisualSource"));
+        Assert.Equal("ImageBackdropSource", sourceElement.Name.LocalName);
+
+        var baseStyle = Assert.Single(effectDocument.Root!.Elements().Where(element =>
+            element.Name.LocalName == "Style"
+            && element.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value
+                == "BackdropBlurBorderStyle"));
+        var sourceModeSetter = Assert.Single(baseStyle.Elements().Where(element =>
+            element.Name.LocalName == "Setter"
+            && element.Attribute("Property")?.Value == "IsSourcePreblurred"));
+        Assert.Equal("False", sourceModeSetter.Attribute("Value")?.Value);
+
+        var localBlurCache = Assert.Single(baseStyle.Descendants().Where(element =>
+            element.Name.LocalName == "BitmapCache"));
+        Assert.Equal("0.2", localBlurCache.Attribute("RenderAtScale")?.Value);
     }
 
     private static DirectoryInfo FindRepositoryRoot()
