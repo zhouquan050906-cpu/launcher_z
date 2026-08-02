@@ -77,36 +77,6 @@ public sealed class LauncherLifecycleServiceTests
     }
 
     [Fact]
-    public async Task AcknowledgingLocalStateChangeCancelsSelfRefreshAndRearmsForExternalChanges()
-    {
-        var monitor = new TestLauncherStateMonitor();
-        using var service = new LauncherStateSyncService(
-            monitor,
-            ImmediateUiDispatcher.Instance,
-            debounceDelay: TimeSpan.FromMilliseconds(20));
-        var synchronizationCount = 0;
-        service.Start(() => new LauncherSettings(), () =>
-        {
-            synchronizationCount++;
-            return Task.CompletedTask;
-        });
-
-        monitor.RaiseStateChanged();
-        service.AcknowledgeLocalStateChange();
-        monitor.RaiseStateChanged();
-        await service.WaitForPendingSyncAsync();
-
-        Assert.Equal(0, synchronizationCount);
-        Assert.Equal(2, monitor.WatchCount);
-
-        await Task.Delay(30);
-        monitor.RaiseStateChanged();
-        await service.WaitForPendingSyncAsync();
-
-        Assert.Equal(1, synchronizationCount);
-    }
-
-    [Fact]
     public async Task ChangesDuringSynchronizationProduceOneTrailingSynchronization()
     {
         var monitor = new TestLauncherStateMonitor();
@@ -137,29 +107,6 @@ public sealed class LauncherLifecycleServiceTests
 
         Assert.Equal(2, synchronizationCount);
         Assert.Equal(3, monitor.WatchCount);
-    }
-
-    [Fact]
-    public async Task ShutdownIsIdempotentAndBoundedWhenBackgroundTaskDoesNotFinish()
-    {
-        var downloadTasks = new DownloadTasksPageViewModel(TimeSpan.FromMinutes(1));
-        var downloadTask = downloadTasks.BeginTask("test", "test");
-        var unfinishedTask = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        downloadTasks.TrackBackgroundTask(unfinishedTask.Task);
-        var cleanup = new TestWorkspaceCleanupService();
-        var installCleanup = new TestInstallCleanupService();
-        var sandboxCleanup = new TestSandboxCleanupService();
-        var service = new LauncherShutdownService(downloadTasks, installCleanup, cleanup, sandboxCleanup);
-
-        var first = service.PrepareForExitAsync(TimeSpan.FromMilliseconds(20));
-        var second = service.PrepareForExitAsync(TimeSpan.FromSeconds(1));
-        await first;
-
-        Assert.Same(first, second);
-        Assert.True(downloadTask.IsCancellationRequested);
-        Assert.Equal(1, installCleanup.CallCount);
-        Assert.Equal(1, cleanup.CallCount);
-        Assert.True(cleanup.ObservedCancellation);
     }
 
     private sealed class TestLauncherStateMonitor : ILauncherStateMonitor

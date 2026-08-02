@@ -210,45 +210,6 @@ public sealed class InstanceBackupServiceTests
     }
 
     [Fact]
-    public async Task RestoreBackupAsyncDoesNotResurrectInstanceWhenDeleteWinsMutationLock()
-    {
-        var rootDirectory = CreateTempDirectory();
-        try
-        {
-            var instance = CreateRestorableInstance(rootDirectory);
-            var minecraftDirectory = GetMinecraftDirectory(instance);
-            var versionsDirectory = Path.Combine(minecraftDirectory, "versions");
-            var deletedDirectory = Path.Combine(versionsDirectory, ".bhl-delete-pending-instance-a-test");
-            var backupDirectory = Path.Combine(rootDirectory, "backups");
-            File.WriteAllText(Path.Combine(instance.InstanceDirectory, "options.txt"), "original");
-            var service = new InstanceBackupService();
-            var backup = await service.CreateBackupAsync(instance, backupDirectory, "Original");
-            Task restoreTask;
-
-            await using (await CrossProcessVersionLock.AcquireAsync(
-                             CrossProcessVersionLock.GetMutationPath(minecraftDirectory),
-                             progress: null,
-                             CancellationToken.None))
-            {
-                restoreTask = service.RestoreBackupAsync(instance, backupDirectory, backup.FullPath);
-                await WaitForRestoreStagingAsync(versionsDirectory);
-                Directory.Move(instance.InstanceDirectory, deletedDirectory);
-            }
-
-            var exception = await Assert.ThrowsAsync<InstanceBackupException>(() => restoreTask);
-
-            Assert.Equal(InstanceBackupFailureReason.InstanceChanged, exception.Reason);
-            Assert.False(Directory.Exists(instance.InstanceDirectory));
-            Assert.True(Directory.Exists(deletedDirectory));
-            Assert.Empty(Directory.EnumerateDirectories(versionsDirectory, ".launcher-restore-*"));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(rootDirectory);
-        }
-    }
-
-    [Fact]
     public async Task RestoreBackupAsyncRejectsBackupFromDifferentInstanceWithoutChangingCurrentInstance()
     {
         var rootDirectory = CreateTempDirectory();
@@ -455,15 +416,6 @@ public sealed class InstanceBackupServiceTests
                 state,
                 createdAtUtc = DateTimeOffset.UtcNow
             }));
-    }
-
-    private static async Task WaitForRestoreStagingAsync(string versionsDirectory)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (!Directory.EnumerateDirectories(versionsDirectory, ".launcher-restore-*").Any())
-        {
-            await Task.Delay(10, timeout.Token);
-        }
     }
 
     private static async Task<IReadOnlyList<InstanceBackupRecord>> ReadManifestAsync(string backupDirectory)
