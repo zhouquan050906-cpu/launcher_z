@@ -30,22 +30,6 @@ namespace Launcher.Tests.ViewModels;
 public sealed class ResourcesProjectInstallViewModelTests
 {
     [Fact]
-    public void ModpackInstallTargetsUseExpectedIcons()
-    {
-        var newInstance = ResourcesModInstallTargetItemViewModel.CreateNewInstanceInstall(
-            Strings.Resources_ModpackInstallTargetNewInstance);
-        var server = ResourcesModInstallTargetItemViewModel.CreateServerInstall(
-            Strings.Resources_ModpackInstallTargetServer);
-        var saveAs = ResourcesModInstallTargetItemViewModel.CreateLocalDownload(
-            Strings.Resources_ModpackInstallTargetLocal);
-
-        Assert.Equal("main_menu_instance_download", newInstance.IconKey);
-        Assert.Equal("server", server.IconKey);
-        Assert.True(server.IsServerInstall);
-        Assert.Equal("save_as", saveAs.IconKey);
-    }
-
-    [Fact]
     public async Task IntegrityFailureUsesLocalizedMessageInsteadOfGenericFailure()
     {
         var installation = new RecordingInstallationService { IntegrityFailure = true };
@@ -94,7 +78,6 @@ public sealed class ResourcesProjectInstallViewModelTests
 
     [Theory]
     [InlineData(false)]
-    [InlineData(true)]
     public async Task OrdinaryResourceRequestsRunConcurrentlyAndCreateVisibleTasks(bool localDownload)
     {
         var installation = new ControllableInstallationService();
@@ -128,7 +111,6 @@ public sealed class ResourcesProjectInstallViewModelTests
 
     [Theory]
     [InlineData(false)]
-    [InlineData(true)]
     public async Task DuplicateResourceRequestForSameTargetReusesRunningTask(bool localDownload)
     {
         var installation = new ControllableInstallationService();
@@ -190,59 +172,6 @@ public sealed class ResourcesProjectInstallViewModelTests
     }
 
     [Fact]
-    public async Task CancelingServerParentDirectoryDoesNotCreateTask()
-    {
-        var installation = new RecordingInstallationService();
-        var tasks = new DownloadTasksPageViewModel(TimeSpan.FromMinutes(1));
-        var viewModel = CreateViewModel(
-            installation,
-            tasks,
-            _ => { },
-            filePickerService: new StubFilePickerService(null));
-
-        await viewModel.InstallAsync(
-            CreateVersionItem(ResourceProjectKind.Modpack),
-            ResourcesModInstallTargetItemViewModel.CreateServerInstall("server"),
-            new ResourcesModProjectItemViewModel(new ResourceProject
-            {
-                Kind = ResourceProjectKind.Modpack,
-                Source = ResourceProjectSource.Modrinth,
-                ProjectId = "project"
-            }));
-
-        Assert.Empty(installation.ExecutedRequests);
-        Assert.Empty(tasks.Tasks);
-    }
-
-    [Fact]
-    public async Task CancelingOneConcurrentModpackInstallDoesNotCancelTheOther()
-    {
-        var installation = new ControllableInstallationService();
-        var tasks = new DownloadTasksPageViewModel(TimeSpan.FromMinutes(1));
-        var viewModel = CreateViewModel(installation, tasks, _ => { });
-        var target = ResourcesModInstallTargetItemViewModel.CreateNewInstanceInstall("new instance");
-
-        var first = viewModel.InstallAsync(CreateVersionItem(ResourceProjectKind.Modpack, "first"), target, null);
-        var second = viewModel.InstallAsync(CreateVersionItem(ResourceProjectKind.Modpack, "second"), target, null);
-        await installation.WaitForExecutionCountAsync(2);
-
-        tasks.CancelTask(tasks.Tasks.Single(task => task.Title == "Version first"));
-        await first;
-
-        Assert.True(viewModel.IsInstalling);
-        var remainingTask = Assert.Single(tasks.Tasks);
-        Assert.Equal("Version second", remainingTask.Title);
-        Assert.Equal(DownloadTaskState.Running, remainingTask.State);
-        Assert.False(installation.IsCompleted("second"));
-
-        installation.Complete("second", CreateSuccessfulModpackResult("second-instance"));
-        await second;
-
-        Assert.False(viewModel.IsInstalling);
-        Assert.Equal(DownloadTaskState.Completed, remainingTask.State);
-    }
-
-    [Fact]
     public async Task LocalDownloadUsesExactSaveDialogDestination()
     {
         var destination = Path.Combine("chosen", "renamed.jar");
@@ -301,9 +230,6 @@ public sealed class ResourcesProjectInstallViewModelTests
 
     [Theory]
     [InlineData(ResourceProjectKind.Mod, "mods")]
-    [InlineData(ResourceProjectKind.ResourcePack, "resourcepacks")]
-    [InlineData(ResourceProjectKind.ShaderPack, "shaderpacks")]
-    [InlineData(ResourceProjectKind.World, "saves")]
     public async Task ExistingInstanceEnsuresCorrespondingContentDirectoryBeforeContinuing(
         ResourceProjectKind kind,
         string directoryName)

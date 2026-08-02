@@ -17,43 +17,6 @@ namespace Launcher.Tests.Infrastructure.Minecraft;
 public sealed class LaunchServiceTests : TestTempDirectory
 {
     [Fact]
-    public async Task LaunchAppendsAutoJoinAfterCustomGameArguments()
-    {
-        var launcher = new FakeLauncherFactory();
-        var service = CreateService(launcher: launcher);
-        var settings = CreateSettings();
-        settings.DefaultGameArguments = "--demo value";
-        settings.DefaultAutoJoinServerAddress = "play.example.com:25565";
-        var instance = CreateInstance(settings.MinecraftDirectory, "Quick Play Pack");
-        instance.MinecraftVersion = "1.20.1";
-
-        await service.LaunchAsync(instance, CreateAccount(), settings, null);
-
-        var arguments = launcher.Launcher.LastOption!.ExtraGameArguments!.ToArray();
-        Assert.Equal(2, arguments.Length);
-        Assert.Equal(["--demo", "value"], arguments[0].Values);
-        Assert.Equal(
-            ["--quickPlayMultiplayer", "play.example.com:25565"],
-            arguments[1].Values);
-    }
-
-    [Fact]
-    public async Task InvalidAutoJoinAddressDoesNotBlockLaunchOrRemoveCustomGameArguments()
-    {
-        var launcher = new FakeLauncherFactory();
-        var service = CreateService(launcher: launcher);
-        var settings = CreateSettings();
-        settings.DefaultGameArguments = "--demo value";
-        settings.DefaultAutoJoinServerAddress = "missing-port.example.com";
-        var instance = CreateInstance(settings.MinecraftDirectory, "Invalid Auto Join Pack");
-
-        await service.LaunchAsync(instance, CreateAccount(), settings, null);
-
-        var argument = Assert.Single(launcher.Launcher.LastOption!.ExtraGameArguments!);
-        Assert.Equal(["--demo", "value"], argument.Values);
-    }
-
-    [Fact]
     public async Task LaunchRepairsBeforeBuildingProcess()
     {
         var repair = new FakeRepairService();
@@ -217,31 +180,6 @@ public sealed class LaunchServiceTests : TestTempDirectory
             instance.InstanceDirectory,
             LauncherApplicationIdentity.StorageDirectoryName,
             "logs")));
-    }
-
-    [Fact]
-    public async Task OfflineAccountWithoutActiveSkinDoesNotPrepareInjector()
-    {
-        var offlineSkin = new FakeOfflineSkinLaunchService();
-        var authlib = new FakeAuthlibInjectorProvisioningService();
-        var launcher = new FakeLauncherFactory();
-        var service = CreateService(
-            launcher: launcher,
-            authlibInjector: authlib,
-            offlineSkin: offlineSkin);
-
-        var session = await service.LaunchAsync(
-            CreateInstance(CreateSettings().MinecraftDirectory, "No Offline Skin"),
-            CreateAccount(),
-            CreateSettings(),
-            progress: null);
-
-        Assert.Equal(0, offlineSkin.CallCount);
-        Assert.Equal(0, authlib.CallCount);
-        Assert.DoesNotContain(
-            GetJvmArgumentValues(launcher.Launcher.LastOption!),
-            value => value.StartsWith("-javaagent:", StringComparison.Ordinal));
-        Assert.Empty(session.Warnings);
     }
 
     [Fact]

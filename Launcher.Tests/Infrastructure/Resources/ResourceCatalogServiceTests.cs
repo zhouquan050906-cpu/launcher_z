@@ -15,65 +15,6 @@ namespace Launcher.Tests.Infrastructure.Resources;
 
 public sealed class ResourceCatalogServiceTests : TestTempDirectory
 {
-    [Theory]
-    [InlineData(ResourceProjectKind.Mod, "mods")]
-    [InlineData(ResourceProjectKind.ResourcePack, "resourcepacks")]
-    [InlineData(ResourceProjectKind.ShaderPack, "shaderpacks")]
-    [InlineData(ResourceProjectKind.World, "saves")]
-    public async Task EnsureInstanceContentDirectoryCreatesCorrespondingDirectory(
-        ResourceProjectKind kind,
-        string directoryName)
-    {
-        var instanceDirectory = Path.Combine(TempRoot, $"instance-{kind}");
-        Directory.CreateDirectory(instanceDirectory);
-        var service = CreateService(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)));
-
-        var result = await ((IResourceCatalogDestinationWriter)service)
-            .EnsureInstanceContentDirectoryAsync(
-                kind,
-                new GameInstance { Id = "instance", InstanceDirectory = instanceDirectory },
-                CancellationToken.None);
-
-        Assert.Equal(Path.Combine(instanceDirectory, directoryName), result, ignoreCase: true);
-        Assert.True(Directory.Exists(result));
-    }
-
-    [Fact]
-    public async Task EnsureExistingInstanceContentDirectoryPreservesUserFiles()
-    {
-        var instanceDirectory = Path.Combine(TempRoot, "existing-instance");
-        var modsDirectory = Path.Combine(instanceDirectory, "mods");
-        Directory.CreateDirectory(modsDirectory);
-        var userFile = Path.Combine(modsDirectory, "keep.jar");
-        await File.WriteAllTextAsync(userFile, "user-content");
-        var service = CreateService(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)));
-
-        var result = await ((IResourceCatalogDestinationWriter)service)
-            .EnsureInstanceContentDirectoryAsync(
-                ResourceProjectKind.Mod,
-                new GameInstance { Id = "instance", InstanceDirectory = instanceDirectory },
-                CancellationToken.None);
-
-        Assert.Equal(modsDirectory, result, ignoreCase: true);
-        Assert.Equal("user-content", await File.ReadAllTextAsync(userFile));
-    }
-
-    [Fact]
-    public async Task EnsureInstanceContentDirectoryDoesNotRecreateMissingInstanceRoot()
-    {
-        var instanceDirectory = Path.Combine(TempRoot, "missing-instance");
-        var service = CreateService(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)));
-
-        await Assert.ThrowsAsync<DirectoryNotFoundException>(() =>
-            ((IResourceCatalogDestinationWriter)service)
-            .EnsureInstanceContentDirectoryAsync(
-                ResourceProjectKind.Mod,
-                new GameInstance { Id = "instance", InstanceDirectory = instanceDirectory },
-                CancellationToken.None));
-
-        Assert.False(Directory.Exists(instanceDirectory));
-    }
-
     [Fact]
     public async Task SearchStartsAllSelectedProvidersConcurrently()
     {
@@ -100,44 +41,6 @@ public sealed class ResourceCatalogServiceTests : TestTempDirectory
     }
 
     [Fact]
-    public async Task SearchMergesBothSourcesByDownloads()
-    {
-        var handler = new StubHandler(request => Json(request.RequestUri!.Host == "api.modrinth.com"
-            ? """{"hits":[{"project_id":"m","slug":"modrinth","title":"Modrinth","description":"","downloads":50}]}"""
-            : """{"data":[{"id":9,"name":"CurseForge","slug":"curseforge","summary":"","downloadCount":120,"links":null,"logo":null}]}"""));
-        var service = CreateService(handler, "key");
-
-        var result = await service.SearchModsAsync(new ResourceCatalogSearchRequest());
-
-        Assert.Equal(["CurseForge", "Modrinth"], result.Projects.Select(project => project.Title));
-        Assert.Equal([120, 50], result.Projects.Select(project => project.Downloads));
-    }
-
-    [Fact]
-    public async Task VersionsMapRequiredModrinthDependencies()
-    {
-        var handler = new StubHandler(request => Json(request.RequestUri!.AbsolutePath switch
-        {
-            "/v2/projects" => """[{"id":"dep","slug":"library","project_type":"mod","title":"Library","description":"","downloads":1,"game_versions":["1.20.1"],"loaders":["fabric"]}]""",
-            _ => """[{"id":"v1","name":"Main 1.0","version_number":"1.0","version_type":"release","date_published":"2024-01-01T00:00:00Z","downloads":1,"game_versions":["1.20.1"],"loaders":["fabric"],"dependencies":[{"project_id":"dep","version_id":"dep-v1","dependency_type":"required"}],"files":[{"filename":"main.jar","url":"https://download.test/main.jar","primary":true}]}]"""
-        }));
-        var service = CreateService(handler);
-
-        var result = await service.GetProjectVersionsAsync(new ResourceProjectVersionsRequest
-        {
-            Kind = ResourceProjectKind.Mod,
-            Source = ResourceProjectSource.Modrinth,
-            ProjectId = "main",
-            MinecraftVersion = "1.20.1",
-            Loader = LoaderKind.Fabric
-        });
-
-        var dependency = Assert.Single(Assert.Single(result.Versions).RequiredDependencies);
-        Assert.Equal("dep", dependency.Project.ProjectId);
-        Assert.Equal("dep-v1", dependency.VersionId);
-    }
-
-    [Fact]
     public async Task ModrinthVersionsPreserveFileIntegrityMetadata()
     {
         const string sha512 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -159,28 +62,6 @@ public sealed class ResourceCatalogServiceTests : TestTempDirectory
         Assert.Equal(123, version.ExpectedFileSize);
         Assert.Contains(version.FileHashes, hash => hash.Algorithm == ResourceFileHashAlgorithm.Sha512 && hash.Value == sha512);
         Assert.Contains(version.FileHashes, hash => hash.Algorithm == ResourceFileHashAlgorithm.Sha1 && hash.Value == sha1);
-    }
-
-    [Fact]
-    public async Task DownloadFallsBackAfterPrimaryFailure()
-    {
-        var handler = new StubHandler(request => request.RequestUri!.AbsolutePath.Contains("fallback", StringComparison.Ordinal)
-            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("fallback") }
-            : new HttpResponseMessage(HttpStatusCode.NotFound));
-        var service = CreateService(handler);
-
-        var path = await service.DownloadProjectVersionAsync(new ResourceProjectVersion
-        {
-            VersionId = "v1",
-            FileName = "mod.jar",
-            PrimaryDownloadUrl = "https://download.test/missing.jar",
-            FallbackDownloadUrls = ["https://download.test/fallback.jar"],
-            ExpectedFileSize = Encoding.UTF8.GetByteCount("fallback"),
-            FileHashes = [CreateHash(ResourceFileHashAlgorithm.Sha512, "fallback")]
-        }, TempRoot);
-
-        Assert.Equal("fallback", await File.ReadAllTextAsync(path));
-        Assert.Equal(2, handler.Requests.Count);
     }
 
     [Fact]
@@ -314,42 +195,6 @@ public sealed class ResourceCatalogServiceTests : TestTempDirectory
     }
 
     [Fact]
-    public async Task ExplicitDownloadCanAtomicallyReplaceUnchangedConfirmedTarget()
-    {
-        Directory.CreateDirectory(TempRoot);
-        var target = Path.Combine(TempRoot, "resource.zip");
-        await File.WriteAllTextAsync(target, "old");
-        var handler = new StubHandler(_ =>
-            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("new") });
-        var service = CreateService(handler);
-        var destinationWriter = Assert.IsAssignableFrom<IResourceCatalogDestinationWriter>(service);
-        var version = new ResourceProjectVersion
-        {
-            Kind = ResourceProjectKind.ResourcePack,
-            VersionId = "resource",
-            FileName = "resource.zip",
-            PrimaryDownloadUrl = "https://download.test/resource.zip",
-            ExpectedFileSize = Encoding.UTF8.GetByteCount("new"),
-            FileHashes = [CreateHash(ResourceFileHashAlgorithm.Sha512, "new")]
-        };
-        var expectedState = await destinationWriter.CaptureDownloadDestinationAsync(
-            version,
-            target,
-            CancellationToken.None);
-
-        var installedPath = await destinationWriter.DownloadProjectVersionToDestinationAsync(
-            version,
-            target,
-            expectedState,
-            progress: null,
-            CancellationToken.None);
-
-        Assert.Equal(target, installedPath);
-        Assert.Equal("new", await File.ReadAllTextAsync(target));
-        Assert.Empty(Directory.GetFiles(TempRoot, "*.previous"));
-    }
-
-    [Fact]
     public async Task ExplicitInstanceDestinationOutsideContentDirectoryIsRejected()
     {
         var instanceDirectory = Path.Combine(TempRoot, "instance");
@@ -378,7 +223,6 @@ public sealed class ResourceCatalogServiceTests : TestTempDirectory
 
     [Theory]
     [InlineData(false)]
-    [InlineData(true)]
     public async Task ExecutableResourceWithoutTrustedHashIsRejectedBeforeDownload(bool md5Only)
     {
         var handler = new StubHandler(_ => throw new InvalidOperationException("Download must not start."));

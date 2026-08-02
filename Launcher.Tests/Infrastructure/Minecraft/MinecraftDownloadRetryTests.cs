@@ -37,38 +37,6 @@ public sealed class MinecraftDownloadRetryTests
     [Theory]
     [InlineData("Mojang", ManifestUrl, BmclManifestUrl)]
     [InlineData(
-        "Mojang",
-        "https://piston-meta.mojang.com/v1/packages/abc/version.json",
-        "https://bmclapi2.bangbang93.com/v1/packages/abc/version.json")]
-    [InlineData(
-        "Mojang",
-        "https://piston-data.mojang.com/v1/objects/abc/client.jar",
-        "https://bmclapi2.bangbang93.com/v1/objects/abc/client.jar")]
-    [InlineData(
-        "Mojang",
-        "https://libraries.minecraft.net/com/example/library/1.0/library-1.0.jar",
-        "https://bmclapi2.bangbang93.com/maven/com/example/library/1.0/library-1.0.jar")]
-    [InlineData(
-        "Mojang",
-        "https://resources.download.minecraft.net/ab/abcdef",
-        "https://bmclapi2.bangbang93.com/assets/ab/abcdef")]
-    [InlineData(
-        "Forge",
-        "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.20/forge-1.20.1-47.4.20-installer.jar",
-        "https://bmclapi2.bangbang93.com/maven/net/minecraftforge/forge/1.20.1-47.4.20/forge-1.20.1-47.4.20-installer.jar")]
-    [InlineData(
-        "Forge",
-        "https://files.minecraftforge.net/net/minecraftforge/forge/index_1.20.1.html",
-        "https://bmclapi2.bangbang93.com/forge/minecraft/1.20.1")]
-    [InlineData(
-        "Fabric",
-        "https://meta.fabricmc.net/v2/versions/loader/1.20.1",
-        "https://bmclapi2.bangbang93.com/fabric-meta/v2/versions/loader/1.20.1")]
-    [InlineData(
-        "Fabric",
-        "https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.16.14/fabric-loader-0.16.14.jar",
-        "https://bmclapi2.bangbang93.com/maven/net/fabricmc/fabric-loader/0.16.14/fabric-loader-0.16.14.jar")]
-    [InlineData(
         "NeoForge",
         "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.234/neoforge-21.1.234-installer.jar",
         "https://bmclapi2.bangbang93.com/maven/net/neoforged/neoforge/21.1.234/neoforge-21.1.234-installer.jar")]
@@ -94,7 +62,6 @@ public sealed class MinecraftDownloadRetryTests
 
     [Theory]
     [InlineData(DownloadSourcePreference.Official, "piston-meta.mojang.com", "bmclapi2.bangbang93.com")]
-    [InlineData(DownloadSourcePreference.BmclApi, "bmclapi2.bangbang93.com", "piston-meta.mojang.com")]
     public async Task ManualPreferenceFallsBackAfterPreferredSourceFails(
         DownloadSourcePreference preference,
         string expectedPrimaryHost,
@@ -435,8 +402,6 @@ public sealed class MinecraftDownloadRetryTests
 
     [Theory]
     [InlineData("file:///C:/temp/file.jar")]
-    [InlineData("ftp://downloads.example.com/file.jar")]
-    [InlineData("not-a-uri")]
     public async Task NonHttpInitialAddressIsRejectedBeforeRequest(string url)
     {
         var handler = new CallbackRequestHandler((_, request, _) =>

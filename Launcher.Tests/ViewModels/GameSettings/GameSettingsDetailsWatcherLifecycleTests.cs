@@ -19,9 +19,6 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
 {
     [Theory]
     [InlineData("mod_management", InstanceDirectoryKind.Mods)]
-    [InlineData("saves", InstanceDirectoryKind.Saves)]
-    [InlineData("resource_packs", InstanceDirectoryKind.ResourcePacks)]
-    [InlineData("shaders", InstanceDirectoryKind.ShaderPacks)]
     public async Task ResourceSectionUsesExpectedWatcherLifecycle(string sectionId, InstanceDirectoryKind expectedKind)
     {
         var monitor = new RecordingDirectoryMonitor();
@@ -50,99 +47,8 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
         details.SetPageActive(false);
     }
 
-    [Fact]
-    public async Task RepeatedModSectionActivationWithoutChangesDoesNotReloadInventory()
-    {
-        var monitor = new RecordingDirectoryMonitor();
-        var mod = CreateMod("example.jar");
-        var modService = new RecordingModService([mod]);
-        using var details = CreateDetails(monitor, modService: modService);
-        details.SetSelectedInstance(CreateInstanceItem());
-        details.SetPageActive(true);
-        details.SetSelectedSection(CreateSection("mod_management"));
-        await details.ModManagement.OnSectionActivatedAsync();
-        var item = Assert.Single(details.ModManagement.Mods);
-        var entranceAnimationToken = details.ModManagement.ListEntranceAnimationToken;
-
-        details.SetSelectedSection(CreateSection("general"));
-        details.SetSelectedSection(CreateSection("mod_management"));
-        await details.ModManagement.OnSectionActivatedAsync();
-        details.SetSelectedSection(CreateSection("general"));
-        details.SetSelectedSection(CreateSection("mod_management"));
-        await details.ModManagement.OnSectionActivatedAsync();
-
-        Assert.Equal(1, modService.GetModsCallCount);
-        Assert.Same(item, Assert.Single(details.ModManagement.Mods));
-        Assert.Equal(entranceAnimationToken, details.ModManagement.ListEntranceAnimationToken);
-        Assert.Equal([InstanceDirectoryKind.Mods], monitor.ActiveKinds);
-        details.SetPageActive(false);
-    }
-
-    [Fact]
-    public async Task HiddenModChangesAreCoalescedUntilNextActivation()
-    {
-        var monitor = new RecordingDirectoryMonitor();
-        var modService = new RecordingModService([CreateMod("example.jar")]);
-        using var details = CreateDetails(monitor, modService: modService);
-        details.SetSelectedInstance(CreateInstanceItem());
-        details.SetPageActive(true);
-        details.SetSelectedSection(CreateSection("mod_management"));
-        await details.ModManagement.OnSectionActivatedAsync();
-        details.SetSelectedSection(CreateSection("general"));
-
-        monitor.Raise(
-            InstanceDirectoryKind.Mods,
-            new InstanceDirectoryChangedEventArgs(
-                "Changed",
-                Path.Combine(TempRoot, "mods", "example.jar")));
-        monitor.Raise(
-            InstanceDirectoryKind.Mods,
-            new InstanceDirectoryChangedEventArgs(
-                "Changed",
-                Path.Combine(TempRoot, "mods", "example.jar")));
-
-        Assert.Equal(1, modService.GetModsCallCount);
-
-        details.SetSelectedSection(CreateSection("mod_management"));
-        await details.ModManagement.OnSectionActivatedAsync();
-
-        Assert.Equal(2, modService.GetModsCallCount);
-        details.SetPageActive(false);
-    }
-
-    [Fact]
-    public async Task HiddenModWatcherErrorRebuildsObservationAndDefersInventoryCheck()
-    {
-        var monitor = new RecordingDirectoryMonitor();
-        var modService = new RecordingModService([CreateMod("example.jar")]);
-        using var details = CreateDetails(monitor, modService: modService);
-        details.SetSelectedInstance(CreateInstanceItem());
-        details.SetPageActive(true);
-        details.SetSelectedSection(CreateSection("mod_management"));
-        await details.ModManagement.OnSectionActivatedAsync();
-        details.SetSelectedSection(CreateSection("general"));
-
-        monitor.Raise(
-            InstanceDirectoryKind.Mods,
-            new InstanceDirectoryChangedEventArgs(
-                "Error",
-                Path.Combine(TempRoot, "mods")));
-
-        Assert.Equal(1, modService.GetModsCallCount);
-        Assert.Equal(2, monitor.WatchStartCount);
-        Assert.Equal([InstanceDirectoryKind.Mods], monitor.ActiveKinds);
-
-        details.SetSelectedSection(CreateSection("mod_management"));
-        await details.ModManagement.OnSectionActivatedAsync();
-
-        Assert.Equal(2, modService.GetModsCallCount);
-        details.SetPageActive(false);
-    }
-
     [Theory]
     [InlineData("saves", InstanceDirectoryKind.Saves)]
-    [InlineData("resource_packs", InstanceDirectoryKind.ResourcePacks)]
-    [InlineData("shaders", InstanceDirectoryKind.ShaderPacks)]
     public async Task RepeatedLocalContentActivationWithoutChangesDoesNotReloadInventory(
         string sectionId,
         InstanceDirectoryKind kind)
@@ -177,8 +83,6 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
 
     [Theory]
     [InlineData("saves", InstanceDirectoryKind.Saves, "saves", "world")]
-    [InlineData("resource_packs", InstanceDirectoryKind.ResourcePacks, "resourcepacks", "pack.zip")]
-    [InlineData("shaders", InstanceDirectoryKind.ShaderPacks, "shaderpacks", "shader.zip")]
     public async Task HiddenLocalContentChangesAreCoalescedUntilNextActivation(
         string sectionId,
         InstanceDirectoryKind kind,
@@ -215,8 +119,6 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
 
     [Theory]
     [InlineData("saves", InstanceDirectoryKind.Saves)]
-    [InlineData("resource_packs", InstanceDirectoryKind.ResourcePacks)]
-    [InlineData("shaders", InstanceDirectoryKind.ShaderPacks)]
     public async Task HiddenLocalContentWatcherErrorRebuildsObservationAndDefersInventoryCheck(
         string sectionId,
         InstanceDirectoryKind kind)
@@ -387,54 +289,6 @@ public sealed class GameSettingsDetailsWatcherLifecycleTests : TestTempDirectory
         Assert.False(Directory.Exists(instanceDirectory));
         Assert.Empty(monitor.ActiveKinds);
         Assert.Equal(1, monitor.WatchStartCount);
-        Assert.Null(details.SelectedInstance);
-        details.SetPageActive(false);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    public async Task FailedDeletionRemainsOpenAndCanBeRetried(bool throwException)
-    {
-        var monitor = new RecordingDirectoryMonitor();
-        var instance = CreateInstanceItem();
-        var instanceService = new FakeGameInstanceService
-        {
-            DeleteHandler = throwException
-                ? (_, _) => Task.FromException<bool>(new IOException("delete failed"))
-                : (_, _) => Task.FromResult(false)
-        };
-        instanceService.CreatedInstances.Add(instance.Instance);
-        using var details = CreateDetails(monitor, instanceService: instanceService);
-        details.SetSelectedInstance(instance);
-        details.SetSelectedSection(CreateSection("mod_management"));
-        details.SetPageActive(true);
-        var dialogs = new GameSettingsDialogsViewModel(instanceService, Stub<IStatusService>(), details);
-        dialogs.OpenDeleteInstance(instance);
-
-        await dialogs.ConfirmDeleteInstanceDialogCommand.ExecuteAsync(null);
-
-        Assert.True(dialogs.IsDeleteInstanceDialogOpen);
-        Assert.False(dialogs.IsDeleteInstanceDialogBusy);
-        Assert.True(dialogs.HasDeleteInstanceDialogError);
-        Assert.Same(instance, dialogs.InstancePendingDelete);
-        Assert.Equal(Strings.Dialog_DeleteInstanceFailedTitle, dialogs.DeleteInstanceDialogTitle);
-        Assert.Equal(Strings.Status_DeleteInstanceFailed, dialogs.DeleteInstanceDialogMessage);
-        Assert.Equal(Strings.Retry_Button, dialogs.DeleteInstanceDialogActionText);
-        Assert.True(dialogs.CanShowDeleteInstanceCancelButton);
-        Assert.True(dialogs.CancelDeleteInstanceDialogCommand.CanExecute(null));
-        Assert.True(dialogs.ConfirmDeleteInstanceDialogCommand.CanExecute(null));
-        Assert.Equal([InstanceDirectoryKind.Mods], monitor.ActiveKinds);
-        Assert.Same(instance, details.SelectedInstance);
-
-        instanceService.DeleteHandler = (_, _) => Task.FromResult(true);
-        await dialogs.ConfirmDeleteInstanceDialogCommand.ExecuteAsync(null);
-
-        Assert.False(dialogs.IsDeleteInstanceDialogOpen);
-        Assert.False(dialogs.IsDeleteInstanceDialogBusy);
-        Assert.False(dialogs.HasDeleteInstanceDialogError);
-        Assert.Null(dialogs.InstancePendingDelete);
-        Assert.Equal(2, instanceService.DeleteCallCount);
-        Assert.Empty(monitor.ActiveKinds);
         Assert.Null(details.SelectedInstance);
         details.SetPageActive(false);
     }

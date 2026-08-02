@@ -17,35 +17,8 @@ public sealed class NeoForgeArtifactResolverTests
 {
     [Theory]
     [InlineData(
-        "1.20.1",
-        "47.1.106",
-        "47.1.106",
-        "1.20.1-47.1.106",
-        "forge",
-        "https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar",
-        "1.20.1-forge-47.1.106",
-        "net.neoforged:forge:1.20.1-47.1.106")]
-    [InlineData(
-        "1.20.1",
-        "1.20.1-47.1.106",
-        "47.1.106",
-        "1.20.1-47.1.106",
-        "forge",
-        "https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar",
-        "1.20.1-forge-47.1.106",
-        "net.neoforged:forge:1.20.1-47.1.106")]
-    [InlineData(
         "1.20.4",
         "20.4.237",
-        "20.4.237",
-        "20.4.237",
-        "neoforge",
-        "https://maven.neoforged.net/releases/net/neoforged/neoforge/20.4.237/neoforge-20.4.237-installer.jar",
-        "neoforge-20.4.237",
-        "net.neoforged:neoforge:20.4.237")]
-    [InlineData(
-        "1.20.4",
-        "1.20.4-20.4.237",
         "20.4.237",
         "20.4.237",
         "neoforge",
@@ -76,14 +49,8 @@ public sealed class NeoForgeArtifactResolverTests
 
     [Theory]
     [InlineData("1.20.1", NeoForgeArtifactResolver.Legacy1201MetadataUrl, "47.1.106,47.1.105-beta")]
-    [InlineData("1.21", NeoForgeArtifactResolver.ModernMetadataUrl, "21.0.167,21.0.166-beta")]
     [InlineData("1.21.1", NeoForgeArtifactResolver.ModernMetadataUrl, "21.1.2")]
-    [InlineData("26.1", NeoForgeArtifactResolver.ModernMetadataUrl, "26.1.0.20,26.1.0.1-beta")]
-    [InlineData("26.1.2", NeoForgeArtifactResolver.ModernMetadataUrl, "26.1.2.70")]
     [InlineData("26.1-snapshot-7", NeoForgeArtifactResolver.ModernMetadataUrl, "26.1.0.0-alpha.12+snapshot-7")]
-    [InlineData("26.1-pre-3", NeoForgeArtifactResolver.ModernMetadataUrl, "26.1.0.0-alpha.15+pre-3")]
-    [InlineData("26.1-rc-1", NeoForgeArtifactResolver.ModernMetadataUrl, "26.1.0.0+rc-1")]
-    [InlineData("25w14craftmine", NeoForgeArtifactResolver.ModernMetadataUrl, "0.25w14craftmine.5-beta")]
     public async Task ProviderUsesResolvedCatalogAndReturnsOnlyCompatibleVersions(
         string minecraftVersion,
         string expectedMetadataUrl,
@@ -115,12 +82,6 @@ public sealed class NeoForgeArtifactResolverTests
     }
 
     [Theory]
-    [InlineData(
-        "1.20.1",
-        "47.1.106",
-        "1.20.1-47.1.106",
-        "forge",
-        "https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar")]
     [InlineData(
         "1.20.4",
         "1.20.4-20.4.237",

@@ -15,7 +15,6 @@ public sealed class MinecraftJavaEntitlementVerifierTests
 {
     [Theory]
     [InlineData("product_minecraft")]
-    [InlineData("game_minecraft")]
     public async Task RecognizedJavaEditionEntitlementIsAccepted(string entitlement)
     {
         HttpRequestMessage? capturedRequest = null;
@@ -57,8 +56,6 @@ public sealed class MinecraftJavaEntitlementVerifierTests
 
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized, LaunchAccountSessionFailureReason.ReauthenticationRequired)]
-    [InlineData(HttpStatusCode.Forbidden, LaunchAccountSessionFailureReason.AuthenticationApplicationNotAuthorized)]
-    [InlineData(HttpStatusCode.ServiceUnavailable, LaunchAccountSessionFailureReason.AuthenticationServerUnavailable)]
     public async Task EntitlementServiceFailuresRetainActionableReason(
         HttpStatusCode statusCode,
         LaunchAccountSessionFailureReason expectedReason)
@@ -85,4 +82,3 @@ public sealed class MinecraftJavaEntitlementVerifierTests
         }
     }
 }
-

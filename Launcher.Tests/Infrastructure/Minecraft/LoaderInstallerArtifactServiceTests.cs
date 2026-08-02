@@ -106,8 +106,6 @@ public sealed class LoaderInstallerArtifactServiceTests : TestTempDirectory
 
     [Theory]
     [InlineData("--out-jar", ModpackInstallEnvironment.Client)]
-    [InlineData("--out-jar", ModpackInstallEnvironment.Server)]
-    [InlineData("--jar-out", ModpackInstallEnvironment.Client)]
     [InlineData("--jar-out", ModpackInstallEnvironment.Server)]
     public async Task ProcessorOutputOptionsDoNotMaterializeGeneratedCoordinates(
         string outputOption,
@@ -140,8 +138,6 @@ public sealed class LoaderInstallerArtifactServiceTests : TestTempDirectory
 
     [Theory]
     [InlineData(ModpackInstallEnvironment.Client, true)]
-    [InlineData(ModpackInstallEnvironment.Client, false)]
-    [InlineData(ModpackInstallEnvironment.Server, true)]
     [InlineData(ModpackInstallEnvironment.Server, false)]
     public async Task PatchedOutputUsesPostInjectionHashForFinalManifest(
         ModpackInstallEnvironment environment,

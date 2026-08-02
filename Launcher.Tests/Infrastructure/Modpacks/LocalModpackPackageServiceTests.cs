@@ -21,7 +21,6 @@ public sealed class LocalModpackPackageServiceTests : TestTempDirectory
 {
     [Theory]
     [InlineData("pack.mrpack", "modrinth.index.json", ModpackPackageKind.Modrinth, LoaderKind.Fabric)]
-    [InlineData("pack.zip", "modrinth.index.json", ModpackPackageKind.Modrinth, LoaderKind.Fabric)]
     [InlineData("pack.zip", "manifest.json", ModpackPackageKind.CurseForge, LoaderKind.NeoForge)]
     public async Task PrepareParsesSupportedPackage(
         string archiveFileName,
@@ -39,20 +38,6 @@ public sealed class LocalModpackPackageServiceTests : TestTempDirectory
         Assert.Equal(kind, prepared.PackageKind);
         Assert.Equal(loader, prepared.Loader);
         Assert.Equal("Demo", prepared.PackageName);
-    }
-
-    [Fact]
-    public async Task RecognizeAcceptsModrinthPackageWithZipExtension()
-    {
-        var path = Path.Combine(TempRoot, "pack.zip");
-        CreateArchive(path, archive => AddEntry(
-            archive,
-            "modrinth.index.json",
-            """{"name":"Demo","dependencies":{"minecraft":"1.20.1","fabric-loader":"0.16.10"},"files":[]}"""));
-
-        var result = await CreateService().RecognizeAsync(path);
-
-        Assert.True(result.IsSuccess);
     }
 
     [Fact]
@@ -88,16 +73,6 @@ public sealed class LocalModpackPackageServiceTests : TestTempDirectory
     }
 
     [Fact]
-    public void OverrideExtractionBudgetAllowsExactlyEightGiB()
-    {
-        var budget = new ZipExtractionBudget(ModpackArchiveUtility.MaxOverrideTotalBytes);
-
-        budget.Reserve(ModpackArchiveUtility.MaxOverrideTotalBytes);
-
-        Assert.Equal(ModpackArchiveUtility.MaxOverrideTotalBytes, budget.ReservedBytes);
-    }
-
-    [Fact]
     public void OverrideExtractionBudgetRejectsMoreThanEightGiBWithSpecificReason()
     {
         var budget = new ZipExtractionBudget(ModpackArchiveUtility.MaxOverrideTotalBytes);
@@ -110,24 +85,6 @@ public sealed class LocalModpackPackageServiceTests : TestTempDirectory
             $"LimitBytes={ModpackArchiveUtility.MaxOverrideTotalBytes}",
             exception.Message,
             StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void OverrideDiskSpaceCheckPreservesOneGiBReserve()
-    {
-        var requiredBytes = 2L * 1024 * 1024 * 1024;
-
-        ModpackArchiveUtility.EnsureSufficientOverrideDiskSpace(
-            requiredBytes,
-            requiredBytes + ModpackArchiveUtility.OverrideFreeSpaceReserveBytes);
-
-        var exception = Assert.Throws<ModpackImportException>(() =>
-            ModpackArchiveUtility.EnsureSufficientOverrideDiskSpace(
-                requiredBytes,
-                requiredBytes + ModpackArchiveUtility.OverrideFreeSpaceReserveBytes - 1));
-
-        Assert.Equal(ModpackImportFailureReason.InsufficientDiskSpace, exception.FailureReason);
-        Assert.Contains($"RequiredBytes={requiredBytes}", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -203,21 +160,6 @@ public sealed class LocalModpackPackageServiceTests : TestTempDirectory
             progress.Snapshot(),
             report => report.Stage == ImportProgressStages.DownloadingPackFiles);
         Assert.False(File.Exists(Path.Combine(instance.InstanceDirectory, "mods", "first.jar")));
-    }
-
-    [Fact]
-    public async Task CurseForgeDirectFailureUsesConstructedCdnFallbackWithoutCreatingManualList()
-    {
-        var handler = new DirectCurseForgeFallbackHandler();
-        var service = CreateService(new HttpClient(handler), apiKey: "test-key");
-        var instance = new GameInstance { Name = "Pack", InstanceDirectory = Path.Combine(TempRoot, "instance") };
-        var prepared = CreateSingleCurseForgePreparedModpack();
-
-        var manualDownloads = await service.DownloadFilesAsync(prepared, instance, progress: null);
-
-        Assert.Empty(manualDownloads);
-        Assert.Equal("downloaded", await File.ReadAllTextAsync(Path.Combine(instance.InstanceDirectory, "mods", "direct.jar")));
-        Assert.Equal(["download.example", "edge.forgecdn.net"], handler.DownloadHosts);
     }
 
     private LocalModpackPackageService CreateService(

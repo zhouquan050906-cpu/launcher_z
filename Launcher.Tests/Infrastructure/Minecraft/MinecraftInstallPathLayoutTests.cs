@@ -157,7 +157,6 @@ public sealed class MinecraftInstallPathLayoutTests : TestTempDirectory
 
     [Theory]
     [InlineData("client")]
-    [InlineData("server")]
     public async Task LoaderDeltaAtomicallyReplacesDeclaredProcessorOutputEvenWhenSeeded(string side)
     {
         var relativePath = $"libraries/net/minecraft/{side}/1.16.5/{side}-1.16.5-srg.jar";

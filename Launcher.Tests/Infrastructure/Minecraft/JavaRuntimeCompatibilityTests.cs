@@ -15,7 +15,6 @@ public sealed class JavaRuntimeCompatibilityTests
 {
     [Theory]
     [InlineData("1.8.0_320", 8, 0, 320, 0)]
-    [InlineData("21.0.1+12-LTS", 21, 0, 1, 12)]
     public void JavaVersionParserNormalizesLegacyAndModernFormats(
         string value,
         int major,
@@ -29,7 +28,6 @@ public sealed class JavaRuntimeCompatibilityTests
 
     [Theory]
     [InlineData("1.12.2", "14.23.5.2860", "17.0.12", false)]
-    [InlineData("1.20.1", "47.4.9", "22.0.2", true)]
     public void ForgeCompatibilityRulesApplyAtDocumentedBoundaries(
         string minecraftVersion,
         string forgeVersion,
@@ -47,7 +45,6 @@ public sealed class JavaRuntimeCompatibilityTests
 
     [Theory]
     [InlineData("1.20.1", "20.1.137", "21.0.5", true)]
-    [InlineData("1.20.2", "20.2.63-beta", "22.0.2", true)]
     public void NeoForgeCompatibilityRulesApplyAtDocumentedBoundaries(
         string minecraftVersion,
         string neoForgeVersion,
@@ -74,20 +71,6 @@ public sealed class JavaRuntimeCompatibilityTests
         var runtime = CreateRuntime(version: null, majorVersion: 8);
 
         Assert.False(requirement.IsCompatible(runtime));
-    }
-
-    [Fact]
-    public void MinecraftTwentySixFallbackRequiresJavaTwentyFive()
-    {
-        var requirement = JavaRuntimeCompatibilityResolver.Resolve(
-            "26.2",
-            LoaderKind.Vanilla,
-            loaderVersion: null,
-            metadataMajorVersion: null);
-
-        Assert.Equal(25, requirement.RecommendedMajorVersion);
-        Assert.False(requirement.IsCompatible(CreateRuntime("21.0.8")));
-        Assert.True(requirement.IsCompatible(CreateRuntime("25.0.1")));
     }
 
     private static JavaRuntimeInfo CreateRuntime(

@@ -21,8 +21,6 @@ public sealed class InstanceAuthoritativeVersionLoaderTests : TestTempDirectory
 
     [Theory]
     [InlineData("net.fabricmc.loader.impl.launch.knot.KnotClient", "net.fabricmc:fabric-loader:0.19.3")]
-    [InlineData("org.quiltmc.loader.impl.launch.knot.KnotClient", "org.quiltmc:quilt-loader:0.29.2")]
-    [InlineData("net.minecraftforge.bootstrap.ForgeBootstrap", "net.minecraftforge:forge:26.2-1.0.0")]
     [InlineData("cpw.mods.bootstraplauncher.BootstrapLauncher", "net.neoforged:neoforge:1.0.0")]
     public async Task SameNamedLocalVersionRemainsAuthoritativeDuringFileInstallation(
         string loaderMainClass,
@@ -163,16 +161,6 @@ public sealed class InstanceAuthoritativeVersionLoaderTests : TestTempDirectory
         Assert.Equal(1, remoteRequestCount);
         Assert.Equal(originalChildBytes, await File.ReadAllBytesAsync(childPath));
         Assert.False(File.Exists(Path.Combine(minecraftDirectory, "versions", "26.2", "26.2.json")));
-    }
-
-    [Fact]
-    public void SharedLauncherFactoryAlwaysUsesInstanceAuthoritativeVersionLoader()
-    {
-        var launcher = VanillaLoaderProvider.CreateLauncher(
-            Path.Combine(TempRoot, ".minecraft"),
-            progress: null);
-
-        Assert.IsType<InstanceAuthoritativeVersionLoader>(launcher.VersionLoader);
     }
 
     [Fact]

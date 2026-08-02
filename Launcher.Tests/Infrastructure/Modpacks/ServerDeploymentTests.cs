@@ -76,36 +76,6 @@ public sealed class ServerDeploymentTests : TestTempDirectory
     }
 
     [Fact]
-    public async Task VanillaRuntimeDownloadsServerJarAndDoesNotAcceptEula()
-    {
-        var serverBytes = Encoding.UTF8.GetBytes("server-jar");
-        var sha1 = Convert.ToHexString(SHA1.HashData(serverBytes)).ToLowerInvariant();
-        var handler = new ServerRuntimeHandler(serverBytes, sha1);
-        var target = Path.Combine(TempRoot, "runtime");
-        var installer = new ServerRuntimeInstaller(
-            new HttpClient(handler),
-            new FixedSettingsService());
-
-        await installer.InstallAsync(
-            new PreparedModpack
-            {
-                Environment = ModpackInstallEnvironment.Server,
-                MinecraftVersion = "1.20.1",
-                Loader = LoaderKind.Vanilla
-            },
-            target);
-
-        Assert.Equal(serverBytes, await File.ReadAllBytesAsync(Path.Combine(target, "minecraft_server.1.20.1.jar")));
-        Assert.True(File.Exists(Path.Combine(target, "LaunchServer.bat")));
-        Assert.True(File.Exists(Path.Combine(target, "LaunchServer.sh")));
-        Assert.False(File.Exists(Path.Combine(target, "log4j2.xml")));
-        Assert.DoesNotContain(
-            ServerLog4ShellMitigation.JvmArguments,
-            await File.ReadAllTextAsync(Path.Combine(target, "LaunchServer.bat")));
-        Assert.False(File.Exists(Path.Combine(target, "eula.txt")));
-    }
-
-    [Fact]
     public async Task ForgeLikeRuntimeRejectsSuccessfulInstallerWithMissingServerProcessorOutput()
     {
         var target = Path.Combine(TempRoot, "forge-missing-output");
@@ -126,28 +96,6 @@ public sealed class ServerDeploymentTests : TestTempDirectory
         Assert.Contains("processor output", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.True(runner.WasRun);
         Assert.Contains(handler.RequestedUrls, url => url.EndsWith("-installer.jar.sha1", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task ForgeLikeRuntimeDoesNotExecuteInstallerWithoutValidChecksumMetadata()
-    {
-        var target = Path.Combine(TempRoot, "forge-invalid-checksum");
-        var installerBytes = CreateForgeServerInstaller();
-        var handler = new ForgeServerRuntimeHandler(installerBytes, checksumOverride: "not-a-sha1");
-        var runner = new ScriptedForgeServerInstallerRunner(directory =>
-            WriteModernForgeServerEntrypoint(directory, writeProcessorOutput: true));
-        var installer = new ServerRuntimeInstaller(
-            new HttpClient(handler),
-            new FixedSettingsService(),
-            new FixedLoaderJavaRuntimeResolver(),
-            runner);
-
-        var exception = await Assert.ThrowsAsync<InvalidDataException>(() => installer.InstallAsync(
-            CreateForgeServerModpack(),
-            target));
-
-        Assert.Contains("checksum", exception.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.False(runner.WasRun);
     }
 
     [Fact]

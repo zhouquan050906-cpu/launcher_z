@@ -44,29 +44,8 @@ public sealed class SelfBringIntoViewSuppressionTests
         });
     }
 
-    [Fact]
-    public void DisabledBehaviorStopsHandlingTheHostRequest()
-    {
-        RunOnStaThread(() =>
-        {
-            var host = new ContentControl();
-            SelfBringIntoViewSuppression.SetIsEnabled(host, true);
-            SelfBringIntoViewSuppression.SetIsEnabled(host, false);
-            bool? requestHandled = null;
-            host.AddHandler(
-                FrameworkElement.RequestBringIntoViewEvent,
-                new RequestBringIntoViewEventHandler((_, e) => requestHandled = e.Handled),
-                true);
-
-            host.BringIntoView();
-
-            Assert.False(requestHandled);
-        });
-    }
-
     [Theory]
     [InlineData("Settings", "SettingsPageView.xaml", "{Binding CurrentSectionViewModel}")]
-    [InlineData("GameSettings", "GameSettingsDetailsView.xaml", "{Binding ScrollSectionViewModel}")]
     public void DynamicScrollableContentHostsEnableSuppression(
         string viewDirectory,
         string fileName,

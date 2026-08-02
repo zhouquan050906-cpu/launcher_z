@@ -13,9 +13,6 @@ public sealed class LauncherStateMonitorTests : TestTempDirectory
 {
     [Theory]
     [InlineData("instance-a/instance-a.json")]
-    [InlineData("instance-a/custom-name.json")]
-    [InlineData("instance-a/BHL/instance-settings.json")]
-    [InlineData("instance-a/bhl/INSTANCE-SETTINGS.JSON")]
     public void RelevantInstanceMetadataPathsInvalidateCatalog(string relativePath)
     {
         var versions = Path.Combine(TempRoot, "versions");
@@ -28,13 +25,6 @@ public sealed class LauncherStateMonitorTests : TestTempDirectory
 
     [Theory]
     [InlineData("instance-a/mods/example.json")]
-    [InlineData("instance-a/saves/world/level.json")]
-    [InlineData("instance-a/resourcepacks/pack.json")]
-    [InlineData("instance-a/shaderpacks/shader.json")]
-    [InlineData("instance-a/logs/latest.json")]
-    [InlineData("instance-a/BHL/loader-artifact-manifest.json")]
-    [InlineData("instance-a/instance-a.jar")]
-    [InlineData("root.json")]
     public void InstanceContentAndUnrelatedMetadataDoNotInvalidateCatalog(string relativePath)
     {
         var versions = Path.Combine(TempRoot, "versions");

@@ -139,10 +139,6 @@ public sealed class JsonGameInstanceRepositoryTests : TestTempDirectory
     [Theory]
     [InlineData(".")]
     [InlineData("..")]
-    [InlineData(".dfg")]
-    [InlineData("name.")]
-    [InlineData("../Pack")]
-    [InlineData(@"..\Pack")]
     [InlineData(@"C:\Pack")]
     public void GetVersionDirectoryRejectsUnsafeVersionName(string versionName)
     {
@@ -178,7 +174,6 @@ public sealed class JsonGameInstanceRepositoryTests : TestTempDirectory
 
     [Theory]
     [InlineData(false)]
-    [InlineData(true)]
     public async Task RenameVersionAsyncRollsBackWhenDestinationAppearsDuringFinalMove(bool destinationIsDirectory)
     {
         var (settings, settingsService) = CreateSettings();

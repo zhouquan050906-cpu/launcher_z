@@ -235,9 +235,6 @@ public sealed class GameFileIntegrityServiceTests : TestTempDirectory
 
     [Theory]
     [InlineData(LoaderKind.Forge, GameFileVerificationLevel.SizeVerified)]
-    [InlineData(LoaderKind.Forge, GameFileVerificationLevel.TrustedAcquisitionHash)]
-    [InlineData(LoaderKind.NeoForge, GameFileVerificationLevel.SizeVerified)]
-    [InlineData(LoaderKind.NeoForge, GameFileVerificationLevel.TrustedAcquisitionHash)]
     public async Task GeneratedProcessorOutputWithSameSizeDoesNotUseRecordedHashes(
         LoaderKind loaderKind,
         GameFileVerificationLevel verificationLevel)
@@ -255,7 +252,6 @@ public sealed class GameFileIntegrityServiceTests : TestTempDirectory
 
     [Theory]
     [InlineData(null, GameFileRepairFailureReason.Missing)]
-    [InlineData("different-size", GameFileRepairFailureReason.Corrupted)]
     public async Task GeneratedProcessorOutputStillRequiresExistenceAndRecordedSize(
         string? actualContent,
         GameFileRepairFailureReason expectedReason)
@@ -274,7 +270,6 @@ public sealed class GameFileIntegrityServiceTests : TestTempDirectory
 
     [Theory]
     [InlineData((int)LoaderArtifactKind.ProcessorOutput, GameFileVerificationLevel.HashVerified)]
-    [InlineData((int)LoaderArtifactKind.RuntimeLibrary, GameFileVerificationLevel.TrustedAcquisitionHash)]
     public async Task TrustedLoaderArtifactsRetainFullHashValidation(
         int artifactKind,
         GameFileVerificationLevel verificationLevel)

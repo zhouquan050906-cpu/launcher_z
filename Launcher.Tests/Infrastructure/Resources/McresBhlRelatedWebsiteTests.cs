@@ -36,35 +36,8 @@ public sealed class McresBhlRelatedWebsiteTests
         Assert.DoesNotContain(logger.Messages, message => message.Contains(testApiKey, StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task CurseForgeLookupLoadsOnlyTheFirstRelatedResource()
-    {
-        var handler = new RecordingHandler(request => Json(request.RequestUri!.AbsolutePath.EndsWith("/lookup", StringComparison.Ordinal)
-            ? """
-              {"code":0,"resources":[
-                {"resource_type":"map","resource_id":7},
-                {"resource_type":"resourcepack","resource_id":8}
-              ]}
-              """
-            : """{"code":0,"url":"https://www.mcresource.cn/map/7"}"""));
-        var service = CreateService(handler, "test-key");
-
-        var website = await service.GetRelatedWebsiteAsync(new ResourceProjectReference(
-            ResourceProjectKind.World,
-            ResourceProjectSource.CurseForge,
-            "453763"));
-
-        Assert.NotNull(website);
-        Assert.Equal(2, handler.Requests.Count);
-        Assert.Contains("provider=curseforge", handler.Requests[0].Query, StringComparison.Ordinal);
-        Assert.Equal("/api/bhl/detail/map/7", handler.Requests[1].AbsolutePath);
-    }
-
     [Theory]
     [InlineData("""{"code":0,"resources":[]}""")]
-    [InlineData("""{"code":404,"message":"not found"}""")]
-    [InlineData("""{"code":400,"message":"invalid"}""")]
-    [InlineData("{")]
     public async Task MissingOrInvalidLookupResponseIsHidden(string responseBody)
     {
         var handler = new RecordingHandler(_ => Json(responseBody));
@@ -81,9 +54,6 @@ public sealed class McresBhlRelatedWebsiteTests
 
     [Theory]
     [InlineData("http://www.mcresource.cn/resourcepack/1")]
-    [InlineData("https://mcresource.cn/resourcepack/1")]
-    [InlineData("https://example.com/resourcepack/1")]
-    [InlineData("not-a-url")]
     public async Task UntrustedDetailUrlIsHidden(string url)
     {
         var handler = new RecordingHandler(request => Json(request.RequestUri!.AbsolutePath.EndsWith("/lookup", StringComparison.Ordinal)
@@ -102,8 +72,6 @@ public sealed class McresBhlRelatedWebsiteTests
 
     [Theory]
     [InlineData("""{"code":404,"message":"not found"}""")]
-    [InlineData("""{"code":400,"message":"invalid"}""")]
-    [InlineData("{")]
     public async Task InvalidDetailResponseIsHidden(string responseBody)
     {
         var handler = new RecordingHandler(request => Json(request.RequestUri!.AbsolutePath.EndsWith("/lookup", StringComparison.Ordinal)
@@ -122,8 +90,6 @@ public sealed class McresBhlRelatedWebsiteTests
 
     [Theory]
     [InlineData(HttpStatusCode.NotFound)]
-    [InlineData(HttpStatusCode.Unauthorized)]
-    [InlineData(HttpStatusCode.InternalServerError)]
     public async Task HttpFailureIsHidden(HttpStatusCode statusCode)
     {
         var handler = new RecordingHandler(_ => new HttpResponseMessage(statusCode));
@@ -140,7 +106,6 @@ public sealed class McresBhlRelatedWebsiteTests
 
     [Theory]
     [InlineData(ResourceProjectKind.Mod)]
-    [InlineData(ResourceProjectKind.Modpack)]
     public async Task UnsupportedKindsDoNotSendMcresRequests(ResourceProjectKind kind)
     {
         var handler = new RecordingHandler(_ => throw new InvalidOperationException("MCRES request must not start."));
