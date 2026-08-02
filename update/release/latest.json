@@ -2,29 +2,29 @@
   "schemaVersion": 1,
   "appId": "BlockHelm-Launcher",
   "channel": "release",
-  "versionName": "0.9.12",
-  "versionCode": 91299,
-  "publishedAt": "2026-07-28T18:25:37Z",
+  "versionName": "0.9.13",
+  "versionCode": 91399,
+  "publishedAt": "2026-08-02T05:46:07Z",
   "mandatory": false,
   "minSupportedVersionCode": 0,
-  "releaseNotes": "# 正式版 0.9.12\r\n\r\n* 修复重复安装同一 Forge 或 NeoForge 版本时，共享的加载器生成文件互相冲突，导致安装失败或启动时反复修复的问题。\r\n* 修复部分 Forge 版本将安装器中间阶段的校验值误用于最终文件，导致安装完成后仍被判定为文件损坏的问题。\r\n* 修复 Forge、Fabric 和 Quilt 等加载器在旧版 Minecraft 上合并版本信息时可能丢失 LWJGL 原生库声明。",
+  "releaseNotes": "# 正式版 0.9.13\r\n\r\n* 优化首页实例列表和游戏设置页面的加载、切换与滚动性能，在实例及本地内容较多时操作更加流畅。\r\n* 改进图片背景下的控件模糊与页面动画刷新策略，减少滚动、切换页面和窗口状态变化时不必要的重复渲染。\r\n* 改进 Mod、存档、资源包和光影包的本地内容刷新与图标加载，外部文件变化能够更及时、稳定地显示。\r\n* 新增主窗口尺寸和最大化状态记忆，并优化整合包过大、磁盘空间不足时的错误提示。",
   "assets": [
     {
       "platform": "windows",
       "arch": "x64",
       "packageType": "exe",
       "fileName": "BlockHelm_Launcher_x64.exe",
-      "size": 12503648,
-      "sha256": "881cdb216cd2a2d91865a4a4a96e06d8a2631d88943fbdabcf49cadecaa982ce",
+      "size": 12637280,
+      "sha256": "67c27990d113b962d74be45c425d439ad46f68f8532d320d4fc7efcddee4c4fc",
       "urls": [
         {
           "name": "gitee",
-          "url": "https://gitee.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.12/BlockHelm_Launcher_x64.exe",
+          "url": "https://gitee.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.13/BlockHelm_Launcher_x64.exe",
           "priority": 1
         },
         {
           "name": "github",
-          "url": "https://github.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.12/BlockHelm_Launcher_x64.exe",
+          "url": "https://github.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.13/BlockHelm_Launcher_x64.exe",
           "priority": 2
         }
       ]
