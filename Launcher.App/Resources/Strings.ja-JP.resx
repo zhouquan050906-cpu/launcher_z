@@ -1987,6 +1987,12 @@
   <data name="Status_ModpackInvalidArchive" xml:space="preserve">
     <value>Modパック形式が対応していないか、ファイルが破損しています</value>
   </data>
+  <data name="Status_ModpackArchiveTooLarge" xml:space="preserve">
+    <value>展開後の Mod パックがランチャーの 8 GB の安全上限を超えています</value>
+  </data>
+  <data name="Status_ModpackInsufficientDiskSpace" xml:space="preserve">
+    <value>この Mod パックを安全にインポートするための空き容量が不足しています</value>
+  </data>
   <data name="Status_ModpackUnsupportedLoader" xml:space="preserve">
     <value>現在は Vanilla、Fabric、Forge、NeoForge、Quilt の Modパックのみ対応しています</value>
   </data>

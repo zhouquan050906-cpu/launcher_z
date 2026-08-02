@@ -37,7 +37,9 @@ public enum ModpackImportFailureReason
     CurseForgeFileUnavailable,
     HashMismatch,
     UnexpectedError,
-    JavaRuntimeUnavailable
+    JavaRuntimeUnavailable,
+    ArchiveTooLarge,
+    InsufficientDiskSpace
 }
 
 public sealed class ModpackImportResult

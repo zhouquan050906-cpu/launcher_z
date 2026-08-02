@@ -51,6 +51,7 @@ public partial class MainWindow : Window
     private readonly IAccountDialogService accountDialogService;
     private readonly LauncherStateSyncService stateSyncService;
     private readonly LauncherShutdownService shutdownService;
+    private readonly MainWindowPlacementService windowPlacementService;
     private readonly PageTransitionService pageTransitionService;
     private readonly MainViewModel viewModel;
     private readonly ILogger<MainWindow> logger;
@@ -63,6 +64,7 @@ public partial class MainWindow : Window
         IAccountDialogService accountDialogService,
         LauncherStateSyncService stateSyncService,
         LauncherShutdownService shutdownService,
+        MainWindowPlacementService windowPlacementService,
         IThemeService themeService,
         ILogger<MainWindow>? logger = null)
     {
@@ -71,6 +73,7 @@ public partial class MainWindow : Window
         this.accountDialogService = accountDialogService;
         this.stateSyncService = stateSyncService;
         this.shutdownService = shutdownService;
+        this.windowPlacementService = windowPlacementService;
         this.logger = logger ?? NullLogger<MainWindow>.Instance;
         navigationMenuService = new NavigationMenuAnimationService(MenuColumn);
         pageTransitionService = new PageTransitionService(Dispatcher, ResolvePageRoot, viewModel.CurrentPage);
@@ -220,10 +223,25 @@ public partial class MainWindow : Window
             return;
 
         isShutdownInProgress = true;
+        var placement = windowPlacementService.Capture(this);
         Hide();
+        using var shutdownCancellation = new CancellationTokenSource(ShutdownTimeout);
         try
         {
-            await shutdownService.PrepareForExitAsync(ShutdownTimeout);
+            await windowPlacementService.SaveAsync(placement, shutdownCancellation.Token);
+        }
+        catch (OperationCanceledException) when (shutdownCancellation.IsCancellationRequested)
+        {
+            logger.LogWarning("Timed out saving the main window placement during launcher exit.");
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Failed to save the main window placement during launcher exit.");
+        }
+
+        try
+        {
+            await shutdownService.PrepareForExitAsync(ShutdownTimeout, shutdownCancellation.Token);
         }
         catch (Exception exception)
         {

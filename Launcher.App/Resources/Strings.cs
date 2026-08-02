@@ -1164,6 +1164,8 @@ public static class Strings
     public static string Status_ModpackImportedFormat => Get(nameof(Status_ModpackImportedFormat));
     public static string Status_ModpackImportedWithManualDownloadsFormat => Get(nameof(Status_ModpackImportedWithManualDownloadsFormat));
     public static string Status_ModpackInvalidArchive => Get(nameof(Status_ModpackInvalidArchive));
+    public static string Status_ModpackArchiveTooLarge => Get(nameof(Status_ModpackArchiveTooLarge));
+    public static string Status_ModpackInsufficientDiskSpace => Get(nameof(Status_ModpackInsufficientDiskSpace));
     public static string Status_ModpackUnsupportedLoader => Get(nameof(Status_ModpackUnsupportedLoader));
     public static string Status_ModpackMissingCurseForgeApiKey => Get(nameof(Status_ModpackMissingCurseForgeApiKey));
     public static string Status_ModpackHashMismatch => Get(nameof(Status_ModpackHashMismatch));

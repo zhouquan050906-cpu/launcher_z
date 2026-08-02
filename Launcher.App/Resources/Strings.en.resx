@@ -1987,6 +1987,12 @@ Longer content wraps automatically.</value>
   <data name="Status_ModpackInvalidArchive" xml:space="preserve">
     <value>The modpack format is unsupported or the file is corrupted</value>
   </data>
+  <data name="Status_ModpackArchiveTooLarge" xml:space="preserve">
+    <value>The extracted modpack contents exceed the launcher's 8 GB safety limit</value>
+  </data>
+  <data name="Status_ModpackInsufficientDiskSpace" xml:space="preserve">
+    <value>There is not enough free disk space to import this modpack safely</value>
+  </data>
   <data name="Status_ModpackUnsupportedLoader" xml:space="preserve">
     <value>Only Vanilla, Fabric, Forge, NeoForge, and Quilt modpacks are supported</value>
   </data>

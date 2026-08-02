@@ -65,6 +65,10 @@ private bool TryResolveSingleFile(IReadOnlyList<string> paths, out string resolv
                 => Strings.Status_ModpackHashMismatch,
             ModpackImportFailureReason.JavaRuntimeUnavailable
                 => Strings.Status_JavaSelectionFailed,
+            ModpackImportFailureReason.ArchiveTooLarge
+                => Strings.Status_ModpackArchiveTooLarge,
+            ModpackImportFailureReason.InsufficientDiskSpace
+                => Strings.Status_ModpackInsufficientDiskSpace,
             _ => Strings.Status_ModpackImportFailed
         };
     }

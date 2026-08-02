@@ -28,6 +28,10 @@ public static class LauncherDefaults
     public const string DefaultLauncherBackgroundEffect = LauncherBackgroundEffects.Acrylic;
     public const int DefaultLauncherBackgroundOpacityPercent = 85;
     public const bool DefaultEnableImageBackgroundControlBlur = true;
+    public const double DefaultMainWindowWidth = 1000d;
+    public const double DefaultMainWindowHeight = 700d;
+    public const double MinimumMainWindowWidth = 900d;
+    public const double MinimumMainWindowHeight = 600d;
     public const int MinimumDownloadConcurrency = 1;
     public const int DefaultMaximumDownloadConcurrency = 64;
     public const int MaximumDownloadConcurrency = 128;

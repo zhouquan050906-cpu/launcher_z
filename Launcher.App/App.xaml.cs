@@ -137,6 +137,7 @@ public partial class App : System.Windows.Application
             services.AddSingleton<LauncherSessionCoordinator>();
             services.AddSingleton<LauncherStateSyncService>();
             services.AddSingleton<LauncherShutdownService>();
+            services.AddSingleton<MainWindowPlacementService>();
             services.AddSingleton<LaunchStatusDialogViewModel>();
             services.AddSingleton<UserAgreementDialogViewModel>();
             services.AddSingleton<TerracottaAgreementDialogViewModel>();
@@ -203,6 +204,8 @@ public partial class App : System.Windows.Application
                 mainViewModel.Settings.LauncherBackgroundEffect,
                 mainViewModel.Settings.EnableImageBackgroundControlBlur);
             var mainWindow = serviceProvider.GetRequiredService<MainWindow>();
+            serviceProvider.GetRequiredService<MainWindowPlacementService>()
+                .Restore(mainWindow, mainViewModel.Settings);
             mainWindow.Show();
             Log.Information(
                 "Launcher startup completed. DurationMs={DurationMs} Language={Language} DiagnosticLogging={DiagnosticLogging}",

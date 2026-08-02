@@ -304,6 +304,14 @@ public sealed class JsonSettingsService : ISettingsService
             settings.LauncherBackgroundOpacityPercent,
             0,
             100);
+        settings.MainWindowWidth = NormalizeWindowDimension(
+            settings.MainWindowWidth,
+            LauncherDefaults.DefaultMainWindowWidth,
+            LauncherDefaults.MinimumMainWindowWidth);
+        settings.MainWindowHeight = NormalizeWindowDimension(
+            settings.MainWindowHeight,
+            LauncherDefaults.DefaultMainWindowHeight,
+            LauncherDefaults.MinimumMainWindowHeight);
 
         if (string.IsNullOrWhiteSpace(settings.DataDirectory))
             settings.DataDirectory = pathProvider.DefaultDataDirectory;
@@ -349,6 +357,14 @@ public sealed class JsonSettingsService : ISettingsService
             settings.SelectedJavaExecutablePath = null;
 
         return settings;
+    }
+
+    private static double NormalizeWindowDimension(double value, double defaultValue, double minimumValue)
+    {
+        if (!double.IsFinite(value))
+            return defaultValue;
+
+        return Math.Max(value, minimumValue);
     }
 
     private static string NormalizeTheme(string? theme)

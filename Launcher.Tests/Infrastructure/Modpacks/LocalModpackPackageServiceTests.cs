@@ -88,6 +88,76 @@ public sealed class LocalModpackPackageServiceTests : TestTempDirectory
     }
 
     [Fact]
+    public void OverrideExtractionBudgetAllowsExactlyEightGiB()
+    {
+        var budget = new ZipExtractionBudget(ModpackArchiveUtility.MaxOverrideTotalBytes);
+
+        budget.Reserve(ModpackArchiveUtility.MaxOverrideTotalBytes);
+
+        Assert.Equal(ModpackArchiveUtility.MaxOverrideTotalBytes, budget.ReservedBytes);
+    }
+
+    [Fact]
+    public void OverrideExtractionBudgetRejectsMoreThanEightGiBWithSpecificReason()
+    {
+        var budget = new ZipExtractionBudget(ModpackArchiveUtility.MaxOverrideTotalBytes);
+        budget.Reserve(ModpackArchiveUtility.MaxOverrideTotalBytes);
+
+        var exception = Assert.Throws<ModpackImportException>(() => budget.Reserve(1));
+
+        Assert.Equal(ModpackImportFailureReason.ArchiveTooLarge, exception.FailureReason);
+        Assert.Contains(
+            $"LimitBytes={ModpackArchiveUtility.MaxOverrideTotalBytes}",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OverrideDiskSpaceCheckPreservesOneGiBReserve()
+    {
+        var requiredBytes = 2L * 1024 * 1024 * 1024;
+
+        ModpackArchiveUtility.EnsureSufficientOverrideDiskSpace(
+            requiredBytes,
+            requiredBytes + ModpackArchiveUtility.OverrideFreeSpaceReserveBytes);
+
+        var exception = Assert.Throws<ModpackImportException>(() =>
+            ModpackArchiveUtility.EnsureSufficientOverrideDiskSpace(
+                requiredBytes,
+                requiredBytes + ModpackArchiveUtility.OverrideFreeSpaceReserveBytes - 1));
+
+        Assert.Equal(ModpackImportFailureReason.InsufficientDiskSpace, exception.FailureReason);
+        Assert.Contains($"RequiredBytes={requiredBytes}", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CopyOverridesValidatesCapacityBeforeExtractingContent()
+    {
+        var path = Path.Combine(TempRoot, "overrides.zip");
+        CreateArchive(path, archive =>
+        {
+            AddEntry(
+                archive,
+                "manifest.json",
+                """{"name":"Overrides","minecraft":{"version":"1.20.4","modLoaders":[]},"files":[]}""");
+            AddEntry(archive, "overrides/config/example.txt", "content");
+        });
+        var service = CreateService();
+        var prepared = await service.PrepareAsync(path);
+        var instance = new GameInstance
+        {
+            Name = "Overrides",
+            InstanceDirectory = Path.Combine(TempRoot, "instance")
+        };
+
+        await service.CopyOverridesAsync(prepared, instance, progress: null);
+
+        Assert.Equal(
+            "content",
+            await File.ReadAllTextAsync(Path.Combine(instance.InstanceDirectory, "config", "example.txt")));
+    }
+
+    [Fact]
     public async Task InstallRejectsHashMismatchAndRemovesPartialFile()
     {
         var service = CreateService(new HttpClient(new FixedHandler("actual-bytes")));

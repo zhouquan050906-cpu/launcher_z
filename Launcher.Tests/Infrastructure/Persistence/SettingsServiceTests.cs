@@ -43,4 +43,19 @@ public sealed class SettingsServiceTests : TestTempDirectory
         Assert.True(loaded.HasAcceptedUserAgreement);
     }
 
+    [Fact]
+    public async Task InvalidWindowDimensionsAreNormalizedWhenSaved()
+    {
+        var service = new JsonSettingsService(TempRoot);
+        var settings = await service.LoadAsync();
+        settings.MainWindowWidth = double.NaN;
+        settings.MainWindowHeight = 100d;
+
+        await service.SaveAsync(settings);
+
+        var loaded = await new JsonSettingsService(TempRoot).LoadAsync();
+        Assert.Equal(LauncherDefaults.DefaultMainWindowWidth, loaded.MainWindowWidth);
+        Assert.Equal(LauncherDefaults.MinimumMainWindowHeight, loaded.MainWindowHeight);
+    }
+
 }

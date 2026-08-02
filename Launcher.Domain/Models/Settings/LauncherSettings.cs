@@ -34,6 +34,9 @@ public sealed class LauncherSettings
     public string LauncherLanguage { get; set; } = LauncherDefaults.DefaultLauncherLanguage;
     public bool EnableDiagnosticLogging { get; set; }
     public bool HasAcceptedUserAgreement { get; set; }
+    public double MainWindowWidth { get; set; } = LauncherDefaults.DefaultMainWindowWidth;
+    public double MainWindowHeight { get; set; } = LauncherDefaults.DefaultMainWindowHeight;
+    public bool MainWindowWasMaximized { get; set; }
     public bool AutoSetGameLanguageToLauncherLanguage { get; set; } = true;
     public bool ThemeFollowSystem { get; set; } = true;
     public string LauncherBackgroundEffect { get; set; } = LauncherDefaults.DefaultLauncherBackgroundEffect;

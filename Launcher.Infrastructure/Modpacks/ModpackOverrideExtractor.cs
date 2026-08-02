@@ -30,12 +30,12 @@ internal static class ModpackOverrideExtractor
         ZipArchive archive,
         ModpackInstallEnvironment environment = ModpackInstallEnvironment.Client)
     {
-        return ValidateOverrides(archive, environment);
+        return ValidateOverrides(archive, environment).HasOverrides;
     }
 
     public static bool HasCurseForgeOverrides(ZipArchive archive)
     {
-        return ValidateOverrides(archive, environment: null);
+        return ValidateOverrides(archive, environment: null).HasOverrides;
     }
 
     public static async Task CopyOverridesAsync(
@@ -81,7 +81,9 @@ internal static class ModpackOverrideExtractor
             .ConfigureAwait(false);
     }
 
-    private static bool ValidateOverrides(ZipArchive archive, ModpackInstallEnvironment? environment)
+    private static OverrideValidationResult ValidateOverrides(
+        ZipArchive archive,
+        ModpackInstallEnvironment? environment)
     {
         var foundAny = false;
         var extractionBudget = new ZipExtractionBudget(ModpackArchiveUtility.MaxOverrideTotalBytes);
@@ -99,8 +101,9 @@ internal static class ModpackOverrideExtractor
                 if (entry.Length > ModpackArchiveUtility.MaxOverrideEntryBytes)
                 {
                     throw new ModpackImportException(
-                        ModpackImportFailureReason.InvalidManifest,
-                        $"Archive entry is too large: {entry.FullName}");
+                        ModpackImportFailureReason.ArchiveTooLarge,
+                        $"Archive entry exceeds the allowed size. Entry={entry.FullName} " +
+                        $"DeclaredBytes={entry.Length} LimitBytes={ModpackArchiveUtility.MaxOverrideEntryBytes}");
                 }
 
                 extractionBudget.Reserve(entry.Length);
@@ -115,7 +118,7 @@ internal static class ModpackOverrideExtractor
             }
         }
 
-        return foundAny;
+        return new OverrideValidationResult(foundAny, extractionBudget.ReservedBytes);
     }
 
     private static async Task ExtractOverridesAsync(
@@ -124,6 +127,11 @@ internal static class ModpackOverrideExtractor
         ModpackInstallEnvironment? environment,
         CancellationToken cancellationToken)
     {
+        var validation = ValidateOverrides(archive, environment);
+        ModpackArchiveUtility.EnsureSufficientOverrideDiskSpace(
+            instanceDirectory,
+            validation.TotalBytes);
+
         var extractionBudget = new ZipExtractionBudget(ModpackArchiveUtility.MaxOverrideTotalBytes);
         var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var prefix in ResolveOverridePrefixes(environment))
@@ -163,4 +171,6 @@ internal static class ModpackOverrideExtractor
             _ => ["overrides"]
         };
     }
+
+    private sealed record OverrideValidationResult(bool HasOverrides, long TotalBytes);
 }
