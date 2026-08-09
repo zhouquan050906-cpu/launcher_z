@@ -23,6 +23,10 @@ public sealed class InstanceRepairException : Exception
 {
     public LaunchDownloadDiagnostic? DownloadDiagnostic { get; }
 
+    public GameFileRepairFailure? FileFailure { get; }
+
+    public bool? AutoRepairEnabled { get; }
+
     public InstanceRepairException()
     {
     }
@@ -41,6 +45,16 @@ public sealed class InstanceRepairException : Exception
         : base(message)
     {
         DownloadDiagnostic = downloadDiagnostic;
+    }
+
+    public InstanceRepairException(
+        string message,
+        GameFileRepairFailure fileFailure,
+        bool autoRepairEnabled)
+        : base(message)
+    {
+        FileFailure = fileFailure;
+        AutoRepairEnabled = autoRepairEnabled;
     }
 
     public InstanceRepairException(

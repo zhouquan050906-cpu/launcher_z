@@ -183,6 +183,144 @@ public sealed class LaunchServiceTests : TestTempDirectory
     }
 
     [Fact]
+    public async Task IntegrityCanceledResultUsesCancellationFlowWithoutFailureDialogReport()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var integrity = new RecordingIntegrityService
+        {
+            OnValidate = _ =>
+            {
+                cancellation.Cancel();
+                return Task.FromResult(CreateIntegrityFailureResult(
+                    new GameFileRepairFailure(
+                        "canceled",
+                        "integrity",
+                        GameFileRepairFailureReason.Canceled,
+                        "none",
+                        null)));
+            }
+        };
+        var service = CreateService(integrity: integrity);
+        var settings = CreateSettings();
+        var instance = CreateInstance(settings.MinecraftDirectory, "Canceled Integrity Result");
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.LaunchAsync(
+            instance,
+            CreateAccount(),
+            settings,
+            progress: null,
+            cancellationToken: cancellation.Token));
+
+        Assert.False(Directory.Exists(Path.Combine(
+            instance.InstanceDirectory,
+            LauncherApplicationIdentity.StorageDirectoryName,
+            "logs")));
+    }
+
+    public static TheoryData<GameFileRepairFailureReason, string> PreLaunchIntegrityFailures => new()
+    {
+        { GameFileRepairFailureReason.Missing, "assets/indexes/32.json" },
+        { GameFileRepairFailureReason.Corrupted, "assets/indexes/32.json" },
+        { GameFileRepairFailureReason.MetadataIncomplete, "versions/1.20.1/1.20.1.json" },
+        { GameFileRepairFailureReason.DownloadFailed, "libraries/example/library.jar" },
+        { GameFileRepairFailureReason.ProcessorRegenerationFailed, "versions/Forge Pack/Forge Pack.jar" },
+        { GameFileRepairFailureReason.PublicationFailed, "assets/objects/ab/example" }
+    };
+
+    [Theory]
+    [MemberData(nameof(PreLaunchIntegrityFailures))]
+    public async Task PreLaunchIntegrityFailureWritesStructuredAnalysis(
+        GameFileRepairFailureReason reason,
+        string relativeTargetPath)
+    {
+        var settings = CreateSettings();
+        settings.DefaultAutoRepairMissingFiles = false;
+        var targetPath = Path.Combine(
+            settings.MinecraftDirectory,
+            Path.Combine(relativeTargetPath.Split('/')));
+        var integrity = new RecordingIntegrityService
+        {
+            OnValidate = _ => Task.FromResult(CreateIntegrityFailureResult(
+                new GameFileRepairFailure(targetPath, "test", reason, "test", null),
+                new GameFileRepairFailure("ignored", "test", GameFileRepairFailureReason.DownloadFailed, "test", null)))
+        };
+        var service = CreateService(integrity: integrity);
+
+        var exception = await Assert.ThrowsAsync<LaunchFailedException>(() => service.LaunchAsync(
+            CreateInstance(settings.MinecraftDirectory, "Integrity Failure"),
+            CreateAccount(),
+            settings,
+            progress: null));
+
+        var analysis = Assert.IsType<LaunchFailureAnalysis>(exception.Report.Analysis);
+        Assert.Equal(LaunchFailureCategory.GameFileIntegrity, analysis.Category);
+        Assert.Equal(reason, analysis.GameFileFailureReason);
+        Assert.False(analysis.AutoRepairEnabled);
+        Assert.False(integrity.LastOptions?.AllowRepair);
+        Assert.Equal(Path.Combine(relativeTargetPath.Split('/')), analysis.AffectedPath);
+        Assert.Contains(targetPath, exception.Report.FailureSummary);
+    }
+
+    [Fact]
+    public async Task FinalLaunchPlanFailureWritesStructuredAnalysis()
+    {
+        var settings = CreateSettings();
+        var targetPath = Path.Combine(settings.MinecraftDirectory, "versions", "Final Plan", "missing.jar");
+        var integrity = new RecordingIntegrityService
+        {
+            OnFinalValidate = _ => Task.FromResult(CreateIntegrityFailureResult(
+                new GameFileRepairFailure(
+                    targetPath,
+                    "launch-command",
+                    GameFileRepairFailureReason.FinalLaunchPlanInvalid,
+                    "none",
+                    null)))
+        };
+        var service = CreateService(integrity: integrity);
+
+        var exception = await Assert.ThrowsAsync<LaunchFailedException>(() => service.LaunchAsync(
+            CreateInstance(settings.MinecraftDirectory, "Final Plan"),
+            CreateAccount(),
+            settings,
+            progress: null));
+
+        var analysis = Assert.IsType<LaunchFailureAnalysis>(exception.Report.Analysis);
+        Assert.Equal(LaunchFailureCategory.GameFileIntegrity, analysis.Category);
+        Assert.Equal(GameFileRepairFailureReason.FinalLaunchPlanInvalid, analysis.GameFileFailureReason);
+        Assert.True(analysis.AutoRepairEnabled);
+        Assert.Equal(Path.Combine("versions", "Final Plan", "missing.jar"), analysis.AffectedPath);
+        Assert.Equal(1, integrity.FinalValidationCallCount);
+    }
+
+    [Fact]
+    public async Task IntegrityFailureOutsideMinecraftDirectoryOnlyReportsFileName()
+    {
+        var settings = CreateSettings();
+        var targetPath = Path.Combine(TempRoot, "outside", "private-path", "locked.jar");
+        var integrity = new RecordingIntegrityService
+        {
+            OnValidate = _ => Task.FromResult(CreateIntegrityFailureResult(
+                new GameFileRepairFailure(
+                    targetPath,
+                    "library",
+                    GameFileRepairFailureReason.PublicationFailed,
+                    "replace",
+                    null)))
+        };
+        var service = CreateService(integrity: integrity);
+
+        var exception = await Assert.ThrowsAsync<LaunchFailedException>(() => service.LaunchAsync(
+            CreateInstance(settings.MinecraftDirectory, "Outside Path"),
+            CreateAccount(),
+            settings,
+            progress: null));
+
+        var analysis = Assert.IsType<LaunchFailureAnalysis>(exception.Report.Analysis);
+        Assert.Equal("locked.jar", analysis.AffectedPath);
+        Assert.DoesNotContain("private-path", analysis.AffectedPath);
+    }
+
+    [Fact]
     public async Task OfflineAccountSkinAddsManagedInjectorArgumentsAndTrustedJar()
     {
         var injectorPath = Path.Combine(TempRoot, "authlib-injector.jar");
@@ -376,6 +514,18 @@ public sealed class LaunchServiceTests : TestTempDirectory
         MemoryMb = 4096
     };
 
+    private static GameFileRepairResult CreateIntegrityFailureResult(
+        params GameFileRepairFailure[] failures) => new(
+        LaunchAllowed: false,
+        RequiredCount: failures.Length,
+        MissingCount: failures.Count(failure => failure.Reason == GameFileRepairFailureReason.Missing),
+        CorruptedCount: failures.Count(failure => failure.Reason == GameFileRepairFailureReason.Corrupted),
+        UnverifiableCount: 0,
+        RepairableCount: failures.Length,
+        RepairedCount: 0,
+        FailedCount: failures.Length,
+        Failures: failures);
+
     private static LauncherAccount CreateAccount() => new()
     {
         Id = "offline",
@@ -489,6 +639,8 @@ public sealed class LaunchServiceTests : TestTempDirectory
         public int ValidateCallCount { get; private set; }
         public int FinalValidationCallCount { get; private set; }
 
+        public GameFileRepairOptions? LastOptions { get; private set; }
+
         public Task<GameFileRepairResult> ValidateAndRepairAsync(
             GameFileIntegrityRequest request,
             GameFileRepairOptions options,
@@ -496,6 +648,7 @@ public sealed class LaunchServiceTests : TestTempDirectory
             CancellationToken cancellationToken = default)
         {
             ValidateCallCount++;
+            LastOptions = options;
             return OnValidate?.Invoke(cancellationToken) ?? Task.FromResult(GameFileRepairResult.Empty);
         }
 

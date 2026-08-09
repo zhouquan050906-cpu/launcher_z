@@ -958,6 +958,24 @@
   <data name="Dialog_LaunchAnalysisMissingClasspathEntryDetailFormat" xml:space="preserve"><value>启动命令引用了不存在的文件：{0}</value></data>
   <data name="Dialog_LaunchAnalysisMissingClientJarDetailFormat" xml:space="preserve"><value>当前实例缺少客户端 jar 文件：{0}</value></data>
   <data name="Dialog_LaunchAnalysisMissingFilesRecommendation" xml:space="preserve"><value>请开启启动前文件检查并重试，或重新安装该实例。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityTitle" xml:space="preserve"><value>游戏文件完整性检查失败</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMissingDetail" xml:space="preserve"><value>启动所需文件缺失。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMissingDetailFormat" xml:space="preserve"><value>启动所需文件缺失：{0}</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityCorruptedDetail" xml:space="preserve"><value>检测到损坏的游戏文件。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityCorruptedDetailFormat" xml:space="preserve"><value>检测到损坏的游戏文件：{0}</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMetadataIncompleteDetail" xml:space="preserve"><value>无法读取或验证当前版本的元数据。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityDownloadFailedDetail" xml:space="preserve"><value>自动修复所需的游戏文件下载失败。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityProcessorRegenerationFailedDetail" xml:space="preserve"><value>Loader 安装程序未能重新生成启动所需文件。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityPublicationFailedDetail" xml:space="preserve"><value>已修复或重新生成的文件无法安全写入游戏目录。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidDetail" xml:space="preserve"><value>最终启动命令引用了无效文件。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidDetailFormat" xml:space="preserve"><value>最终启动命令引用了无效文件：{0}</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityEnableAutoRepairRecommendation" xml:space="preserve"><value>请开启“缺失文件自动补全”后重试，或重新安装该实例。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityRepairFailedRecommendation" xml:space="preserve"><value>自动修复未能恢复该文件。请重试；若仍失败，请重新安装该实例。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMetadataIncompleteRecommendation" xml:space="preserve"><value>请恢复或重新安装当前版本的元数据后重试。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityDownloadFailedRecommendation" xml:space="preserve"><value>请检查网络连接和下载源设置后重试。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityProcessorRegenerationFailedRecommendation" xml:space="preserve"><value>请重新安装当前 Loader；若仍失败，请重新安装该实例。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityPublicationFailedRecommendation" xml:space="preserve"><value>请关闭可能占用该文件的程序，并检查游戏目录权限后重试。</value></data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidRecommendation" xml:space="preserve"><value>请检查自定义 JVM 和游戏启动参数，并修复或重新安装该实例。</value></data>
   <data name="Dialog_LaunchAnalysisOutOfMemoryTitle" xml:space="preserve"><value>内存不足</value></data>
   <data name="Dialog_LaunchAnalysisOutOfMemoryDetail" xml:space="preserve"><value>Java 虚拟机在启动或运行时内存不足。</value></data>
   <data name="Dialog_LaunchAnalysisOutOfMemoryRecommendation" xml:space="preserve"><value>请在启动设置中适当增加内存，或减少资源包、光影和大型模组。</value></data>

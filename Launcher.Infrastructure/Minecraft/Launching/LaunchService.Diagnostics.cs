@@ -198,6 +198,7 @@ public sealed partial class LaunchService
             LaunchFailureCategory.ModDependencyMissing => FormatModDependencyMissing(analysis),
             LaunchFailureCategory.ModVersionIncompatible => FormatModVersionIncompatible(analysis),
             LaunchFailureCategory.MissingGameFiles => FormatMissingGameFiles(analysis),
+            LaunchFailureCategory.GameFileIntegrity => FormatGameFileIntegrity(analysis),
             LaunchFailureCategory.OutOfMemory => "Minecraft ran out of memory. Increase the allocated memory or reduce loaded mods/resources.",
             _ => $"{analysis.ReasonTitle}: {analysis.ReasonDetail}. {analysis.Recommendation}"
         };
@@ -249,6 +250,18 @@ public sealed partial class LaunchService
             ? string.Empty
             : $" Missing path: {analysis.MissingPath}.";
         return $"Required game files are missing or damaged.{pathText} Repair or reinstall this instance.";
+    }
+
+    private static string FormatGameFileIntegrity(LaunchFailureAnalysis analysis)
+    {
+        var reason = analysis.GameFileFailureReason?.ToString() ?? "Unknown";
+        var pathText = string.IsNullOrWhiteSpace(analysis.AffectedPath)
+            ? string.Empty
+            : $" Affected path: {analysis.AffectedPath}.";
+        var autoRepairText = analysis.AutoRepairEnabled is bool autoRepairEnabled
+            ? $" Auto repair enabled: {autoRepairEnabled}."
+            : string.Empty;
+        return $"Game file integrity check failed. Reason: {reason}.{pathText}{autoRepairText}";
     }
 
     private static string? FormatRuntime(TimeSpan? runtime)

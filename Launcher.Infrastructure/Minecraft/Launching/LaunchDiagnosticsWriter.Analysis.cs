@@ -54,6 +54,12 @@ private static void AppendAnalysisSection(
             builder.AppendLine($"DependencyName: {analysis.DependencyName}");
         if (!string.IsNullOrWhiteSpace(analysis.MissingPath))
             builder.AppendLine($"MissingPath: {analysis.MissingPath}");
+        if (analysis.GameFileFailureReason is { } gameFileFailureReason)
+            builder.AppendLine($"GameFileFailureReason: {gameFileFailureReason}");
+        if (!string.IsNullOrWhiteSpace(analysis.AffectedPath))
+            builder.AppendLine($"AffectedPath: {analysis.AffectedPath}");
+        if (analysis.AutoRepairEnabled is bool autoRepairEnabled)
+            builder.AppendLine($"AutoRepairEnabled: {autoRepairEnabled}");
 
         for (var index = 0; index < analysis.Details.Count; index++)
         {

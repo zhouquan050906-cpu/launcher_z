@@ -340,6 +340,7 @@ public sealed partial class LaunchStatusDialogViewModel : ObservableObject
             LaunchFailureCategory.ModDependencyMissing => Strings.Dialog_LaunchAnalysisModDependencyTitle,
             LaunchFailureCategory.ModVersionIncompatible => Strings.Dialog_LaunchAnalysisModVersionTitle,
             LaunchFailureCategory.MissingGameFiles => Strings.Dialog_LaunchAnalysisMissingFilesTitle,
+            LaunchFailureCategory.GameFileIntegrity => Strings.Dialog_LaunchAnalysisGameFileIntegrityTitle,
             LaunchFailureCategory.OutOfMemory => Strings.Dialog_LaunchAnalysisOutOfMemoryTitle,
             _ => Strings.Dialog_LaunchAnalysisUnknownTitle
         };
@@ -373,6 +374,7 @@ public sealed partial class LaunchStatusDialogViewModel : ObservableObject
                 Strings.Dialog_LaunchAnalysisMissingClasspathEntryDetailFormat,
                 analysis.MissingPath),
             LaunchFailureCategory.MissingGameFiles => Strings.Dialog_LaunchAnalysisMissingFilesDetail,
+            LaunchFailureCategory.GameFileIntegrity => GetGameFileIntegrityDetail(analysis),
             LaunchFailureCategory.OutOfMemory => Strings.Dialog_LaunchAnalysisOutOfMemoryDetail,
             _ => Strings.Dialog_LaunchAnalysisUnknownDetail
         };
@@ -388,7 +390,49 @@ public sealed partial class LaunchStatusDialogViewModel : ObservableObject
             LaunchFailureCategory.ModDependencyMissing => Strings.Dialog_LaunchAnalysisModDependencyRecommendation,
             LaunchFailureCategory.ModVersionIncompatible => Strings.Dialog_LaunchAnalysisModVersionRecommendation,
             LaunchFailureCategory.MissingGameFiles => Strings.Dialog_LaunchAnalysisMissingFilesRecommendation,
+            LaunchFailureCategory.GameFileIntegrity => GetGameFileIntegrityRecommendation(analysis),
             LaunchFailureCategory.OutOfMemory => Strings.Dialog_LaunchAnalysisOutOfMemoryRecommendation,
+            _ => Strings.Dialog_LaunchAnalysisUnknownRecommendation
+        };
+    }
+
+    private static string GetGameFileIntegrityDetail(LaunchFailureAnalysis analysis)
+    {
+        var path = analysis.AffectedPath;
+        return analysis.GameFileFailureReason switch
+        {
+            GameFileRepairFailureReason.Missing when !string.IsNullOrWhiteSpace(path) => string.Format(
+                Strings.Dialog_LaunchAnalysisGameFileIntegrityMissingDetailFormat,
+                path),
+            GameFileRepairFailureReason.Missing => Strings.Dialog_LaunchAnalysisGameFileIntegrityMissingDetail,
+            GameFileRepairFailureReason.Corrupted when !string.IsNullOrWhiteSpace(path) => string.Format(
+                Strings.Dialog_LaunchAnalysisGameFileIntegrityCorruptedDetailFormat,
+                path),
+            GameFileRepairFailureReason.Corrupted => Strings.Dialog_LaunchAnalysisGameFileIntegrityCorruptedDetail,
+            GameFileRepairFailureReason.MetadataIncomplete => Strings.Dialog_LaunchAnalysisGameFileIntegrityMetadataIncompleteDetail,
+            GameFileRepairFailureReason.DownloadFailed => Strings.Dialog_LaunchAnalysisGameFileIntegrityDownloadFailedDetail,
+            GameFileRepairFailureReason.ProcessorRegenerationFailed => Strings.Dialog_LaunchAnalysisGameFileIntegrityProcessorRegenerationFailedDetail,
+            GameFileRepairFailureReason.PublicationFailed => Strings.Dialog_LaunchAnalysisGameFileIntegrityPublicationFailedDetail,
+            GameFileRepairFailureReason.FinalLaunchPlanInvalid when !string.IsNullOrWhiteSpace(path) => string.Format(
+                Strings.Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidDetailFormat,
+                path),
+            GameFileRepairFailureReason.FinalLaunchPlanInvalid => Strings.Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidDetail,
+            _ => Strings.Dialog_LaunchAnalysisUnknownDetail
+        };
+    }
+
+    private static string GetGameFileIntegrityRecommendation(LaunchFailureAnalysis analysis)
+    {
+        return analysis.GameFileFailureReason switch
+        {
+            GameFileRepairFailureReason.Missing or GameFileRepairFailureReason.Corrupted
+                when analysis.AutoRepairEnabled is false => Strings.Dialog_LaunchAnalysisGameFileIntegrityEnableAutoRepairRecommendation,
+            GameFileRepairFailureReason.Missing or GameFileRepairFailureReason.Corrupted => Strings.Dialog_LaunchAnalysisGameFileIntegrityRepairFailedRecommendation,
+            GameFileRepairFailureReason.MetadataIncomplete => Strings.Dialog_LaunchAnalysisGameFileIntegrityMetadataIncompleteRecommendation,
+            GameFileRepairFailureReason.DownloadFailed => Strings.Dialog_LaunchAnalysisGameFileIntegrityDownloadFailedRecommendation,
+            GameFileRepairFailureReason.ProcessorRegenerationFailed => Strings.Dialog_LaunchAnalysisGameFileIntegrityProcessorRegenerationFailedRecommendation,
+            GameFileRepairFailureReason.PublicationFailed => Strings.Dialog_LaunchAnalysisGameFileIntegrityPublicationFailedRecommendation,
+            GameFileRepairFailureReason.FinalLaunchPlanInvalid => Strings.Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidRecommendation,
             _ => Strings.Dialog_LaunchAnalysisUnknownRecommendation
         };
     }

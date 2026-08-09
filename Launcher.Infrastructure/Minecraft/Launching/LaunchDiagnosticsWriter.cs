@@ -127,12 +127,13 @@ internal static partial class LaunchDiagnosticsWriter
         var crashPreviews = await ReadCrashPreviewsAsync(crashFiles, cancellationToken).ConfigureAwait(false);
         var matchedErrorLines = FindMatchedErrorLines(string.Empty, string.Empty, latestLogTail, crashPreviews);
         var exceptionText = FormatExceptionChain(exception);
-        var analysis = LaunchFailureAnalyzer.Analyze(
-            context,
-            string.Empty,
-            exceptionText,
-            latestLogTail,
-            crashPreviews.Select(preview => preview.Text).ToArray());
+        var analysis = LaunchFailureAnalyzer.AnalyzeException(context, exception)
+            ?? LaunchFailureAnalyzer.Analyze(
+                context,
+                string.Empty,
+                exceptionText,
+                latestLogTail,
+                crashPreviews.Select(preview => preview.Text).ToArray());
 
         var diagnosticWrite = await WriteDiagnosticAsync(
             context,

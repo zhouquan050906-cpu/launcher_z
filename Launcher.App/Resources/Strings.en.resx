@@ -2816,6 +2816,60 @@ The current game folder will be backed up first.</value>
   <data name="Dialog_LaunchAnalysisMissingFilesRecommendation" xml:space="preserve">
     <value>Enable pre-launch file checking and try again, or reinstall this instance.</value>
   </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityTitle" xml:space="preserve">
+    <value>Game File Integrity Check Failed</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMissingDetail" xml:space="preserve">
+    <value>A file required for launch is missing.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMissingDetailFormat" xml:space="preserve">
+    <value>A file required for launch is missing: {0}</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityCorruptedDetail" xml:space="preserve">
+    <value>A damaged game file was detected.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityCorruptedDetailFormat" xml:space="preserve">
+    <value>A damaged game file was detected: {0}</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMetadataIncompleteDetail" xml:space="preserve">
+    <value>The metadata for the current version could not be read or verified.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityDownloadFailedDetail" xml:space="preserve">
+    <value>A game file required for automatic repair could not be downloaded.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityProcessorRegenerationFailedDetail" xml:space="preserve">
+    <value>The Loader installer could not regenerate a file required for launch.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityPublicationFailedDetail" xml:space="preserve">
+    <value>A repaired or regenerated file could not be written safely to the game directory.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidDetail" xml:space="preserve">
+    <value>The final launch command references an invalid file.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidDetailFormat" xml:space="preserve">
+    <value>The final launch command references an invalid file: {0}</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityEnableAutoRepairRecommendation" xml:space="preserve">
+    <value>Enable “Automatically repair missing files” and try again, or reinstall this instance.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityRepairFailedRecommendation" xml:space="preserve">
+    <value>Automatic repair could not restore this file. Try again; if it still fails, reinstall this instance.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMetadataIncompleteRecommendation" xml:space="preserve">
+    <value>Restore or reinstall the metadata for the current version, then try again.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityDownloadFailedRecommendation" xml:space="preserve">
+    <value>Check your network connection and download source settings, then try again.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityProcessorRegenerationFailedRecommendation" xml:space="preserve">
+    <value>Reinstall the current Loader. If the problem continues, reinstall this instance.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityPublicationFailedRecommendation" xml:space="preserve">
+    <value>Close programs that may be using this file, check the game directory permissions, and try again.</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidRecommendation" xml:space="preserve">
+    <value>Check custom JVM and game arguments, then repair or reinstall this instance.</value>
+  </data>
   <data name="Dialog_LaunchAnalysisOutOfMemoryTitle" xml:space="preserve">
     <value>Out of Memory</value>
   </data>

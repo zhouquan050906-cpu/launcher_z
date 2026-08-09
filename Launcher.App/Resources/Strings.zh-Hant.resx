@@ -2816,6 +2816,60 @@
   <data name="Dialog_LaunchAnalysisMissingFilesRecommendation" xml:space="preserve">
     <value>請開啟啟動前檔案檢查並重試，或重新安裝該實例。</value>
   </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityTitle" xml:space="preserve">
+    <value>遊戲檔案完整性檢查失敗</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMissingDetail" xml:space="preserve">
+    <value>啟動所需檔案缺少。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMissingDetailFormat" xml:space="preserve">
+    <value>啟動所需檔案缺少：{0}</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityCorruptedDetail" xml:space="preserve">
+    <value>偵測到損壞的遊戲檔案。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityCorruptedDetailFormat" xml:space="preserve">
+    <value>偵測到損壞的遊戲檔案：{0}</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMetadataIncompleteDetail" xml:space="preserve">
+    <value>無法讀取或驗證目前版本的中繼資料。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityDownloadFailedDetail" xml:space="preserve">
+    <value>自動修復所需的遊戲檔案下載失敗。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityProcessorRegenerationFailedDetail" xml:space="preserve">
+    <value>Loader 安裝程式無法重新產生啟動所需檔案。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityPublicationFailedDetail" xml:space="preserve">
+    <value>已修復或重新產生的檔案無法安全寫入遊戲目錄。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidDetail" xml:space="preserve">
+    <value>最終啟動命令引用了無效檔案。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidDetailFormat" xml:space="preserve">
+    <value>最終啟動命令引用了無效檔案：{0}</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityEnableAutoRepairRecommendation" xml:space="preserve">
+    <value>請開啟「缺少檔案自動補齊」後重試，或重新安裝該實例。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityRepairFailedRecommendation" xml:space="preserve">
+    <value>自動修復無法還原該檔案。請重試；若仍失敗，請重新安裝該實例。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMetadataIncompleteRecommendation" xml:space="preserve">
+    <value>請還原或重新安裝目前版本的中繼資料後重試。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityDownloadFailedRecommendation" xml:space="preserve">
+    <value>請檢查網路連線和下載來源設定後重試。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityProcessorRegenerationFailedRecommendation" xml:space="preserve">
+    <value>請重新安裝目前的 Loader；若仍失敗，請重新安裝該實例。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityPublicationFailedRecommendation" xml:space="preserve">
+    <value>請關閉可能占用該檔案的程式，並檢查遊戲目錄權限後重試。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidRecommendation" xml:space="preserve">
+    <value>請檢查自訂 JVM 和遊戲啟動參數，並修復或重新安裝該實例。</value>
+  </data>
   <data name="Dialog_LaunchAnalysisOutOfMemoryTitle" xml:space="preserve">
     <value>記憶體不足</value>
   </data>

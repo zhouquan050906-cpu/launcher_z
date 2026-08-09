@@ -25,5 +25,6 @@ public enum LaunchFailureCategory
     ModDependencyMissing,
     ModVersionIncompatible,
     MissingGameFiles,
-    OutOfMemory
+    OutOfMemory,
+    GameFileIntegrity
 }

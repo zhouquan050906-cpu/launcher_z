@@ -28,7 +28,10 @@ public sealed record LaunchFailureAnalysis(
     int? CurrentJavaMajorVersion = null,
     string? ModName = null,
     string? DependencyName = null,
-    string? MissingPath = null)
+    string? MissingPath = null,
+    GameFileRepairFailureReason? GameFileFailureReason = null,
+    string? AffectedPath = null,
+    bool? AutoRepairEnabled = null)
 {
     public IReadOnlyList<LaunchFailureDetail> Details { get; init; } = [];
 

@@ -99,6 +99,71 @@ internal static partial class LaunchFailureAnalyzer
         return SelectBestAnalysis(currentProcessAnalysis, latestLogAnalysis);
     }
 
+    public static LaunchFailureAnalysis? AnalyzeException(
+        LaunchDiagnosticContext context,
+        Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is not InstanceRepairException { FileFailure: { } failure } repairException)
+                continue;
+            if (failure.Reason is GameFileRepairFailureReason.None or GameFileRepairFailureReason.Canceled)
+                return null;
+
+            return new LaunchFailureAnalysis(
+                LaunchFailureCategory.GameFileIntegrity,
+                "Game file integrity check failed",
+                failure.Reason.ToString(),
+                "Follow the recovery guidance shown by the launcher.",
+                GameFileFailureReason: failure.Reason,
+                AffectedPath: GetSafeAffectedPath(context.MinecraftDirectory, failure.TargetPath),
+                AutoRepairEnabled: repairException.AutoRepairEnabled);
+        }
+
+        return null;
+    }
+
+    private static string? GetSafeAffectedPath(string minecraftDirectory, string targetPath)
+    {
+        if (string.IsNullOrWhiteSpace(targetPath))
+            return null;
+
+        try
+        {
+            if (!Path.IsPathRooted(targetPath))
+                return NormalizeDisplayPath(targetPath);
+
+            var root = Path.GetFullPath(minecraftDirectory);
+            var fullTarget = Path.GetFullPath(targetPath);
+            var relative = Path.GetRelativePath(root, fullTarget);
+            if (!Path.IsPathRooted(relative)
+                && !string.Equals(relative, "..", StringComparison.Ordinal)
+                && !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !relative.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal))
+            {
+                return NormalizeDisplayPath(relative);
+            }
+
+            return Path.GetFileName(Path.TrimEndingDirectorySeparator(fullTarget));
+        }
+        catch (Exception exception) when (exception is ArgumentException
+            or NotSupportedException
+            or PathTooLongException)
+        {
+            try
+            {
+                return Path.GetFileName(Path.TrimEndingDirectorySeparator(targetPath));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    private static string NormalizeDisplayPath(string path) =>
+        path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+
     private static LaunchFailureAnalysis? AnalyzeText(LaunchDiagnosticContext context, string text)
     {
         if (string.IsNullOrWhiteSpace(text))

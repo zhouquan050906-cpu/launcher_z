@@ -2816,6 +2816,60 @@
   <data name="Dialog_LaunchAnalysisMissingFilesRecommendation" xml:space="preserve">
     <value>起動前のファイルチェックを有効にして再試行するか、このインスタンスを再インストールしてください。</value>
   </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityTitle" xml:space="preserve">
+    <value>ゲームファイルの整合性チェックに失敗しました</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMissingDetail" xml:space="preserve">
+    <value>起動に必要なファイルがありません。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMissingDetailFormat" xml:space="preserve">
+    <value>起動に必要なファイルがありません：{0}</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityCorruptedDetail" xml:space="preserve">
+    <value>破損したゲームファイルが検出されました。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityCorruptedDetailFormat" xml:space="preserve">
+    <value>破損したゲームファイルが検出されました：{0}</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMetadataIncompleteDetail" xml:space="preserve">
+    <value>現在のバージョンメタデータを読み取るか検証できませんでした。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityDownloadFailedDetail" xml:space="preserve">
+    <value>自動修復に必要なゲームファイルをダウンロードできませんでした。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityProcessorRegenerationFailedDetail" xml:space="preserve">
+    <value>Loader インストーラーで起動に必要なファイルを再生成できませんでした。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityPublicationFailedDetail" xml:space="preserve">
+    <value>修復または再生成されたファイルをゲームディレクトリに安全に書き込めませんでした。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidDetail" xml:space="preserve">
+    <value>最終起動コマンドが無効なファイルを参照しています。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidDetailFormat" xml:space="preserve">
+    <value>最終起動コマンドが無効なファイルを参照しています：{0}</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityEnableAutoRepairRecommendation" xml:space="preserve">
+    <value>「不足ファイルを自動補完」を有効にして再試行するか、このインスタンスを再インストールしてください。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityRepairFailedRecommendation" xml:space="preserve">
+    <value>自動修復でこのファイルを復元できませんでした。再試行し、引き続き失敗する場合はこのインスタンスを再インストールしてください。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityMetadataIncompleteRecommendation" xml:space="preserve">
+    <value>現在のバージョンメタデータを復元または再インストールしてから、再試行してください。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityDownloadFailedRecommendation" xml:space="preserve">
+    <value>ネットワーク接続とダウンロード元の設定を確認してから、再試行してください。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityProcessorRegenerationFailedRecommendation" xml:space="preserve">
+    <value>現在の Loader を再インストールしてください。問題が続く場合は、このインスタンスを再インストールしてください。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityPublicationFailedRecommendation" xml:space="preserve">
+    <value>このファイルを使用している可能性があるプログラムを閉じ、ゲームディレクトリの権限を確認してから再試行してください。</value>
+  </data>
+  <data name="Dialog_LaunchAnalysisGameFileIntegrityFinalLaunchPlanInvalidRecommendation" xml:space="preserve">
+    <value>カスタム JVM 引数とゲーム引数を確認し、このインスタンスを修復または再インストールしてください。</value>
+  </data>
   <data name="Dialog_LaunchAnalysisOutOfMemoryTitle" xml:space="preserve">
     <value>メモリ不足</value>
   </data>

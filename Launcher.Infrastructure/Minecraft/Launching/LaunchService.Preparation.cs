@@ -88,7 +88,10 @@ public sealed partial class LaunchService
                     cancellationToken)
                 .ConfigureAwait(false);
             if (!repairResult.LaunchAllowed)
-                throw new InstanceRepairException(CreateIntegrityFailureMessage(repairResult));
+                throw CreateIntegrityFailureException(
+                    repairResult,
+                    resolvedSettings.AutoRepairMissingFiles,
+                    cancellationToken);
         }
 
         var accountSession = await accountSessionService.CreateSessionAsync(account, cancellationToken)
@@ -306,7 +309,10 @@ public sealed partial class LaunchService
         if (!finalValidation.LaunchAllowed)
         {
             process.Dispose();
-            throw new InstanceRepairException(CreateIntegrityFailureMessage(finalValidation));
+            throw CreateIntegrityFailureException(
+                finalValidation,
+                resolvedSettings.AutoRepairMissingFiles,
+                cancellationToken);
         }
         var crashMonitorSession = crashMonitor.CreateSession(
             settings.MinecraftDirectory,
@@ -326,11 +332,23 @@ public sealed partial class LaunchService
         return new StartedLaunchProcess(process, crashMonitorSession);
     }
 
-    private static string CreateIntegrityFailureMessage(GameFileRepairResult result)
+    private static InstanceRepairException CreateIntegrityFailureException(
+        GameFileRepairResult result,
+        bool autoRepairEnabled,
+        CancellationToken cancellationToken)
     {
         var first = result.Failures.FirstOrDefault();
-        return first is null
+        if (first?.Reason is GameFileRepairFailureReason.Canceled)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new OperationCanceledException(cancellationToken);
+        }
+
+        var message = first is null
             ? "Required game files are missing or damaged."
             : $"Required game file validation failed ({first.Reason}): {first.TargetPath}";
+        return first is null
+            ? new InstanceRepairException(message)
+            : new InstanceRepairException(message, first, autoRepairEnabled);
     }
 }
