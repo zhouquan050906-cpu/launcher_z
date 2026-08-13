@@ -51,12 +51,6 @@
         <Setter Property="Visibility" Value="Collapsed" />
     </Style>
 
-    <Style x:Key="DownloadOverlayErrorTextStyle"
-           TargetType="TextBlock"
-           BasedOn="{StaticResource DownloadOverlayEmptyStateTextStyle}">
-        <Setter Property="Foreground" Value="{DynamicResource Brush.FFFF8D8D}" />
-    </Style>
-
     <Style x:Key="DownloadInstanceOptionLabelTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource Brush.AFFFFFFF}" />
         <Setter Property="FontSize" Value="13" />

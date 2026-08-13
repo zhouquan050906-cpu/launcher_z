@@ -37,9 +37,9 @@ public sealed partial class MainViewModel
 {
 public Task ActivateCurrentPageAsync()
 {
-    return hasInitialized
-            ? sessionCoordinator.ActivatePageAsync(CurrentPage)
-            : Task.CompletedTask;
+    // 页面变化必须在完整初始化期间也送达协调器；协调器会先记录当前页，
+    // 并自行限制尚不能执行的网络与刷新工作。
+    return sessionCoordinator.ActivatePageAsync(CurrentPage);
 }
 
 public Task SyncExternalInstanceCatalogAsync()

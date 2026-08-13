@@ -28,6 +28,16 @@ namespace Launcher.Infrastructure.Minecraft;
 
 public sealed class GameVersionService : IGameVersionService
 {
+    internal static DownloadRetryOptions VersionCatalogRetryOptions { get; } = new()
+    {
+        // 版本目录是用户正在等待的交互式元数据。首选源失败后立即切换备用源，
+        // 两个来源均不可用时交给页面显示失败并由用户按需刷新。
+        MaxAttemptsPerSource = 1,
+        ResponseHeadersTimeout = TimeSpan.FromSeconds(5),
+        FirstByteTimeout = TimeSpan.FromSeconds(5),
+        BodyIdleTimeout = TimeSpan.FromSeconds(8)
+    };
+
     private readonly HttpClient httpClient;
     private readonly IDownloadSpeedLimitState? downloadSpeedLimitState;
     private readonly ILogger<GameVersionService> logger;
@@ -52,7 +62,8 @@ public sealed class GameVersionService : IGameVersionService
             httpClient,
             logger,
             bandwidthLimiter,
-            category: DownloadConcurrencyCategory.Metadata);
+            category: DownloadConcurrencyCategory.Metadata,
+            retryOptions: VersionCatalogRetryOptions);
         var manifestResult = await executor.ExecuteAsync(
             "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
             downloadSourcePreference,

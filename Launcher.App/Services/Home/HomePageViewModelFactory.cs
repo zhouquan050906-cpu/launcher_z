@@ -28,7 +28,6 @@ namespace Launcher.App.Services;
 public sealed class HomePageViewModelFactory : IHomePageViewModelFactory
 {
     private readonly ILaunchService launchService;
-    private readonly IGameVersionService gameVersionService;
     private readonly IStatusService statusService;
     private readonly IFloatingMessageService floatingMessageService;
     private readonly IWindowService windowService;
@@ -38,7 +37,6 @@ public sealed class HomePageViewModelFactory : IHomePageViewModelFactory
 
     public HomePageViewModelFactory(
         ILaunchService launchService,
-        IGameVersionService gameVersionService,
         IStatusService statusService,
         IFloatingMessageService floatingMessageService,
         IWindowService windowService,
@@ -47,7 +45,6 @@ public sealed class HomePageViewModelFactory : IHomePageViewModelFactory
         ILogger<HomePageViewModel>? logger = null)
     {
         this.launchService = launchService;
-        this.gameVersionService = gameVersionService;
         this.statusService = statusService;
         this.floatingMessageService = floatingMessageService;
         this.windowService = windowService;
@@ -65,7 +62,6 @@ public sealed class HomePageViewModelFactory : IHomePageViewModelFactory
     {
         return new HomePageViewModel(
             launchService,
-            gameVersionService,
             accountPage,
             statusService,
             floatingMessageService,

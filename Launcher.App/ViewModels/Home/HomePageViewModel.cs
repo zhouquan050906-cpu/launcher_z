@@ -68,7 +68,6 @@ public sealed partial class HomePageViewModel : ObservableObject
 
     public HomePageViewModel(
         ILaunchService launchService,
-        IGameVersionService gameVersionService,
         AccountPageViewModel accountPage,
         IStatusService statusService,
         IFloatingMessageService floatingMessageService,
@@ -93,7 +92,6 @@ public sealed partial class HomePageViewModel : ObservableObject
         this.logger = logger ?? NullLogger<HomePageViewModel>.Instance;
 
         LaunchGames = new HomeLaunchGameListViewModel(
-            gameVersionService,
             statusService,
             selectLaunchInstance,
             setLaunchMenuPinned);
@@ -210,8 +208,4 @@ public sealed partial class HomePageViewModel : ObservableObject
         return LaunchGames.ApplyInstanceCatalog(instances, catalogRevision);
     }
 
-    public Task EnsureVersionTypesLoadedAsync(CancellationToken cancellationToken = default)
-    {
-        return LaunchGames.EnsureVersionTypesLoadedAsync(cancellationToken);
-    }
 }

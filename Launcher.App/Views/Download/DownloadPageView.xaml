@@ -84,18 +84,29 @@
                         </TextBlock.Style>
                     </TextBlock>
 
-                    <TextBlock Margin="0,122,0,0"
-                               Text="{Binding VersionList.VersionLoadError}">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource DownloadOverlayErrorTextStyle}">
+                    <StackPanel Margin="0,122,0,0"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding VersionList.HasVersionLoadError}" Value="True">
                                         <Setter Property="Visibility" Value="Visible" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                        </StackPanel.Style>
+
+                        <TextBlock Text="{Binding VersionList.VersionLoadError}"
+                                   Style="{StaticResource PageEmptyStateTextStyle}" />
+
+                        <Button Margin="0,16,0,0"
+                                HorizontalAlignment="Center"
+                                Content="{x:Static res:Strings.Refresh_Button}"
+                                Command="{Binding VersionList.RefreshVersionsCommand}"
+                                Style="{StaticResource LauncherDialogButtonStyle}" />
+                    </StackPanel>
 
                     <TextBlock Margin="0,122,0,0"
                                Text="{Binding VersionList.VersionEmptyMessage}">

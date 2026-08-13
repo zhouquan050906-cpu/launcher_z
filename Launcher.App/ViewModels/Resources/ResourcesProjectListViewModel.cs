@@ -568,6 +568,7 @@ public sealed partial class ResourcesProjectListViewModel : ObservableObject, ID
         else
         {
             // 根查询失败更新主错误状态，但不伪造一个成功的空结果。
+            hasRequestedInitialLoad = false;
             IsLoading = false;
             LoadErrorMessage = options.ProjectsLoadErrorText;
         }

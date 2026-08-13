@@ -57,6 +57,7 @@
                 </Style>
             </Grid.Style>
             <Grid x:Name="PART_DirectListHost"
+                  IsHitTestVisible="{Binding IsListVisible, ElementName=Root}"
                   SnapsToDevicePixels="True">
                 <Grid x:Name="PART_ListVisualSource"
                       Background="Transparent">

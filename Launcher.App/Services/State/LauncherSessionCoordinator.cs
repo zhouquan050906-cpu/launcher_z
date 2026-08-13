@@ -137,25 +137,34 @@ public sealed class LauncherSessionCoordinator : IDisposable
         await gameManagement.InitializeAsync(settings);
         if (homePage is not null)
         {
-            await homePage.EnsureVersionTypesLoadedAsync();
             SynchronizeHomeInstances();
             homePage.Initialize(settings, gameManagement.SelectedInstance);
         }
 
         isInitialized = true;
+        if (NavigationCatalog.IsPage(currentPage, NavigationCatalog.GameSettingsPage))
+            SynchronizeGameSettingsInstances();
     }
 
     public async Task ActivatePageAsync(string page)
     {
         currentPage = page;
-        gameSettingsPage.SetShellPageActive(
-            NavigationCatalog.IsPage(page, NavigationCatalog.GameSettingsPage));
+        var isGameSettingsPage = NavigationCatalog.IsPage(page, NavigationCatalog.GameSettingsPage);
+        var isDownloadPage = NavigationCatalog.IsPage(page, NavigationCatalog.DownloadPage);
+        gameSettingsPage.SetShellPageActive(isGameSettingsPage);
+        if (isDownloadPage && settings is not null)
+            await downloadPage.EnsureVersionsLoadedAsync();
+
         if (!isInitialized)
+        {
+            // Prime 在窗口显示前已经读取本地实例。启动期进入游戏设置时直接投影该快照，
+            // 不等待后续的网络初始化，也不触发下载页版本目录请求。
+            if (isGameSettingsPage && settings is not null)
+                SynchronizeGameSettingsInstances();
             return;
+        }
 
         SynchronizeVisibleInstanceProjection();
-        if (NavigationCatalog.IsPage(page, NavigationCatalog.DownloadPage))
-            await downloadPage.EnsureVersionsLoadedAsync();
     }
 
     public async Task RefreshExternalInstanceCatalogAsync()

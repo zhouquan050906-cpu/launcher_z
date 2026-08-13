@@ -68,10 +68,21 @@ public sealed class HomeLaunchGameListViewModelTests
         Assert.Empty(secondNotifications);
     }
 
+    [Fact]
+    public void CatalogUsesVersionTypeFromLocalInstanceMetadata()
+    {
+        var viewModel = CreateViewModel();
+        var instance = CreateInstance("snapshot-instance", "Snapshot");
+        instance.VersionType = "snapshot";
+
+        viewModel.ApplyInstanceCatalog([instance], 1);
+
+        Assert.Equal("snapshot", Assert.Single(viewModel.LaunchInstances).VersionType);
+    }
+
     private static HomeLaunchGameListViewModel CreateViewModel()
     {
         return new HomeLaunchGameListViewModel(
-            new StubGameVersionService(),
             new StubStatusService(),
             _ => Task.FromResult(true));
     }
@@ -89,15 +100,6 @@ public sealed class HomeLaunchGameListViewModelTests
             CreatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
             UpdatedAt = new DateTimeOffset(2026, 1, 2, 0, 0, 0, TimeSpan.Zero)
         };
-    }
-
-    private sealed class StubGameVersionService : IGameVersionService
-    {
-        public Task<IReadOnlyList<MinecraftVersionInfo>> GetVersionsAsync(
-            DownloadSourcePreference downloadSourcePreference = LauncherDefaults.DefaultDownloadSourcePreference,
-            CancellationToken cancellationToken = default,
-            int downloadSpeedLimitMbPerSecond = 0) =>
-            Task.FromResult<IReadOnlyList<MinecraftVersionInfo>>([]);
     }
 
     private sealed class StubStatusService : IStatusService

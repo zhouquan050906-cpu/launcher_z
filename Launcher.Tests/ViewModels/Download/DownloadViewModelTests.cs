@@ -49,6 +49,101 @@ public sealed class DownloadViewModelTests
     }
 
     [Fact]
+    public async Task PendingVersionLoadShowsLoadingAndConcurrentEnsuresShareRequest()
+    {
+        var result = new TaskCompletionSource<IReadOnlyList<MinecraftVersionInfo>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new SequencedGameVersionService(() => result.Task);
+        using var viewModel = new DownloadVersionListViewModel(
+            service,
+            ImmediateUiDispatcher.Instance);
+
+        var firstLoad = viewModel.EnsureVersionsLoadedAsync();
+        var secondLoad = viewModel.EnsureVersionsLoadedAsync();
+
+        Assert.Equal(1, service.CallCount);
+        Assert.True(viewModel.IsLoadingVersions);
+        Assert.False(viewModel.HasVersionLoadError);
+
+        result.SetResult([new MinecraftVersionInfo("1.21.8", "release", false)]);
+        await Task.WhenAll(firstLoad, secondLoad);
+
+        Assert.False(viewModel.IsLoadingVersions);
+        Assert.Equal("1.21.8", Assert.Single(viewModel.VisibleVersions).Name);
+    }
+
+    [Fact]
+    public async Task FailedVersionListCanBeRefreshed()
+    {
+        var retryResult = new TaskCompletionSource<IReadOnlyList<MinecraftVersionInfo>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new SequencedGameVersionService(
+            () => Task.FromException<IReadOnlyList<MinecraftVersionInfo>>(new HttpRequestException("offline")),
+            () => retryResult.Task);
+        using var viewModel = new DownloadVersionListViewModel(
+            service,
+            ImmediateUiDispatcher.Instance);
+
+        await viewModel.EnsureVersionsLoadedAsync();
+
+        Assert.False(viewModel.IsLoadingVersions);
+        Assert.True(viewModel.HasVersionLoadError);
+        Assert.True(viewModel.RefreshVersionsCommand.CanExecute(null));
+
+        var refresh = viewModel.RefreshVersionsCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, service.CallCount);
+        Assert.True(viewModel.IsLoadingVersions);
+        Assert.False(viewModel.HasVersionLoadError);
+        Assert.False(viewModel.RefreshVersionsCommand.CanExecute(null));
+
+        retryResult.SetResult([new MinecraftVersionInfo("1.21.8", "release", false)]);
+        await refresh;
+
+        Assert.False(viewModel.IsLoadingVersions);
+        Assert.False(viewModel.HasVersionLoadError);
+        Assert.Equal("1.21.8", Assert.Single(viewModel.VisibleVersions).Name);
+    }
+
+    [Fact]
+    public async Task FailedRefreshRemainsRetryable()
+    {
+        var service = new SequencedGameVersionService(
+            () => Task.FromException<IReadOnlyList<MinecraftVersionInfo>>(new HttpRequestException("offline")),
+            () => Task.FromException<IReadOnlyList<MinecraftVersionInfo>>(new HttpRequestException("still offline")));
+        using var viewModel = new DownloadVersionListViewModel(
+            service,
+            ImmediateUiDispatcher.Instance);
+
+        await viewModel.EnsureVersionsLoadedAsync();
+        await viewModel.RefreshVersionsCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, service.CallCount);
+        Assert.False(viewModel.IsLoadingVersions);
+        Assert.True(viewModel.HasVersionLoadError);
+        Assert.True(viewModel.RefreshVersionsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task PageReentryRetriesFailedVersionListLoad()
+    {
+        var service = new SequencedGameVersionService(
+            () => Task.FromException<IReadOnlyList<MinecraftVersionInfo>>(new HttpRequestException("offline")),
+            () => Task.FromResult<IReadOnlyList<MinecraftVersionInfo>>(
+                [new MinecraftVersionInfo("1.21.8", "release", false)]));
+        using var viewModel = new DownloadVersionListViewModel(
+            service,
+            ImmediateUiDispatcher.Instance);
+
+        await viewModel.EnsureVersionsLoadedAsync();
+        await viewModel.EnsureVersionsLoadedAsync();
+
+        Assert.Equal(2, service.CallCount);
+        Assert.False(viewModel.HasVersionLoadError);
+        Assert.Equal("1.21.8", Assert.Single(viewModel.VisibleVersions).Name);
+    }
+
+    [Fact]
     public async Task CancelingDownloadTaskCancelsInstallationWithoutFailureMessage()
     {
         var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -136,6 +231,23 @@ public sealed class DownloadViewModelTests
             int downloadSpeedLimitMbPerSecond = 0)
         {
             return Task.FromResult(versions);
+        }
+    }
+
+    private sealed class SequencedGameVersionService(
+        params Func<Task<IReadOnlyList<MinecraftVersionInfo>>>[] responses) : IGameVersionService
+    {
+        private readonly Queue<Func<Task<IReadOnlyList<MinecraftVersionInfo>>>> responses = new(responses);
+
+        public int CallCount { get; private set; }
+
+        public Task<IReadOnlyList<MinecraftVersionInfo>> GetVersionsAsync(
+            DownloadSourcePreference downloadSourcePreference = LauncherDefaults.DefaultDownloadSourcePreference,
+            CancellationToken cancellationToken = default,
+            int downloadSpeedLimitMbPerSecond = 0)
+        {
+            CallCount++;
+            return responses.Dequeue()();
         }
     }
 

@@ -174,6 +174,12 @@ public sealed partial class DownloadVersionListViewModel : ObservableObject, IDi
     }
 
     [RelayCommand]
+    private Task RefreshVersionsAsync()
+    {
+        return EnsureVersionsLoadedAsync();
+    }
+
+    [RelayCommand]
     private void SelectVersionCategory(DownloadVersionCategory category)
     {
         // 分类切换只过滤本地目录；尚未加载时记录选择，加载完成后统一投影。

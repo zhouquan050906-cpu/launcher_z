@@ -29,12 +29,9 @@ namespace Launcher.App.ViewModels.Home;
 
 public sealed partial class HomeLaunchGameListViewModel : ObservableObject
 {
-    private readonly IGameVersionService gameVersionService;
     private readonly IStatusService statusService;
     private readonly Func<GameInstance, Task<bool>> selectLaunchInstance;
     private readonly Func<bool, Task<bool>> setLaunchMenuPinned;
-    private IReadOnlyDictionary<string, string> versionTypesByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-    private bool hasLoadedVersionTypes;
     private long appliedCatalogRevision = -1;
 
     [ObservableProperty]
@@ -44,12 +41,10 @@ public sealed partial class HomeLaunchGameListViewModel : ObservableObject
     private bool isLaunchMenuPinned;
 
     public HomeLaunchGameListViewModel(
-        IGameVersionService gameVersionService,
         IStatusService statusService,
         Func<GameInstance, Task<bool>> selectLaunchInstance,
         Func<bool, Task<bool>>? setLaunchMenuPinned = null)
     {
-        this.gameVersionService = gameVersionService;
         this.statusService = statusService;
         this.selectLaunchInstance = selectLaunchInstance;
         this.setLaunchMenuPinned = setLaunchMenuPinned ?? (_ => Task.FromResult(true));
@@ -108,7 +103,7 @@ public sealed partial class HomeLaunchGameListViewModel : ObservableObject
             if (!string.IsNullOrWhiteSpace(instance.Id)
                 && existing.TryGetValue(instance.Id, out var item))
             {
-                itemChanged |= item.Update(instance, ResolveVersionType(instance));
+                itemChanged |= item.Update(instance, instance.VersionType);
                 next.Add(item);
             }
             else
@@ -123,32 +118,6 @@ public sealed partial class HomeLaunchGameListViewModel : ObservableObject
         if (itemChanged || collectionChanged)
             NotifyLaunchInstancesChanged();
         return itemChanged || collectionChanged;
-    }
-
-    public async Task EnsureVersionTypesLoadedAsync(CancellationToken cancellationToken = default)
-    {
-        if (hasLoadedVersionTypes)
-            return;
-
-        try
-        {
-            var versions = await gameVersionService.GetVersionsAsync(cancellationToken: cancellationToken);
-            versionTypesByName = versions
-                .GroupBy(version => version.Name, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(
-                    group => group.Key,
-                    group => MinecraftVersionIconResolver.NormalizeVersionType(group.First().Type),
-                    StringComparer.OrdinalIgnoreCase);
-        }
-        catch (Exception)
-        {
-            versionTypesByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        hasLoadedVersionTypes = true;
-
-        if (LaunchInstances.Count > 0)
-            ReconcileLaunchInstances(LaunchInstances.Select(item => item.Instance).ToArray());
     }
 
     [RelayCommand]
@@ -233,7 +202,7 @@ public sealed partial class HomeLaunchGameListViewModel : ObservableObject
 
     private HomeLaunchInstanceItem CreateLaunchInstanceItem(GameInstance instance)
     {
-        return new HomeLaunchInstanceItem(instance, ResolveVersionType(instance));
+        return new HomeLaunchInstanceItem(instance, instance.VersionType);
     }
 
     private bool ApplyLaunchInstances(IReadOnlyList<HomeLaunchInstanceItem> instances)
@@ -270,19 +239,5 @@ public sealed partial class HomeLaunchGameListViewModel : ObservableObject
         return changed;
     }
 
-    private string ResolveVersionType(GameInstance instance)
-    {
-        if (!string.IsNullOrWhiteSpace(instance.VersionType))
-            return instance.VersionType;
-
-        var versionName = string.IsNullOrWhiteSpace(instance.MinecraftVersion)
-            ? instance.VersionName
-            : instance.MinecraftVersion;
-
-        return !string.IsNullOrWhiteSpace(versionName)
-               && versionTypesByName.TryGetValue(versionName, out var versionType)
-            ? versionType
-            : string.Empty;
-    }
 }
 
