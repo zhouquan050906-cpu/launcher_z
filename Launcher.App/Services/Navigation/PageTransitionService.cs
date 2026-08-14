@@ -27,9 +27,9 @@ namespace Launcher.App.Services;
 
 public sealed class PageTransitionService
 {
-    private const double TransitionOffset = 22;
+    internal const double TransitionOffset = 22;
 
-    private static readonly Duration TransitionDuration = TimeSpan.FromMilliseconds(240);
+    internal static readonly TimeSpan TransitionDuration = TimeSpan.FromMilliseconds(240);
     private static readonly string[] DefaultPageOrder =
     [
         "Account",
@@ -44,9 +44,12 @@ public sealed class PageTransitionService
     private readonly Dispatcher dispatcher;
     private readonly Func<string, FrameworkElement?> resolvePageRoot;
     private readonly IReadOnlyList<string> pageOrder;
+    private readonly TransitionRenderCacheFactory renderCacheFactory;
     private string? currentPage;
     private int transitionToken;
     private IDisposable? blurRefreshLease;
+    private TransitionRenderCacheScope? renderCacheScope;
+    private FrameworkElement? activeTarget;
 
     public PageTransitionService(
         Dispatcher dispatcher,
@@ -61,10 +64,21 @@ public sealed class PageTransitionService
         Func<string, FrameworkElement?> resolvePageRoot,
         string? initialPage,
         IReadOnlyList<string>? pageOrder)
+        : this(dispatcher, resolvePageRoot, initialPage, pageOrder, TransitionRenderCacheScope.TryAcquire)
+    {
+    }
+
+    internal PageTransitionService(
+        Dispatcher dispatcher,
+        Func<string, FrameworkElement?> resolvePageRoot,
+        string? initialPage,
+        IReadOnlyList<string>? pageOrder,
+        TransitionRenderCacheFactory renderCacheFactory)
     {
         this.dispatcher = dispatcher;
         this.resolvePageRoot = resolvePageRoot;
         this.pageOrder = pageOrder is { Count: > 0 } ? pageOrder : DefaultPageOrder;
+        this.renderCacheFactory = renderCacheFactory;
         currentPage = initialPage;
     }
 
@@ -73,7 +87,7 @@ public sealed class PageTransitionService
         if (string.Equals(currentPage, newPage, StringComparison.OrdinalIgnoreCase))
             return;
 
-        ReleaseBlurRefreshLease();
+        CancelActiveTransition(requestFinalRefresh: true);
         var oldPage = currentPage;
         currentPage = newPage;
         var startOffset = GetTransitionStartOffset(oldPage, newPage);
@@ -84,6 +98,8 @@ public sealed class PageTransitionService
 
         var token = ++transitionToken;
         PreparePageForTransition(target, startOffset);
+        activeTarget = target;
+        target.Unloaded += ActiveTarget_Unloaded;
         dispatcher.BeginInvoke(
             () => AnimatePage(newPage, target, startOffset, token),
             DispatcherPriority.Render);
@@ -91,8 +107,8 @@ public sealed class PageTransitionService
 
     public void SyncTo(string? page)
     {
-        ReleaseBlurRefreshLease();
         transitionToken++;
+        CancelActiveTransition(requestFinalRefresh: true);
         currentPage = page;
     }
 
@@ -150,7 +166,16 @@ public sealed class PageTransitionService
         transform.BeginAnimation(TranslateTransform.YProperty, null);
         target.Opacity = 0;
         transform.Y = startOffset;
-        blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(target);
+        if (BackdropBlurRefreshCoordinator.HasActiveImageBackdropBlur(target))
+        {
+            blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(target);
+        }
+        else
+        {
+            renderCacheScope = renderCacheFactory($"Page:{page}", [target]);
+            if (!renderCacheScope.IsActive)
+                blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(target);
+        }
 
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
         var fadeAnimation = new DoubleAnimation
@@ -179,8 +204,7 @@ public sealed class PageTransitionService
         {
             if (token == transitionToken && string.Equals(currentPage, page, StringComparison.OrdinalIgnoreCase))
             {
-                transform.Y = 0;
-                ReleaseBlurRefreshLease();
+                CompleteTransition(target, transform);
             }
         };
 
@@ -192,5 +216,51 @@ public sealed class PageTransitionService
     {
         blurRefreshLease?.Dispose();
         blurRefreshLease = null;
+    }
+
+    private void CompleteTransition(FrameworkElement target, TranslateTransform transform)
+    {
+        target.BeginAnimation(UIElement.OpacityProperty, null);
+        target.Opacity = 1;
+        transform.BeginAnimation(TranslateTransform.YProperty, null);
+        transform.Y = 0;
+        ReleaseTransitionResources(target, requestFinalRefresh: true);
+    }
+
+    private void CancelActiveTransition(bool requestFinalRefresh)
+    {
+        if (activeTarget is not { } target)
+        {
+            ReleaseBlurRefreshLease();
+            renderCacheScope?.Dispose();
+            renderCacheScope = null;
+            return;
+        }
+
+        target.BeginAnimation(UIElement.OpacityProperty, null);
+        target.Opacity = 1;
+        var transform = EnsureTranslateTransform(target);
+        transform.BeginAnimation(TranslateTransform.YProperty, null);
+        transform.Y = 0;
+        ReleaseTransitionResources(target, requestFinalRefresh);
+    }
+
+    private void ReleaseTransitionResources(FrameworkElement target, bool requestFinalRefresh)
+    {
+        target.Unloaded -= ActiveTarget_Unloaded;
+        ReleaseBlurRefreshLease();
+        var usedRenderCache = renderCacheScope?.IsActive is true;
+        renderCacheScope?.Dispose();
+        renderCacheScope = null;
+        activeTarget = null;
+
+        if (requestFinalRefresh && usedRenderCache)
+            BackdropBlurRefreshCoordinator.RequestScopeRefresh(target);
+    }
+
+    private void ActiveTarget_Unloaded(object sender, RoutedEventArgs e)
+    {
+        transitionToken++;
+        CancelActiveTransition(requestFinalRefresh: false);
     }
 }

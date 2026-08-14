@@ -26,6 +26,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 using Launcher.Domain.Models;
+using Serilog;
 
 namespace Launcher.App.Controls.Account;
 
@@ -76,14 +77,18 @@ public sealed class SkinCarousel3DControl : Grid
             new PropertyMetadata(null));
 
     private readonly Viewport3D viewport = new();
+    private readonly Viewport3DIdleRenderCache viewportRenderCache;
     private readonly Border leftHoverHint;
     private readonly Border rightHoverHint;
     private readonly Dictionary<Model3D, SkinCarouselSlot> hitSlots = [];
     private readonly Dictionary<SkinCarouselSlot, SlotVisual> currentSlotVisuals = [];
     private readonly Dictionary<PlayerModelCacheKey, Model3DGroup> playerModelCache = [];
     private readonly Queue<PlayerModelCacheKey> playerModelCacheOrder = [];
+    private CancellationTokenSource? sceneBuildCancellation;
     private bool rebuildQueued;
-    private bool rebuildRequestedWhileQueued;
+    private int sceneBuildGeneration;
+    private int animationGeneration;
+    private bool isAnimating;
     private SkinCarouselDirection? pendingDirection;
     private LauncherSkinRecord? previousRenderedSkin;
     private LauncherSkinRecord? selectedRenderedSkin;
@@ -91,9 +96,11 @@ public sealed class SkinCarousel3DControl : Grid
 
     public SkinCarousel3DControl()
     {
+        viewportRenderCache = new Viewport3DIdleRenderCache(viewport, "Skin");
         ClipToBounds = true;
         Focusable = false;
-        viewport.ClipToBounds = true;
+        // 外层 Grid 已提供最终裁剪边界；避免 Viewport3D 再执行一次昂贵的抗锯齿裁剪。
+        viewport.ClipToBounds = false;
         viewport.Camera = new PerspectiveCamera(
             new Point3D(0, 4, 62),
             new Vector3D(0, 0, -62),
@@ -111,6 +118,8 @@ public sealed class SkinCarousel3DControl : Grid
 
         MouseLeftButtonUp += OnMouseLeftButtonUp;
         MouseMove += OnMouseMove;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
         MouseLeave += (_, _) =>
         {
             Cursor = Cursors.Arrow;
@@ -172,18 +181,197 @@ public sealed class SkinCarousel3DControl : Grid
 
     private void QueueRebuild()
     {
+        viewportRenderCache.Disable("SceneChange");
+        sceneBuildGeneration++;
+        sceneBuildCancellation?.Cancel();
         if (rebuildQueued)
-        {
-            rebuildRequestedWhileQueued = true;
             return;
-        }
 
         // Background 优先级让同一 UI 周期的 Previous/Selected/Next 更新合并成一次模型构建。
         rebuildQueued = true;
         Dispatcher.BeginInvoke(Rebuild, DispatcherPriority.Background);
     }
 
-    private void Rebuild()
+    private async void Rebuild()
+    {
+        rebuildQueued = false;
+        var generation = sceneBuildGeneration;
+        sceneBuildCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        sceneBuildCancellation = cancellation;
+
+        var previousSkin = PreviousSkin;
+        var selectedSkin = SelectedSkin;
+        var nextSkin = NextSkin;
+        var oldSlotVisuals = currentSlotVisuals.Values.ToList();
+        var direction = SkinCarousel3DLayout.CanAnimateTransition(
+            pendingDirection,
+            previousRenderedSkin,
+            selectedRenderedSkin,
+            nextRenderedSkin,
+            previousSkin,
+            selectedSkin,
+            nextSkin)
+            ? pendingDirection
+            : null;
+        pendingDirection = null;
+
+        var slotRequests = new[]
+        {
+            new SkinSlotBuildRequest(SkinCarouselSlot.Left, previousSkin, SideBrightness),
+            new SkinSlotBuildRequest(SkinCarouselSlot.Center, selectedSkin, CenterBrightness),
+            new SkinSlotBuildRequest(SkinCarouselSlot.Right, nextSkin, SideBrightness)
+        };
+        var prepared = new Dictionary<PlayerModelCacheKey, Model3DGroup>();
+        var misses = new Dictionary<PlayerModelCacheKey, SkinSlotBuildRequest>();
+        foreach (var request in slotRequests)
+        {
+            if (request.Skin is null || string.IsNullOrWhiteSpace(request.Skin.Source))
+                continue;
+
+            var key = CreatePlayerModelCacheKey(request.Skin, request.Brightness);
+            if (playerModelCache.TryGetValue(key, out var cached))
+            {
+                prepared[key] = cached;
+            }
+            else
+            {
+                misses.TryAdd(key, request);
+            }
+        }
+
+        try
+        {
+            var built = await Task.Run(() => BuildMissingPlayerModels(misses, cancellation.Token), cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (generation != sceneBuildGeneration || !IsLoaded)
+                return;
+
+            foreach (var pair in built)
+            {
+                prepared[pair.Key] = pair.Value;
+                AddPlayerModelToCache(pair.Key, pair.Value);
+            }
+
+            if (prepared.Count == 0 && oldSlotVisuals.Count > 0 && slotRequests.Any(item => item.Skin is not null))
+            {
+                Log.Warning("Account skin scene retained because every requested model failed to build; generation={Generation}", generation);
+                QueueViewportRenderCache();
+                return;
+            }
+
+            FreezeCurrentAnimations(oldSlotVisuals);
+            isAnimating = false;
+            viewport.Children.Clear();
+            currentSlotVisuals.Clear();
+            hitSlots.Clear();
+            UpdateHoverHint(null);
+
+            var scene = new Model3DGroup
+            {
+                Children =
+                {
+                    MinecraftSkinPreviewModelBuilder.CreateAmbientLight(),
+                    MinecraftSkinPreviewModelBuilder.CreateDirectionalLight()
+                }
+            };
+            AddPreparedSlot(scene, slotRequests[0], prepared, oldSlotVisuals, direction);
+            AddPreparedSlot(scene, slotRequests[1], prepared, oldSlotVisuals, direction);
+            AddPreparedSlot(scene, slotRequests[2], prepared, oldSlotVisuals, direction);
+            viewport.Children.Add(new ModelVisual3D { Content = scene });
+
+            previousRenderedSkin = previousSkin;
+            selectedRenderedSkin = selectedSkin;
+            nextRenderedSkin = nextSkin;
+            if (direction is not null && currentSlotVisuals.Count > 0)
+                AnimateSlots();
+            else
+            {
+                animationGeneration++;
+                QueueViewportRenderCache();
+            }
+
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Account skin scene build failed; generation={Generation}", generation);
+            if (generation == sceneBuildGeneration && !isAnimating)
+                QueueViewportRenderCache();
+        }
+    }
+
+    private static Dictionary<PlayerModelCacheKey, Model3DGroup> BuildMissingPlayerModels(
+        IReadOnlyDictionary<PlayerModelCacheKey, SkinSlotBuildRequest> requests,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<PlayerModelCacheKey, Model3DGroup>();
+        foreach (var pair in requests)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var skin = pair.Value.Skin!;
+                var bitmap = MinecraftSkinPreviewModelBuilder.LoadSkinBitmap(skin.Source);
+                cancellationToken.ThrowIfCancellationRequested();
+                result[pair.Key] = MinecraftSkinPreviewModelBuilder.BuildPlayerModel(bitmap, skin.SkinModel, pair.Value.Brightness);
+            }
+            catch when (!cancellationToken.IsCancellationRequested)
+            {
+                // A broken skin only removes its own slot; the stable carousel remains available.
+            }
+        }
+
+        return result;
+    }
+
+    private void AddPreparedSlot(
+        Model3DGroup scene,
+        SkinSlotBuildRequest request,
+        IReadOnlyDictionary<PlayerModelCacheKey, Model3DGroup> prepared,
+        IReadOnlyList<SlotVisual> oldSlotVisuals,
+        SkinCarouselDirection? direction)
+    {
+        var skin = request.Skin;
+        if (skin is null || string.IsNullOrWhiteSpace(skin.Source))
+            return;
+        if (!prepared.TryGetValue(CreatePlayerModelCacheKey(skin, request.Brightness), out var playerModel))
+            return;
+
+        var targetPlacement = SkinCarousel3DLayout.GetPlacement(request.Slot);
+        var startPlacement = ResolveStartPlacement(skin, request.Slot, oldSlotVisuals, direction);
+        var scale = new ScaleTransform3D(startPlacement.Scale, startPlacement.Scale, startPlacement.Scale, 0, 4, 0);
+        var translate = new TranslateTransform3D(startPlacement.X, 0, 0);
+        var transform = new Transform3DGroup();
+        transform.Children.Add(scale);
+        transform.Children.Add(translate);
+        var slotGroup = new Model3DGroup { Transform = transform };
+        slotGroup.Children.Add(playerModel);
+        scene.Children.Add(slotGroup);
+        RegisterHitModels(slotGroup, request.Slot);
+        currentSlotVisuals[request.Slot] = new SlotVisual(skin, request.Slot, scale, translate, targetPlacement);
+    }
+
+    private static PlayerModelCacheKey CreatePlayerModelCacheKey(LauncherSkinRecord skin, double brightness)
+    {
+        var identity = !string.IsNullOrWhiteSpace(skin.ContentHash) ? skin.ContentHash : skin.Source;
+        return new PlayerModelCacheKey(identity, skin.SkinModel, brightness);
+    }
+
+    private void AddPlayerModelToCache(PlayerModelCacheKey key, Model3DGroup model)
+    {
+        if (playerModelCache.ContainsKey(key))
+            return;
+        playerModelCache[key] = model;
+        playerModelCacheOrder.Enqueue(key);
+        while (playerModelCacheOrder.Count > PlayerModelCacheCapacity)
+            playerModelCache.Remove(playerModelCacheOrder.Dequeue());
+    }
+
+#if false
+    private void RebuildLegacy()
     {
         // 保存旧槽位的当前动画位置，新模型可从该位置接续，避免快速切换时跳回固定起点。
         rebuildQueued = false;
@@ -308,6 +496,7 @@ public sealed class SkinCarousel3DControl : Grid
         return model;
     }
 
+#endif
     private static SkinCarouselSlotPlacement ResolveStartPlacement(
         LauncherSkinRecord skin,
         SkinCarouselSlot targetSlot,
@@ -331,8 +520,11 @@ public sealed class SkinCarousel3DControl : Grid
 
     private void AnimateSlots()
     {
+        viewportRenderCache.Disable("CarouselAnimation");
+        isAnimating = true;
         // 所有槽位共享缓动和时长，视觉上表现为一次整体轮播。
         var easing = new PowerEase { EasingMode = EasingMode.EaseOut, Power = 7 };
+        var generation = ++animationGeneration;
 
         foreach (var visual in currentSlotVisuals.Values)
         {
@@ -342,6 +534,66 @@ public sealed class SkinCarousel3DControl : Grid
             visual.Scale.BeginAnimation(ScaleTransform3D.ScaleYProperty, CreateAnimation(visual.TargetPlacement.Scale, easing));
             visual.Scale.BeginAnimation(ScaleTransform3D.ScaleZProperty, CreateAnimation(visual.TargetPlacement.Scale, easing));
         }
+
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(AnimationMilliseconds + 40) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (generation == animationGeneration)
+            {
+                CompleteCurrentAnimations();
+                isAnimating = false;
+                QueueViewportRenderCache();
+            }
+        };
+        timer.Start();
+    }
+
+    private void CompleteCurrentAnimations()
+    {
+        foreach (var visual in currentSlotVisuals.Values)
+        {
+            CarouselAnimationLifecycle.CompleteAndRemoveClocks(
+                visual.Scale,
+                visual.Translate,
+                visual.TargetPlacement.X,
+                visual.TargetPlacement.Scale);
+        }
+    }
+
+    private static void FreezeCurrentAnimations(IEnumerable<SlotVisual> visuals)
+    {
+        foreach (var visual in visuals)
+            CarouselAnimationLifecycle.CaptureCurrentAndRemoveClocks(visual.Scale, visual.Translate);
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        QueueRebuild();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        viewportRenderCache.Disable("Unloaded");
+        sceneBuildGeneration++;
+        animationGeneration++;
+        sceneBuildCancellation?.Cancel();
+        sceneBuildCancellation?.Dispose();
+        sceneBuildCancellation = null;
+        FreezeCurrentAnimations(currentSlotVisuals.Values);
+        viewport.Children.Clear();
+        currentSlotVisuals.Clear();
+        hitSlots.Clear();
+        rebuildQueued = false;
+        isAnimating = false;
+    }
+
+    private void QueueViewportRenderCache()
+    {
+        viewportRenderCache.QueueEnable(() =>
+            !isAnimating
+            && !rebuildQueued
+            && currentSlotVisuals.Count > 0);
     }
 
     private static DoubleAnimation CreateAnimation(double to, IEasingFunction easing)
@@ -464,6 +716,11 @@ public sealed class SkinCarousel3DControl : Grid
     {
         return SkinCarousel3DLayout.SkinsRepresentSameVisualItem(left, right);
     }
+
+    private sealed record SkinSlotBuildRequest(
+        SkinCarouselSlot Slot,
+        LauncherSkinRecord? Skin,
+        double Brightness);
 
     private sealed record SlotVisual(
         LauncherSkinRecord Skin,

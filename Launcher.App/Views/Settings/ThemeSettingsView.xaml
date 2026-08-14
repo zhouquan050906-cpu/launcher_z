@@ -166,10 +166,16 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Text="{x:Static res:Strings.Settings_BackgroundImageControlBlurLabel}"
-                                   Style="{StaticResource SettingsOptionTextStyle}" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{x:Static res:Strings.Settings_BackgroundImageControlBlurLabel}"
+                                       Style="{StaticResource SettingsOptionTextStyle}" />
+                            <TextBlock Margin="0,4,16,0"
+                                       Text="{x:Static res:Strings.Settings_BackgroundImageControlBlurDescription}"
+                                       Style="{StaticResource SettingsDescriptionTextStyle}" />
+                        </StackPanel>
                         <CheckBox Grid.Column="1"
                                   Margin="16,0,0,0"
+                                  VerticalAlignment="Center"
                                   IsChecked="{Binding EnableImageBackgroundControlBlur, Mode=TwoWay}"
                                   Style="{StaticResource LauncherSwitchToggleButtonStyle}" />
                     </Grid>

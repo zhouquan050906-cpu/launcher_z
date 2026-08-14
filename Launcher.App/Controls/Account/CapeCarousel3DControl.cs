@@ -28,6 +28,7 @@ using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 using System.Xml.Linq;
 using Launcher.Application.Accounts;
+using Serilog;
 
 namespace Launcher.App.Controls.Account;
 
@@ -37,6 +38,7 @@ namespace Launcher.App.Controls.Account;
 public sealed class CapeCarousel3DControl : Grid
 {
     private const int AnimationMilliseconds = 600;
+    private const int CapeModelCacheCapacity = 8;
     private const double CenterBrightness = 1;
     private const double SideBrightness = 0.48;
 
@@ -77,6 +79,7 @@ public sealed class CapeCarousel3DControl : Grid
 
     // viewport 承载 3D 模型，Hover 层保持为普通 WPF 元素以便复用主题资源。
     private readonly Viewport3D viewport = new();
+    private readonly Viewport3DIdleRenderCache viewportRenderCache;
     private readonly Border leftHoverHint;
     private readonly Border rightHoverHint;
     // WPF 命中测试返回具体 Model3D，需要反向映射到左/中/右逻辑槽位。
@@ -85,13 +88,17 @@ public sealed class CapeCarousel3DControl : Grid
     // 纹理缓存保存已冻结 BitmapSource；请求集合则防止同一 URL 并发加载多次。
     private readonly Dictionary<string, BitmapSource> capeTextureCache = new(StringComparer.Ordinal);
     private readonly HashSet<string> capeTextureRequests = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> capeTextureVersions = new(StringComparer.Ordinal);
+    private readonly Dictionary<CapeModelCacheKey, Model3DGroup> capeModelCache = [];
+    private readonly Queue<CapeModelCacheKey> capeModelCacheOrder = [];
+    private CancellationTokenSource? sceneBuildCancellation;
     // 重建与动画状态组成一个小型状态机，保证属性变化、纹理完成和动画结束不会互相覆盖。
     private bool rebuildQueued;
-    private bool rebuildRequestedWhileQueued;
     private bool isRebuilding;
     private bool isAnimating;
     private bool rebuildAfterAnimation;
     private int animationGeneration;
+    private int sceneBuildGeneration;
     private CapeCarouselDirection? pendingDirection;
     // 保存上次真正渲染的三个身份，用于判断当前属性变化是否能形成连续左右切换动画。
     private AccountCapeOption? previousRenderedCape;
@@ -100,9 +107,11 @@ public sealed class CapeCarousel3DControl : Grid
 
     public CapeCarousel3DControl()
     {
+        viewportRenderCache = new Viewport3DIdleRenderCache(viewport, "Cape");
         ClipToBounds = true;
         Focusable = false;
-        viewport.ClipToBounds = true;
+        // 外层 Grid 已提供最终裁剪边界；避免 Viewport3D 再执行一次昂贵的抗锯齿裁剪。
+        viewport.ClipToBounds = false;
         viewport.Camera = new PerspectiveCamera(
             new Point3D(0, 8, 46),
             new Vector3D(0, 0, -46),
@@ -121,6 +130,8 @@ public sealed class CapeCarousel3DControl : Grid
 
         MouseLeftButtonUp += OnMouseLeftButtonUp;
         MouseMove += OnMouseMove;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
         MouseLeave += (_, _) =>
         {
             Cursor = Cursors.Arrow;
@@ -183,12 +194,17 @@ public sealed class CapeCarousel3DControl : Grid
     /// </summary>
     private void QueueRebuild()
     {
+        viewportRenderCache.Disable("SceneChange");
+        sceneBuildGeneration++;
+        sceneBuildCancellation?.Cancel();
+        QueueRebuildCore();
+    }
+
+    private void QueueRebuildCore()
+    {
         // 属性可能在同一调度周期内成组变化；只排队一次，同时记住重建过程中到达的新请求。
         if (rebuildQueued)
-        {
-            rebuildRequestedWhileQueued = true;
             return;
-        }
 
         rebuildQueued = true;
         Dispatcher.BeginInvoke(Rebuild, DispatcherPriority.Background);
@@ -197,7 +213,209 @@ public sealed class CapeCarousel3DControl : Grid
     /// <summary>
     /// 根据三个披风槽位重建 3D 场景，并在身份连续时复用旧视觉位置作为动画起点。
     /// </summary>
-    private void Rebuild()
+    private async void Rebuild()
+    {
+        rebuildQueued = false;
+        isRebuilding = true;
+        var generation = sceneBuildGeneration;
+        sceneBuildCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        sceneBuildCancellation = cancellation;
+
+        var previousCape = PreviousCape;
+        var selectedCape = SelectedCape;
+        var nextCape = NextCape;
+        var oldSlotVisuals = currentSlotVisuals.Values.ToList();
+        var direction = CapeCarousel3DLayout.CanAnimateTransition(
+            pendingDirection,
+            previousRenderedCape,
+            selectedRenderedCape,
+            nextRenderedCape,
+            previousCape,
+            selectedCape,
+            nextCape)
+            ? pendingDirection
+            : null;
+        pendingDirection = null;
+
+        var slotRequests = new[]
+        {
+            CreateCapeBuildRequest(CapeCarouselSlot.Left, previousCape, SideBrightness),
+            CreateCapeBuildRequest(CapeCarouselSlot.Center, selectedCape, CenterBrightness),
+            CreateCapeBuildRequest(CapeCarouselSlot.Right, nextCape, SideBrightness)
+        };
+        var prepared = new Dictionary<CapeModelCacheKey, Model3DGroup>();
+        var misses = new Dictionary<CapeModelCacheKey, CapeSlotBuildRequest>();
+        foreach (var request in slotRequests)
+        {
+            if (request.Cape is null)
+                continue;
+            if (capeModelCache.TryGetValue(request.Key, out var cached))
+            {
+                prepared[request.Key] = cached;
+            }
+            else
+            {
+                misses.TryAdd(request.Key, request);
+            }
+        }
+
+        try
+        {
+            var built = await Task.Run(() => BuildMissingCapeModels(misses, cancellation.Token), cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (generation != sceneBuildGeneration || !IsLoaded)
+                return;
+
+            foreach (var pair in built)
+            {
+                prepared[pair.Key] = pair.Value;
+                AddCapeModelToCache(pair.Key, pair.Value);
+            }
+
+            if (prepared.Count == 0 && oldSlotVisuals.Count > 0 && slotRequests.Any(item => item.Cape is not null))
+            {
+                isRebuilding = false;
+                Log.Warning("Account cape scene retained because every requested model failed to build; generation={Generation}", generation);
+                QueueViewportRenderCache();
+                return;
+            }
+
+            FreezeCurrentAnimations(oldSlotVisuals);
+            viewport.Children.Clear();
+            currentSlotVisuals.Clear();
+            hitSlots.Clear();
+            UpdateHoverHint(null);
+            var scene = new Model3DGroup
+            {
+                Children =
+                {
+                    MinecraftCapePreviewModelBuilder.CreateAmbientLight(),
+                    MinecraftCapePreviewModelBuilder.CreateDirectionalLight()
+                }
+            };
+            AddPreparedSlot(scene, slotRequests[0], prepared, oldSlotVisuals, direction);
+            AddPreparedSlot(scene, slotRequests[1], prepared, oldSlotVisuals, direction);
+            AddPreparedSlot(scene, slotRequests[2], prepared, oldSlotVisuals, direction);
+            viewport.Children.Add(new ModelVisual3D { Content = scene });
+
+            previousRenderedCape = previousCape;
+            selectedRenderedCape = selectedCape;
+            nextRenderedCape = nextCape;
+            isRebuilding = false;
+            if (direction is not null && currentSlotVisuals.Count > 0)
+                AnimateSlots();
+            else
+            {
+                isAnimating = false;
+                animationGeneration++;
+                if (rebuildAfterAnimation)
+                {
+                    rebuildAfterAnimation = false;
+                    QueueRebuild();
+                }
+                else
+                {
+                    QueueViewportRenderCache();
+                }
+            }
+
+        }
+        catch (OperationCanceledException)
+        {
+            if (generation == sceneBuildGeneration)
+                isRebuilding = false;
+        }
+        catch (Exception ex)
+        {
+            if (generation == sceneBuildGeneration)
+            {
+                isRebuilding = false;
+                if (!isAnimating)
+                    QueueViewportRenderCache();
+            }
+            Log.Warning(ex, "Account cape scene build failed; generation={Generation}", generation);
+        }
+    }
+
+    private CapeSlotBuildRequest CreateCapeBuildRequest(CapeCarouselSlot slot, AccountCapeOption? cape, double brightness)
+    {
+        BitmapSource? texture = null;
+        if (cape is not null)
+            texture = GetOrRequestCapeTexture(cape);
+        var identity = cape is null
+            ? string.Empty
+            : cape.Id ?? cape.ImageUrl ?? (cape.IsNone ? "none" : cape.DisplayName);
+        var source = cape?.ImageUrl;
+        var textureVersion = source is not null && capeTextureVersions.TryGetValue(source, out var version) ? version : 0;
+        return new CapeSlotBuildRequest(
+            slot,
+            cape,
+            brightness,
+            texture,
+            new CapeModelCacheKey(identity, source, brightness, textureVersion, texture is not null));
+    }
+
+    private static Dictionary<CapeModelCacheKey, Model3DGroup> BuildMissingCapeModels(
+        IReadOnlyDictionary<CapeModelCacheKey, CapeSlotBuildRequest> requests,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<CapeModelCacheKey, Model3DGroup>();
+        foreach (var pair in requests)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                result[pair.Key] = MinecraftCapePreviewModelBuilder.BuildCapeModel(
+                    pair.Value.Cape!,
+                    pair.Value.Brightness,
+                    pair.Value.Texture);
+            }
+            catch when (!cancellationToken.IsCancellationRequested)
+            {
+                // A broken cape only removes its own slot; other slots stay available.
+            }
+        }
+        return result;
+    }
+
+    private void AddPreparedSlot(
+        Model3DGroup scene,
+        CapeSlotBuildRequest request,
+        IReadOnlyDictionary<CapeModelCacheKey, Model3DGroup> prepared,
+        IReadOnlyList<SlotVisual> oldSlotVisuals,
+        CapeCarouselDirection? direction)
+    {
+        var cape = request.Cape;
+        if (cape is null || !prepared.TryGetValue(request.Key, out var capeModel))
+            return;
+
+        var targetPlacement = CapeCarousel3DLayout.GetPlacement(request.Slot);
+        var startPlacement = ResolveStartPlacement(cape, request.Slot, oldSlotVisuals, direction);
+        var scale = new ScaleTransform3D(startPlacement.Scale, startPlacement.Scale, startPlacement.Scale, 0, 8, 0);
+        var translate = new TranslateTransform3D(startPlacement.X, 0, 0);
+        var transform = new Transform3DGroup();
+        transform.Children.Add(scale);
+        transform.Children.Add(translate);
+        var slotGroup = new Model3DGroup { Transform = transform };
+        slotGroup.Children.Add(capeModel);
+        scene.Children.Add(slotGroup);
+        RegisterHitModels(slotGroup, request.Slot);
+        currentSlotVisuals[request.Slot] = new SlotVisual(cape, request.Slot, scale, translate, targetPlacement);
+    }
+
+    private void AddCapeModelToCache(CapeModelCacheKey key, Model3DGroup model)
+    {
+        if (capeModelCache.ContainsKey(key))
+            return;
+        capeModelCache[key] = model;
+        capeModelCacheOrder.Enqueue(key);
+        while (capeModelCacheOrder.Count > CapeModelCacheCapacity)
+            capeModelCache.Remove(capeModelCacheOrder.Dequeue());
+    }
+
+#if false
+    private void RebuildLegacy()
     {
         // 阶段一：冻结本轮请求状态并判断旧场景到新场景是否构成可动画的相邻切换。
         isRebuilding = true;
@@ -321,6 +539,7 @@ public sealed class CapeCarousel3DControl : Grid
     /// <summary>
     /// 返回已缓存纹理；未命中时只启动一次异步加载并暂时使用占位视觉。
     /// </summary>
+#endif
     private BitmapSource? GetOrRequestCapeTexture(AccountCapeOption cape)
     {
         if (cape.IsNone || string.IsNullOrWhiteSpace(cape.ImageUrl))
@@ -345,7 +564,10 @@ public sealed class CapeCarousel3DControl : Grid
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-            bitmap.UriSource = new Uri(source, UriKind.RelativeOrAbsolute);
+            var sourceUri = new Uri(source, UriKind.RelativeOrAbsolute);
+            if (sourceUri.IsAbsoluteUri && sourceUri.IsFile)
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.UriSource = sourceUri;
             bitmap.EndInit();
 
             if (bitmap.IsDownloading)
@@ -371,6 +593,9 @@ public sealed class CapeCarousel3DControl : Grid
         {
             var frozenTexture = FreezeTexture(texture);
             capeTextureCache[source] = frozenTexture;
+            capeTextureVersions[source] = capeTextureVersions.TryGetValue(source, out var version) ? version + 1 : 1;
+            foreach (var key in capeModelCache.Keys.Where(key => string.Equals(key.TextureSource, source, StringComparison.Ordinal)).ToArray())
+                capeModelCache.Remove(key);
             capeTextureRequests.Remove(source);
             QueueTextureRefresh();
         }
@@ -449,6 +674,7 @@ public sealed class CapeCarousel3DControl : Grid
     /// </summary>
     private void AnimateSlots()
     {
+        viewportRenderCache.Disable("CarouselAnimation");
         // 所有槽位共享缓动和时长，保证中心/侧边模型在视觉上作为一个整体移动。
         var easing = new PowerEase { EasingMode = EasingMode.EaseOut, Power = 7 };
         isAnimating = true;
@@ -474,14 +700,69 @@ public sealed class CapeCarousel3DControl : Grid
             if (generation != animationGeneration)
                 return;
 
+            CompleteCurrentAnimations();
             isAnimating = false;
             if (!rebuildAfterAnimation)
+            {
+                QueueViewportRenderCache();
                 return;
+            }
 
             rebuildAfterAnimation = false;
             QueueRebuild();
         };
         timer.Start();
+    }
+
+    private void CompleteCurrentAnimations()
+    {
+        foreach (var visual in currentSlotVisuals.Values)
+        {
+            CarouselAnimationLifecycle.CompleteAndRemoveClocks(
+                visual.Scale,
+                visual.Translate,
+                visual.TargetPlacement.X,
+                visual.TargetPlacement.Scale);
+        }
+    }
+
+    private static void FreezeCurrentAnimations(IEnumerable<SlotVisual> visuals)
+    {
+        foreach (var visual in visuals)
+            CarouselAnimationLifecycle.CaptureCurrentAndRemoveClocks(visual.Scale, visual.Translate);
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        QueueRebuild();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        viewportRenderCache.Disable("Unloaded");
+        sceneBuildGeneration++;
+        animationGeneration++;
+        sceneBuildCancellation?.Cancel();
+        sceneBuildCancellation?.Dispose();
+        sceneBuildCancellation = null;
+        FreezeCurrentAnimations(currentSlotVisuals.Values);
+        viewport.Children.Clear();
+        currentSlotVisuals.Clear();
+        hitSlots.Clear();
+        capeTextureRequests.Clear();
+        rebuildQueued = false;
+        isRebuilding = false;
+        isAnimating = false;
+        rebuildAfterAnimation = false;
+    }
+
+    private void QueueViewportRenderCache()
+    {
+        viewportRenderCache.QueueEnable(() =>
+            !isAnimating
+            && !isRebuilding
+            && !rebuildQueued
+            && currentSlotVisuals.Count > 0);
     }
 
     private static DoubleAnimation CreateAnimation(double to, IEasingFunction easing)
@@ -609,6 +890,20 @@ public sealed class CapeCarousel3DControl : Grid
     {
         return CapeCarousel3DLayout.CapesRepresentSameVisualItem(left, right);
     }
+
+    private sealed record CapeSlotBuildRequest(
+        CapeCarouselSlot Slot,
+        AccountCapeOption? Cape,
+        double Brightness,
+        BitmapSource? Texture,
+        CapeModelCacheKey Key);
+
+    private readonly record struct CapeModelCacheKey(
+        string Identity,
+        string? TextureSource,
+        double Brightness,
+        int TextureVersion,
+        bool HasTexture);
 
     private sealed record SlotVisual(
         AccountCapeOption Cape,

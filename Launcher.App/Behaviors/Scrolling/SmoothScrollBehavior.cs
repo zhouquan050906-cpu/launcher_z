@@ -57,7 +57,7 @@ public static class SmoothScrollBehavior
             "WheelAnimationDurationMilliseconds",
             typeof(double),
             typeof(SmoothScrollBehavior),
-            new PropertyMetadata(280d));
+            new PropertyMetadata(130d));
 
     private static readonly DependencyProperty AnimatedVerticalOffsetProperty =
         DependencyProperty.RegisterAttached(

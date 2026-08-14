@@ -346,11 +346,11 @@
     <Color x:Key="Color.Shadow.Soft">#20000000</Color>
     <DropShadowEffect x:Key="Effect.Card.Surface"
                       x:Shared="False"
-                      BlurRadius="15"
+                      BlurRadius="17"
                       Color="{StaticResource Color.Shadow}"
                       Direction="270"
-                      Opacity="0.15"
-                      ShadowDepth="2" />
+                      Opacity="0.13"
+                      ShadowDepth="0" />
     <Color x:Key="Color.Accent.Primary">#2196F3</Color>
 </ResourceDictionary>
 

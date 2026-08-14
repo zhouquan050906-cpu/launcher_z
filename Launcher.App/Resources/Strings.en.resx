@@ -927,6 +927,9 @@
   <data name="Settings_BackgroundImageControlBlurLabel" xml:space="preserve">
     <value>Enable Control Blur</value>
   </data>
+  <data name="Settings_BackgroundImageControlBlurDescription" xml:space="preserve">
+    <value>Adds a Gaussian blur effect to translucent controls. Enabling this option may cause stuttering.</value>
+  </data>
   <data name="Settings_BackgroundImageOpenFolderButton" xml:space="preserve">
     <value>Open Folder</value>
   </data>

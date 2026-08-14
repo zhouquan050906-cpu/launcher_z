@@ -13,7 +13,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using Launcher.App.Controls;
+using Serilog;
 
 namespace Launcher.App.Behaviors;
 
@@ -50,10 +52,24 @@ public static class BackdropBlurHost
             typeof(BackdropBlurHost),
             new PropertyMetadata(null));
 
+    public static readonly DependencyProperty LightweightShadowEffectProperty =
+        DependencyProperty.RegisterAttached(
+            "LightweightShadowEffect",
+            typeof(DropShadowEffect),
+            typeof(BackdropBlurHost),
+            new PropertyMetadata(null, OnLightweightShadowEffectChanged));
+
     private static readonly DependencyProperty BackdropProperty =
         DependencyProperty.RegisterAttached(
             "Backdrop",
             typeof(BackdropBlurBorder),
+            typeof(BackdropBlurHost),
+            new PropertyMetadata(null));
+
+    private static readonly DependencyProperty ShadowChromeProperty =
+        DependencyProperty.RegisterAttached(
+            "ShadowChrome",
+            typeof(CardShadowChrome),
             typeof(BackdropBlurHost),
             new PropertyMetadata(null));
 
@@ -80,6 +96,12 @@ public static class BackdropBlurHost
 
     public static void SetFallbackBrush(DependencyObject element, Brush? value) =>
         element.SetValue(FallbackBrushProperty, value);
+
+    public static DropShadowEffect? GetLightweightShadowEffect(DependencyObject element) =>
+        (DropShadowEffect?)element.GetValue(LightweightShadowEffectProperty);
+
+    public static void SetLightweightShadowEffect(DependencyObject element, DropShadowEffect? value) =>
+        element.SetValue(LightweightShadowEffectProperty, value);
 
     private static void OnIsAppliedChanged(
         DependencyObject dependencyObject,
@@ -128,6 +150,17 @@ public static class BackdropBlurHost
         else if (border.IsLoaded)
         {
             ApplyBackdrop(border);
+        }
+    }
+
+    private static void OnLightweightShadowEffectChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (dependencyObject is Border border
+            && border.GetValue(BackdropProperty) is BackdropBlurBorder backdrop)
+        {
+            UpdateLightweightShadow(border, backdrop);
         }
     }
 
@@ -181,6 +214,96 @@ public static class BackdropBlurHost
         border.Background = Brushes.Transparent;
         border.Child = layers;
         border.SetValue(BackdropProperty, backdrop);
+        UpdateLightweightShadow(border, backdrop);
+    }
+
+    private static void UpdateLightweightShadow(Border border, BackdropBlurBorder backdrop)
+    {
+        var shadowEffect = GetLightweightShadowEffect(border);
+        var existingChrome = border.GetValue(ShadowChromeProperty) as CardShadowChrome;
+
+        if (shadowEffect is null)
+        {
+            if (existingChrome?.Parent is Panel parent)
+                parent.Children.Remove(existingChrome);
+            if (existingChrome is not null)
+            {
+                BindingOperations.ClearBinding(existingChrome, CardShadowChrome.ReferenceEffectProperty);
+                BindingOperations.ClearBinding(existingChrome, CardShadowChrome.CornerRadiusProperty);
+                BindingOperations.ClearBinding(existingChrome, CardShadowChrome.SurfaceBrushProperty);
+                BindingOperations.ClearBinding(existingChrome, CardShadowChrome.SurfaceBorderBrushProperty);
+                BindingOperations.ClearBinding(existingChrome, CardShadowChrome.TintBrushProperty);
+                BindingOperations.ClearBinding(existingChrome, CardShadowChrome.OverlayBrushProperty);
+                BindingOperations.ClearBinding(existingChrome, CardShadowChrome.IsBackdropBlurEnabledProperty);
+                BindingOperations.ClearBinding(existingChrome, CardShadowChrome.BackdropSourceProperty);
+                border.ClearValue(ShadowChromeProperty);
+            }
+            return;
+        }
+
+        if (existingChrome is not null)
+            return;
+
+        try
+        {
+            if (backdrop.Parent is not Grid layers)
+                throw new InvalidOperationException("The surface backdrop is not hosted by the expected layer grid.");
+
+            var borderThickness = border.BorderThickness;
+            var chrome = new CardShadowChrome
+            {
+                Margin = new Thickness(
+                    -borderThickness.Left,
+                    -borderThickness.Top,
+                    -borderThickness.Right,
+                    -borderThickness.Bottom)
+            };
+            BindingOperations.SetBinding(
+                chrome,
+                CardShadowChrome.ReferenceEffectProperty,
+                new Binding
+                {
+                    Source = border,
+                    Path = new PropertyPath("(0)", LightweightShadowEffectProperty)
+                });
+            BindingOperations.SetBinding(
+                chrome,
+                CardShadowChrome.CornerRadiusProperty,
+                new Binding(nameof(Border.CornerRadius)) { Source = border });
+            BindingOperations.SetBinding(
+                chrome,
+                CardShadowChrome.SurfaceBrushProperty,
+                new Binding(nameof(BackdropBlurBorder.BaseBrush)) { Source = backdrop });
+            BindingOperations.SetBinding(
+                chrome,
+                CardShadowChrome.SurfaceBorderBrushProperty,
+                new Binding(nameof(Border.BorderBrush)) { Source = border });
+            BindingOperations.SetBinding(
+                chrome,
+                CardShadowChrome.TintBrushProperty,
+                new Binding(nameof(BackdropBlurBorder.TintBrush)) { Source = backdrop });
+            BindingOperations.SetBinding(
+                chrome,
+                CardShadowChrome.OverlayBrushProperty,
+                new Binding(nameof(BackdropBlurBorder.OverlayBrush)) { Source = backdrop });
+            BindingOperations.SetBinding(
+                chrome,
+                CardShadowChrome.IsBackdropBlurEnabledProperty,
+                new Binding(nameof(BackdropBlurBorder.IsBlurEnabled)) { Source = backdrop });
+            BindingOperations.SetBinding(
+                chrome,
+                CardShadowChrome.BackdropSourceProperty,
+                new Binding(nameof(BackdropBlurBorder.SourceElement)) { Source = backdrop });
+
+            layers.Children.Insert(0, chrome);
+            border.SetValue(ShadowChromeProperty, chrome);
+            border.ClearValue(UIElement.EffectProperty);
+        }
+        catch (Exception exception)
+        {
+            Log.Warning(exception, "Failed to initialize the lightweight card shadow. The card shadow will remain disabled.");
+            border.ClearValue(UIElement.EffectProperty);
+        }
     }
 
     private static void BindBlurEnabled(

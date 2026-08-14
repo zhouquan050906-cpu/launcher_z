@@ -30,9 +30,9 @@ namespace Launcher.App.Services;
 public sealed class SlidingContentTransitionCoordinator
 {
     // token 标识当前过渡代次，旧动画结束回调不得修改新页面的可见性。
-    private static readonly TimeSpan StepTransitionDuration = TimeSpan.FromMilliseconds(240);
-    private static readonly TimeSpan FloatingElementFadeDuration = TimeSpan.FromMilliseconds(180);
-    private const double DefaultTransitionScale = 0.985;
+    internal static readonly TimeSpan StepTransitionDuration = TimeSpan.FromMilliseconds(240);
+    internal static readonly TimeSpan FloatingElementFadeDuration = TimeSpan.FromMilliseconds(180);
+    internal const double DefaultTransitionScale = 0.985;
 
     private readonly FrameworkElement loadedElement;
     private readonly FrameworkElement contentHost;
@@ -42,9 +42,11 @@ public sealed class SlidingContentTransitionCoordinator
     private readonly bool useSlideTransition;
     private readonly bool useScaleTransition;
     private readonly double transitionScale;
+    private readonly TransitionRenderCacheFactory renderCacheFactory;
     private bool isSecondaryLayerVisible;
     private int transitionToken;
     private IDisposable? blurRefreshLease;
+    private TransitionRenderCacheScope? renderCacheScope;
 
     public SlidingContentTransitionCoordinator(
         FrameworkElement loadedElement,
@@ -55,6 +57,29 @@ public sealed class SlidingContentTransitionCoordinator
         bool useSlideTransition = true,
         bool useScaleTransition = false,
         double transitionScale = DefaultTransitionScale)
+        : this(
+            loadedElement,
+            contentHost,
+            primaryLayer,
+            secondaryLayer,
+            secondaryFloatingElements,
+            useSlideTransition,
+            useScaleTransition,
+            transitionScale,
+            TransitionRenderCacheScope.TryAcquire)
+    {
+    }
+
+    internal SlidingContentTransitionCoordinator(
+        FrameworkElement loadedElement,
+        FrameworkElement contentHost,
+        FrameworkElement primaryLayer,
+        FrameworkElement secondaryLayer,
+        IEnumerable<FrameworkElement>? secondaryFloatingElements,
+        bool useSlideTransition,
+        bool useScaleTransition,
+        double transitionScale,
+        TransitionRenderCacheFactory renderCacheFactory)
     {
         this.loadedElement = loadedElement;
         this.contentHost = contentHost;
@@ -64,11 +89,13 @@ public sealed class SlidingContentTransitionCoordinator
         this.useSlideTransition = useSlideTransition;
         this.useScaleTransition = useScaleTransition;
         this.transitionScale = transitionScale;
+        this.renderCacheFactory = renderCacheFactory;
+        loadedElement.Unloaded += LoadedElement_Unloaded;
     }
 
     public void Sync(bool showSecondaryLayer)
     {
-        ReleaseBlurRefreshLease();
+        ReleaseTransitionResources(requestFinalRefresh: true);
         // Sync 用于初始状态或禁用动画场景，先停止全部动画再直接设置稳定终值。
         transitionToken++;
         isSecondaryLayerVisible = showSecondaryLayer;
@@ -93,14 +120,17 @@ public sealed class SlidingContentTransitionCoordinator
             return;
         }
 
+        ResetLayer(primaryLayer, isVisible: !isSecondaryLayerVisible);
+        ResetLayer(secondaryLayer, isVisible: isSecondaryLayerVisible);
+        SyncFloatingElements(isSecondaryLayerVisible);
+        ReleaseTransitionResources(requestFinalRefresh: true);
+
         var previousLayer = isSecondaryLayerVisible ? secondaryLayer : primaryLayer;
         var nextLayer = showSecondaryLayer ? secondaryLayer : primaryLayer;
         var direction = showSecondaryLayer ? 1 : -1;
         var width = Math.Max(contentHost.ActualWidth, 1);
         var token = ++transitionToken;
         isSecondaryLayerVisible = showSecondaryLayer;
-        ReleaseBlurRefreshLease();
-        blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(previousLayer, nextLayer);
 
         var previousTransforms = EnsureLayerTransforms(previousLayer);
         var nextTransforms = EnsureLayerTransforms(nextLayer);
@@ -123,16 +153,43 @@ public sealed class SlidingContentTransitionCoordinator
         nextTransforms.Scale.ScaleX = useScaleTransition ? transitionScale : 1;
         nextTransforms.Scale.ScaleY = useScaleTransition ? transitionScale : 1;
 
+        if (BackdropBlurRefreshCoordinator.HasActiveImageBackdropBlur(previousLayer, nextLayer))
+        {
+            blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(
+                previousLayer,
+                nextLayer);
+        }
+        else
+        {
+            renderCacheScope = renderCacheFactory(
+                $"Sliding:{loadedElement.GetType().Name}",
+                [previousLayer, nextLayer]);
+            if (!renderCacheScope.IsActive)
+            {
+                blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(
+                    previousLayer,
+                    nextLayer);
+            }
+        }
+
         AnimateFloatingElements(showSecondaryLayer, token);
 
-        var previousSlide = CreateTransitionAnimation(0, useSlideTransition ? -width * direction : 0);
-        var nextSlide = CreateTransitionAnimation(useSlideTransition ? width * direction : 0, 0);
+        var previousSlide = useSlideTransition
+            ? CreateTransitionAnimation(0, -width * direction)
+            : null;
+        var nextSlide = useSlideTransition
+            ? CreateTransitionAnimation(width * direction, 0)
+            : null;
         var previousFade = CreateTransitionAnimation(1, 0);
         var nextFade = CreateTransitionAnimation(0, 1);
-        var previousScale = CreateTransitionAnimation(1, useScaleTransition ? transitionScale : 1);
-        var nextScale = CreateTransitionAnimation(useScaleTransition ? transitionScale : 1, 1);
+        var previousScale = useScaleTransition
+            ? CreateTransitionAnimation(1, transitionScale)
+            : null;
+        var nextScale = useScaleTransition
+            ? CreateTransitionAnimation(transitionScale, 1)
+            : null;
 
-        var completionAnimation = useSlideTransition ? nextSlide : nextFade;
+        var completionAnimation = nextSlide ?? nextFade;
         completionAnimation.Completed += (_, _) =>
         {
             if (token != transitionToken)
@@ -140,23 +197,68 @@ public sealed class SlidingContentTransitionCoordinator
 
             ResetLayer(previousLayer, isVisible: false);
             ResetLayer(nextLayer, isVisible: true);
-            ReleaseBlurRefreshLease();
+            ReleaseTransitionResources(requestFinalRefresh: true);
         };
 
         previousLayer.BeginAnimation(UIElement.OpacityProperty, previousFade, HandoffBehavior.SnapshotAndReplace);
-        previousTransforms.Translate.BeginAnimation(TranslateTransform.XProperty, previousSlide, HandoffBehavior.SnapshotAndReplace);
-        previousTransforms.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, previousScale, HandoffBehavior.SnapshotAndReplace);
-        previousTransforms.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, previousScale.Clone(), HandoffBehavior.SnapshotAndReplace);
         nextLayer.BeginAnimation(UIElement.OpacityProperty, nextFade, HandoffBehavior.SnapshotAndReplace);
-        nextTransforms.Translate.BeginAnimation(TranslateTransform.XProperty, nextSlide, HandoffBehavior.SnapshotAndReplace);
-        nextTransforms.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, nextScale, HandoffBehavior.SnapshotAndReplace);
-        nextTransforms.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, nextScale.Clone(), HandoffBehavior.SnapshotAndReplace);
+        if (previousSlide is not null && nextSlide is not null)
+        {
+            previousTransforms.Translate.BeginAnimation(
+                TranslateTransform.XProperty,
+                previousSlide,
+                HandoffBehavior.SnapshotAndReplace);
+            nextTransforms.Translate.BeginAnimation(
+                TranslateTransform.XProperty,
+                nextSlide,
+                HandoffBehavior.SnapshotAndReplace);
+        }
+        if (previousScale is not null && nextScale is not null)
+        {
+            previousTransforms.Scale.BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                previousScale,
+                HandoffBehavior.SnapshotAndReplace);
+            previousTransforms.Scale.BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                previousScale.Clone(),
+                HandoffBehavior.SnapshotAndReplace);
+            nextTransforms.Scale.BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                nextScale,
+                HandoffBehavior.SnapshotAndReplace);
+            nextTransforms.Scale.BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                nextScale.Clone(),
+                HandoffBehavior.SnapshotAndReplace);
+        }
     }
 
     private void ReleaseBlurRefreshLease()
     {
         blurRefreshLease?.Dispose();
         blurRefreshLease = null;
+    }
+
+    private void ReleaseTransitionResources(bool requestFinalRefresh)
+    {
+        ReleaseBlurRefreshLease();
+        var usedRenderCache = renderCacheScope?.IsActive is true;
+        renderCacheScope?.Dispose();
+        renderCacheScope = null;
+
+        if (requestFinalRefresh && usedRenderCache)
+        {
+            BackdropBlurRefreshCoordinator.RequestScopeRefresh(
+                primaryLayer,
+                secondaryLayer);
+        }
+    }
+
+    private void LoadedElement_Unloaded(object sender, RoutedEventArgs e)
+    {
+        transitionToken++;
+        ReleaseTransitionResources(requestFinalRefresh: false);
     }
 
     private void SyncFloatingElements(bool showSecondaryLayer)

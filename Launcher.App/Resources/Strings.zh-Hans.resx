@@ -317,6 +317,7 @@
   <data name="Settings_BackgroundImageSelectionLabel" xml:space="preserve"><value>选择图片</value></data>
   <data name="Settings_BackgroundImageSelectionDescription" xml:space="preserve"><value>启动器会读取文件夹内的图片并随机展示</value></data>
   <data name="Settings_BackgroundImageControlBlurLabel" xml:space="preserve"><value>开启控件模糊</value></data>
+  <data name="Settings_BackgroundImageControlBlurDescription" xml:space="preserve"><value>为半透明控件添加高斯模糊效果。开启此选项后可能会导致卡顿。</value></data>
   <data name="Settings_BackgroundImageOpenFolderButton" xml:space="preserve"><value>打开文件夹</value></data>
   <data name="Settings_BackgroundImageRefreshButton" xml:space="preserve"><value>换一张</value></data>
   <data name="Settings_BackgroundImageClearButton" xml:space="preserve"><value>清除图片</value></data>

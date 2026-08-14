@@ -55,6 +55,75 @@ public static class MinecraftCapePreviewModelBuilder
         double brightness = 1,
         BitmapSource? texture = null)
     {
+        ArgumentNullException.ThrowIfNull(cape);
+        if (cape.IsNone)
+            return BuildNoneCapeModel(brightness);
+
+        var model = new Model3DGroup();
+        var baseMaterial = CreateSolidMaterial(Color.FromArgb(
+            160,
+            ApplyBrightness(74, brightness),
+            ApplyBrightness(92, brightness),
+            ApplyBrightness(118, brightness)));
+        var baseMesh = new PreviewMeshBuilder();
+        AddBatchedCapeFace(baseMesh, new Rect3D(-5.15, -0.15, 0.42, 10.3, 16.3, 0), new Rect(0, 0, 1, 1));
+        AddBatchedCapeFace(baseMesh, new Rect3D(-5.15, -0.15, -0.58, 10.3, 16.3, 0), new Rect(0, 0, 1, 1));
+        AddBatchedCapeMesh(model, baseMesh, baseMaterial);
+
+        if (!string.IsNullOrWhiteSpace(cape.ImageUrl) && texture is not null)
+        {
+            try
+            {
+                var faces = new[]
+                {
+                    new BatchedCapeFace(new Rect3D(-5, 0, 0.5, 10, 16, 0), new Int32Rect(1, 1, 10, 16), true),
+                    new BatchedCapeFace(new Rect3D(-5, 0, -0.5, 10, 16, 0), new Int32Rect(12, 1, 10, 16), false),
+                    new BatchedCapeFace(new Rect3D(-5, 16, -0.5, 10, 0, 1), new Int32Rect(1, 0, 10, 1), true),
+                    new BatchedCapeFace(new Rect3D(-5, 0, -0.5, 10, 0, 1), new Int32Rect(11, 0, 10, 1), false),
+                    new BatchedCapeFace(new Rect3D(-5, 0, -0.5, 0, 16, 1), new Int32Rect(0, 1, 1, 16), false),
+                    new BatchedCapeFace(new Rect3D(5, 0, -0.5, 0, 16, 1), new Int32Rect(11, 1, 1, 16), true)
+                };
+                var atlas = PreviewTextureAtlasBuilder.Build(
+                    texture,
+                    faces.Select(item => item.TextureRect),
+                    PixelScale,
+                    brightness,
+                    maximumSourceRowWidth: 64);
+                var brush = new ImageBrush(atlas.Bitmap)
+                {
+                    Stretch = Stretch.Fill,
+                    TileMode = TileMode.None
+                };
+                RenderOptions.SetBitmapScalingMode(brush, BitmapScalingMode.NearestNeighbor);
+                brush.Freeze();
+                var material = new DiffuseMaterial(brush);
+                material.Freeze();
+                var textureMesh = new PreviewMeshBuilder();
+                foreach (var face in faces)
+                    AddBatchedCapeFace(textureMesh, face.Bounds, atlas.TextureCoordinates[face.TextureRect], face.ReverseWinding);
+                AddBatchedCapeMesh(
+                    model,
+                    textureMesh,
+                    material,
+                    doubleSided: false,
+                    anchorUnitTextureCoordinates: true);
+            }
+            catch
+            {
+                // Keep the stable backing surface for malformed or undersized textures.
+            }
+        }
+
+        ApplyCapeRotationAndFreeze(model);
+        return model;
+    }
+
+#if false
+    private static Model3DGroup BuildCapeModelLegacy(
+        AccountCapeOption cape,
+        double brightness = 1,
+        BitmapSource? texture = null)
+    {
         if (cape.IsNone)
             // “无披风”使用主题兼容的占位牌，而不是尝试加载不存在的纹理。
             return BuildNoneCapeModel(brightness);
@@ -92,6 +161,54 @@ public static class MinecraftCapePreviewModelBuilder
         return model;
     }
 
+#endif
+    private static void AddBatchedCapeFace(
+        PreviewMeshBuilder mesh,
+        Rect3D bounds,
+        Rect textureCoordinates,
+        bool reverseWinding = false)
+    {
+        mesh.AddQuad(
+            new Point3D(bounds.X, bounds.Y + bounds.SizeY, bounds.Z),
+            new Point3D(bounds.X + bounds.SizeX, bounds.Y + bounds.SizeY, bounds.Z + bounds.SizeZ),
+            new Point3D(bounds.X + bounds.SizeX, bounds.Y, bounds.Z + bounds.SizeZ),
+            new Point3D(bounds.X, bounds.Y, bounds.Z),
+            textureCoordinates,
+            reverseWinding);
+    }
+
+    private static void AddBatchedCapeMesh(
+        Model3DGroup target,
+        PreviewMeshBuilder mesh,
+        Material material,
+        bool doubleSided = true,
+        bool anchorUnitTextureCoordinates = false)
+    {
+        if (mesh.QuadCount == 0)
+            return;
+
+        var geometryModel = new GeometryModel3D
+        {
+            Geometry = mesh.Build(anchorUnitTextureCoordinates),
+            Material = material,
+            BackMaterial = doubleSided ? material : null
+        };
+        geometryModel.Freeze();
+        target.Children.Add(geometryModel);
+    }
+
+    private static void ApplyCapeRotationAndFreeze(Model3DGroup model)
+    {
+        var rotation = new AxisAngleRotation3D(new Vector3D(1, 0, 0), -6);
+        rotation.Freeze();
+        var transform = new RotateTransform3D(rotation, 0, 8, 0);
+        transform.Freeze();
+        model.Transform = transform;
+        model.Freeze();
+    }
+
+    private sealed record BatchedCapeFace(Rect3D Bounds, Int32Rect TextureRect, bool ReverseWinding);
+
     private static Model3DGroup BuildNoneCapeModel(double brightness)
     {
         var model = new Model3DGroup();
@@ -106,6 +223,7 @@ public static class MinecraftCapePreviewModelBuilder
         AddSolidFace(model, new Rect3D(-5, 0, 0, 10, 16, 0), surface);
         if (sign is not null)
             AddSolidFace(model, new Rect3D(-2.2, 5.25, 0.08, 4.4, 4.4, 0), sign);
+        ApplyCapeRotationAndFreeze(model);
         return model;
     }
 

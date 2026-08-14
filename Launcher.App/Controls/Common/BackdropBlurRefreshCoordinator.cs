@@ -34,6 +34,9 @@ internal enum BackdropBlurRefreshReason
 /// </summary>
 internal sealed class BackdropBlurRefreshCoordinator
 {
+    private const string ImageBackgroundEnabledResourceKey = "Is.ImageBackground.ControlTint.Enabled";
+    private const string SurfaceBlurEnabledResourceKey = "Is.Surface.BackdropBlur.Enabled";
+    private const string SecondaryMenuBlurEnabledResourceKey = "Is.SecondaryMenu.BackdropBlur.Enabled";
     private static readonly ConditionalWeakTable<Window, BackdropBlurRefreshCoordinator> Coordinators = new();
 
     private readonly Window window;
@@ -104,6 +107,44 @@ internal sealed class BackdropBlurRefreshCoordinator
 
         coordinator.AcquireContinuousScopes(ownedScopes);
         return new ContinuousRefreshLease(coordinator, ownedScopes);
+    }
+
+    internal static bool HasActiveImageBackdropBlur(params FrameworkElement[] scopes)
+    {
+        var validScopes = scopes
+            .Where(static scope => scope is not null)
+            .Distinct()
+            .ToArray();
+        if (validScopes.Length == 0 || !IsImageControlBlurEnabled(validScopes[0]))
+            return false;
+
+        var owner = Window.GetWindow(validScopes[0]);
+        if (owner is null || !Coordinators.TryGetValue(owner, out var coordinator))
+            return false;
+
+        var ownedScopes = validScopes
+            .Where(scope => ReferenceEquals(Window.GetWindow(scope), owner))
+            .ToArray();
+        return ownedScopes.Length > 0
+            && coordinator.registeredControls.Any(
+                control => control.IsRefreshEligible && IsInsideAnyScope(control, ownedScopes));
+    }
+
+    internal static void RequestScopeRefresh(params FrameworkElement[] scopes)
+    {
+        var validScopes = scopes
+            .Where(static scope => scope is not null)
+            .Distinct()
+            .ToArray();
+        if (validScopes.Length == 0)
+            return;
+
+        var owner = Window.GetWindow(validScopes[0]);
+        if (owner is null || !Coordinators.TryGetValue(owner, out var coordinator))
+            return;
+
+        coordinator.QueueScopeRefresh(
+            validScopes.Where(scope => ReferenceEquals(Window.GetWindow(scope), owner)));
     }
 
     internal void Register(
@@ -208,6 +249,24 @@ internal sealed class BackdropBlurRefreshCoordinator
         {
             if (registeredControls.Contains(control))
                 AddDirty(control);
+        }
+
+        UpdateRenderingSubscription();
+    }
+
+    private void QueueScopeRefresh(IEnumerable<FrameworkElement> scopes)
+    {
+        var ownedScopes = scopes.ToArray();
+        if (ownedScopes.Length == 0 || registeredControls.Count == 0)
+            return;
+
+        foreach (var control in registeredControls)
+        {
+            if (!control.IsRefreshEligible || !IsInsideAnyScope(control, ownedScopes))
+                continue;
+
+            control.InvalidatePreparedGeometry();
+            AddDirty(control);
         }
 
         UpdateRenderingSubscription();
@@ -331,6 +390,29 @@ internal sealed class BackdropBlurRefreshCoordinator
         }
 
         return false;
+    }
+
+    private static bool IsInsideAnyScope(
+        BackdropBlurBorder control,
+        IReadOnlyList<FrameworkElement> scopes)
+    {
+        foreach (var scope in scopes)
+        {
+            if (!scope.IsVisible)
+                continue;
+
+            if (ReferenceEquals(scope, control) || scope.IsAncestorOf(control))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsImageControlBlurEnabled(FrameworkElement scope)
+    {
+        return scope.TryFindResource(ImageBackgroundEnabledResourceKey) is true
+            && (scope.TryFindResource(SurfaceBlurEnabledResourceKey) is true
+                || scope.TryFindResource(SecondaryMenuBlurEnabledResourceKey) is true);
     }
 
     private void EnsureWindowObservation()

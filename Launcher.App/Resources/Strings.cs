@@ -447,6 +447,7 @@ public static class Strings
     public static string Settings_BackgroundImageSelectionLabel => Get(nameof(Settings_BackgroundImageSelectionLabel));
     public static string Settings_BackgroundImageSelectionDescription => Get(nameof(Settings_BackgroundImageSelectionDescription));
     public static string Settings_BackgroundImageControlBlurLabel => Get(nameof(Settings_BackgroundImageControlBlurLabel));
+    public static string Settings_BackgroundImageControlBlurDescription => Get(nameof(Settings_BackgroundImageControlBlurDescription));
     public static string Settings_BackgroundImageOpenFolderButton => Get(nameof(Settings_BackgroundImageOpenFolderButton));
     public static string Settings_BackgroundImageRefreshButton => Get(nameof(Settings_BackgroundImageRefreshButton));
     public static string Settings_BackgroundImageClearButton => Get(nameof(Settings_BackgroundImageClearButton));

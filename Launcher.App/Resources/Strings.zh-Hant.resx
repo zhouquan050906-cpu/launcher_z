@@ -927,6 +927,9 @@
   <data name="Settings_BackgroundImageControlBlurLabel" xml:space="preserve">
     <value>啟用控制項模糊</value>
   </data>
+  <data name="Settings_BackgroundImageControlBlurDescription" xml:space="preserve">
+    <value>為半透明控制項新增高斯模糊效果。啟用此選項後可能會導致卡頓。</value>
+  </data>
   <data name="Settings_BackgroundImageOpenFolderButton" xml:space="preserve">
     <value>開啟資料夾</value>
   </data>

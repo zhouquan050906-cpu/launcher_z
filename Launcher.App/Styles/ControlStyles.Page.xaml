@@ -407,7 +407,8 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Card.Border}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="8" />
-        <Setter Property="Effect" Value="{DynamicResource Effect.Card.Surface}" />
+        <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect"
+                Value="{DynamicResource Effect.Card.Surface}" />
         <Setter Property="behaviors:BackdropBlurHost.IsApplied" Value="True" />
         <Setter Property="behaviors:BackdropBlurHost.IsBlurEnabled" Value="{DynamicResource Is.Surface.BackdropBlur.Enabled}" />
         <Setter Property="behaviors:BackdropBlurHost.FallbackBrush" Value="{DynamicResource Brush.Card.Surface}" />
@@ -415,7 +416,7 @@
         <Style.Triggers>
             <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType={x:Type Border}}, Path=(behaviors:SurfaceShadow.SuppressChildShadows)}"
                          Value="True">
-                <Setter Property="Effect" Value="{x:Null}" />
+                <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect" Value="{x:Null}" />
             </DataTrigger>
         </Style.Triggers>
     </Style>

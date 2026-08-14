@@ -112,6 +112,10 @@ public sealed class SkinPreview3DControl : Viewport3D
 /// </summary>
 internal static class MinecraftSkinPreviewModelBuilder
 {
+    // Eight atlas pixels per source texel still exceeds the largest on-screen texel
+    // footprint in the account carousel while reducing texture area by 75% from 16x.
+    private const int AtlasPixelScale = 8;
+
     public static AmbientLight CreateAmbientLight()
     {
         return new AmbientLight(Color.FromRgb(160, 160, 160));
@@ -136,6 +140,178 @@ internal static class MinecraftSkinPreviewModelBuilder
     }
 
     public static Model3DGroup BuildPlayerModel(
+        BitmapSource skin,
+        MinecraftSkinModel? skinModel,
+        double brightness = 1)
+    {
+        ArgumentNullException.ThrowIfNull(skin);
+        var height = Math.Max(skin.PixelHeight, 32);
+        var armWidth = MinecraftSkinPreviewGeometry.GetArmWidth(skinModel);
+        var hasHeadOverlay = MinecraftSkinPreviewGeometry.CanUseHeadOverlay(skin.PixelWidth, height);
+        var hasSecondLayer = MinecraftSkinPreviewGeometry.CanUseSecondLayer(height);
+        var faces = new List<BatchedSkinFace>(72);
+
+        AddBatchedCuboid(faces, new Rect3D(-4, 12, -4, 8, 8, 8), SkinPart.Head);
+        AddBatchedCuboid(faces, new Rect3D(-4, 0, -2, 8, 12, 4), SkinPart.Body);
+        AddBatchedCuboid(faces, new Rect3D(-4, -12, -2, 4, 12, 4), SkinPart.RightLeg);
+        AddBatchedCuboid(faces, new Rect3D(0, -12, -2, 4, 12, 4), hasSecondLayer ? SkinPart.LeftLeg : SkinPart.RightLeg);
+        AddBatchedCuboid(faces, new Rect3D(-4 - armWidth, 0, -2, armWidth, 12, 4), SkinPart.RightArm, armWidth);
+        AddBatchedCuboid(faces, new Rect3D(4, 0, -2, armWidth, 12, 4), hasSecondLayer ? SkinPart.LeftArm : SkinPart.RightArm, armWidth);
+
+        if (hasHeadOverlay)
+            AddBatchedCuboid(faces, new Rect3D(-4.35, 11.65, -4.35, 8.7, 8.7, 8.7), SkinPart.HeadOverlay, isOverlay: true);
+
+        if (hasSecondLayer)
+        {
+            AddBatchedCuboid(faces, new Rect3D(-4.25, -0.25, -2.25, 8.5, 12.5, 4.5), SkinPart.BodyOverlay, isOverlay: true);
+            AddBatchedCuboid(faces, new Rect3D(-4.25, -12.25, -2.25, 4.5, 12.5, 4.5), SkinPart.RightLegOverlay, isOverlay: true);
+            AddBatchedCuboid(faces, new Rect3D(-0.25, -12.25, -2.25, 4.5, 12.5, 4.5), SkinPart.LeftLegOverlay, isOverlay: true);
+            AddBatchedCuboid(faces, new Rect3D(-4.25 - armWidth, -0.25, -2.25, armWidth + 0.5, 12.5, 4.5), SkinPart.RightArmOverlay, armWidth, true);
+            AddBatchedCuboid(faces, new Rect3D(3.75, -0.25, -2.25, armWidth + 0.5, 12.5, 4.5), SkinPart.LeftArmOverlay, armWidth, true);
+        }
+
+        var model = new Model3DGroup();
+        AddBatchedLayer(model, skin, faces.Where(item => !item.IsOverlay), brightness, opaqueUnusedPixels: true);
+        AddBatchedLayer(model, skin, faces.Where(item => item.IsOverlay), brightness, opaqueUnusedPixels: false);
+        var rotation = new AxisAngleRotation3D(new Vector3D(1, 0, 0), 2);
+        rotation.Freeze();
+        var transform = new RotateTransform3D(rotation);
+        transform.Freeze();
+        model.Transform = transform;
+        model.Freeze();
+        return model;
+    }
+
+    private static void AddBatchedLayer(
+        Model3DGroup model,
+        BitmapSource skin,
+        IEnumerable<BatchedSkinFace> layerFaces,
+        double brightness,
+        bool opaqueUnusedPixels)
+    {
+        var faces = layerFaces.ToArray();
+        if (faces.Length == 0)
+            return;
+
+        // Base and translucent overlay layers must use separate images. If a material's
+        // image contains any translucent pixels, WPF treats the whole GeometryModel3D as
+        // translucent and stops the opaque base faces from occluding their rear faces.
+        var atlas = PreviewTextureAtlasBuilder.Build(
+            skin,
+            faces.Select(item => item.TextureRect),
+            pixelScale: AtlasPixelScale,
+            brightness,
+            maximumSourceRowWidth: 128,
+            opaqueUnusedPixels);
+        var brush = new ImageBrush(atlas.Bitmap)
+        {
+            Stretch = Stretch.Fill,
+            TileMode = TileMode.None
+        };
+        RenderOptions.SetBitmapScalingMode(brush, BitmapScalingMode.NearestNeighbor);
+        brush.Freeze();
+        var material = new DiffuseMaterial(brush);
+        material.Freeze();
+        var mesh = new PreviewMeshBuilder();
+        foreach (var face in faces)
+            AddBatchedFace(mesh, face.Bounds, face.Face, atlas.TextureCoordinates[face.TextureRect]);
+        AddBatchedMeshModel(model, mesh, material);
+    }
+
+    private static void AddBatchedCuboid(
+        ICollection<BatchedSkinFace> target,
+        Rect3D bounds,
+        SkinPart part,
+        int armWidth = 4,
+        bool isOverlay = false)
+    {
+        var faces = MinecraftSkinPreviewGeometry.GetFaces(part, armWidth);
+        target.Add(new BatchedSkinFace(bounds, CubeFace.Front, faces.Front, isOverlay));
+        target.Add(new BatchedSkinFace(bounds, CubeFace.Back, faces.Back, isOverlay));
+        target.Add(new BatchedSkinFace(bounds, CubeFace.Left, faces.Left, isOverlay));
+        target.Add(new BatchedSkinFace(bounds, CubeFace.Right, faces.Right, isOverlay));
+        target.Add(new BatchedSkinFace(bounds, CubeFace.Top, faces.Top, isOverlay));
+        target.Add(new BatchedSkinFace(bounds, CubeFace.Bottom, faces.Bottom, isOverlay));
+    }
+
+    private static void AddBatchedFace(PreviewMeshBuilder mesh, Rect3D bounds, CubeFace face, Rect textureCoordinates)
+    {
+        var x0 = bounds.X;
+        var x1 = bounds.X + bounds.SizeX;
+        var y0 = bounds.Y;
+        var y1 = bounds.Y + bounds.SizeY;
+        var z0 = bounds.Z;
+        var z1 = bounds.Z + bounds.SizeZ;
+
+        Point3D p0;
+        Point3D p1;
+        Point3D p2;
+        Point3D p3;
+        switch (face)
+        {
+            case CubeFace.Front:
+                p0 = new Point3D(x0, y1, z1);
+                p1 = new Point3D(x1, y1, z1);
+                p2 = new Point3D(x1, y0, z1);
+                p3 = new Point3D(x0, y0, z1);
+                break;
+            case CubeFace.Back:
+                p0 = new Point3D(x1, y1, z0);
+                p1 = new Point3D(x0, y1, z0);
+                p2 = new Point3D(x0, y0, z0);
+                p3 = new Point3D(x1, y0, z0);
+                break;
+            case CubeFace.Left:
+                p0 = new Point3D(x0, y1, z0);
+                p1 = new Point3D(x0, y1, z1);
+                p2 = new Point3D(x0, y0, z1);
+                p3 = new Point3D(x0, y0, z0);
+                break;
+            case CubeFace.Right:
+                p0 = new Point3D(x1, y1, z1);
+                p1 = new Point3D(x1, y1, z0);
+                p2 = new Point3D(x1, y0, z0);
+                p3 = new Point3D(x1, y0, z1);
+                break;
+            case CubeFace.Top:
+                p0 = new Point3D(x0, y1, z0);
+                p1 = new Point3D(x1, y1, z0);
+                p2 = new Point3D(x1, y1, z1);
+                p3 = new Point3D(x0, y1, z1);
+                break;
+            default:
+                p0 = new Point3D(x0, y0, z1);
+                p1 = new Point3D(x1, y0, z1);
+                p2 = new Point3D(x1, y0, z0);
+                p3 = new Point3D(x0, y0, z0);
+                break;
+        }
+
+        // Keep the legacy inward winding exactly as-is. Both material sides are retained
+        // because user-authored skins may contain transparent base pixels and relied on
+        // the original rear-face contribution to preserve their visible composition.
+        mesh.AddQuad(p0, p1, p2, p3, textureCoordinates);
+    }
+
+    private static void AddBatchedMeshModel(Model3DGroup target, PreviewMeshBuilder mesh, Material material)
+    {
+        if (mesh.QuadCount == 0)
+            return;
+
+        var geometryModel = new GeometryModel3D
+        {
+            Geometry = mesh.Build(anchorUnitTextureCoordinates: true),
+            Material = material,
+            BackMaterial = material
+        };
+        geometryModel.Freeze();
+        target.Children.Add(geometryModel);
+    }
+
+    private sealed record BatchedSkinFace(Rect3D Bounds, CubeFace Face, Int32Rect TextureRect, bool IsOverlay);
+
+#if false
+    private static Model3DGroup BuildPlayerModelLegacy(
         BitmapSource skin,
         MinecraftSkinModel? skinModel,
         double brightness = 1)
@@ -356,6 +532,7 @@ internal static class MinecraftSkinPreviewModelBuilder
         return converted;
     }
 
+#endif
     private enum CubeFace
     {
         Front,

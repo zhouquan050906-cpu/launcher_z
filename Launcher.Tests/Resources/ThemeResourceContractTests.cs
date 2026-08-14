@@ -49,10 +49,10 @@ public sealed class ThemeResourceContractTests
             .Where(element => element.Name.LocalName == "DropShadowEffect"
                 && element.Attribute(xaml + "Key")?.Value == "Effect.Card.Surface"));
 
-        Assert.Equal("15", shadow.Attribute("BlurRadius")?.Value);
+        Assert.Equal("17", shadow.Attribute("BlurRadius")?.Value);
         Assert.Equal("270", shadow.Attribute("Direction")?.Value);
-        Assert.Equal("0.15", shadow.Attribute("Opacity")?.Value);
-        Assert.Equal("2", shadow.Attribute("ShadowDepth")?.Value);
+        Assert.Equal("0.13", shadow.Attribute("Opacity")?.Value);
+        Assert.Equal("0", shadow.Attribute("ShadowDepth")?.Value);
     }
 
     private static HashSet<string> LoadKeys(string fileName)

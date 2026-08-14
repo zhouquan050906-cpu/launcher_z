@@ -927,6 +927,9 @@
   <data name="Settings_BackgroundImageControlBlurLabel" xml:space="preserve">
     <value>コントロールのぼかしを有効にする</value>
   </data>
+  <data name="Settings_BackgroundImageControlBlurDescription" xml:space="preserve">
+    <value>半透明のコントロールにガウスぼかし効果を追加します。このオプションを有効にすると、動作がカクつく場合があります。</value>
+  </data>
   <data name="Settings_BackgroundImageOpenFolderButton" xml:space="preserve">
     <value>フォルダーを開く</value>
   </data>
