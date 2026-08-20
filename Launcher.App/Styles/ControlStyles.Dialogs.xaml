@@ -305,7 +305,8 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Card.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Input.TextBox.Border}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Effect" Value="{DynamicResource Effect.Card.Surface}" />
+        <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect"
+                Value="{DynamicResource Effect.Card.Surface}" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Cursor" Value="Hand" />
@@ -323,6 +324,7 @@
                                     behaviors:BackdropBlurHost.IsApplied="True"
                                     behaviors:BackdropBlurHost.IsBlurEnabled="{DynamicResource Is.Surface.BackdropBlur.Enabled}"
                                     behaviors:BackdropBlurHost.FallbackBrush="{TemplateBinding Background}"
+                                    behaviors:BackdropBlurHost.LightweightShadowEffect="{Binding Path=(behaviors:BackdropBlurHost.LightweightShadowEffect), RelativeSource={RelativeSource TemplatedParent}}"
                                     CornerRadius="8" />
                             <Border x:Name="SurfaceContrastLayer"
                                     Background="{DynamicResource Brush.Button.Secondary.Background}"
@@ -393,7 +395,7 @@
         </Setter>
         <Style.Triggers>
             <Trigger Property="behaviors:SurfaceShadow.SuppressChildShadows" Value="True">
-                <Setter Property="Effect" Value="{x:Null}" />
+                <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect" Value="{x:Null}" />
             </Trigger>
         </Style.Triggers>
     </Style>
@@ -413,6 +415,7 @@
                                     Background="{TemplateBinding Background}"
                                     behaviors:BackdropBlurHost.IsApplied="True"
                                     behaviors:BackdropBlurHost.FallbackBrush="{TemplateBinding Background}"
+                                    behaviors:BackdropBlurHost.LightweightShadowEffect="{Binding Path=(behaviors:BackdropBlurHost.LightweightShadowEffect), RelativeSource={RelativeSource TemplatedParent}}"
                                     CornerRadius="8" />
                             <Border x:Name="SurfaceContrastLayer"
                                     Background="{DynamicResource Brush.Button.Secondary.Background}"
@@ -503,6 +506,7 @@
                                     Background="{TemplateBinding Background}"
                                     behaviors:BackdropBlurHost.IsApplied="True"
                                     behaviors:BackdropBlurHost.FallbackBrush="{TemplateBinding Background}"
+                                    behaviors:BackdropBlurHost.LightweightShadowEffect="{Binding Path=(behaviors:BackdropBlurHost.LightweightShadowEffect), RelativeSource={RelativeSource TemplatedParent}}"
                                     CornerRadius="8" />
                             <Border x:Name="SurfaceContrastLayer"
                                     Background="{DynamicResource Brush.Button.Secondary.Background}"

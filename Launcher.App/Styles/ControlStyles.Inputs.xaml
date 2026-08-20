@@ -37,7 +37,8 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Card.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Input.TextBox.Border}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Effect" Value="{DynamicResource Effect.Card.Surface}" />
+        <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect"
+                Value="{DynamicResource Effect.Card.Surface}" />
         <Setter Property="CaretBrush" Value="{DynamicResource Brush.F4F4F4}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="TextWrapping" Value="NoWrap" />
@@ -50,6 +51,7 @@
                             behaviors:BackdropBlurHost.IsApplied="True"
                             behaviors:BackdropBlurHost.IsBlurEnabled="{DynamicResource Is.Surface.BackdropBlur.Enabled}"
                             behaviors:BackdropBlurHost.FallbackBrush="{TemplateBinding Background}"
+                            behaviors:BackdropBlurHost.LightweightShadowEffect="{Binding Path=(behaviors:BackdropBlurHost.LightweightShadowEffect), RelativeSource={RelativeSource TemplatedParent}}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="8">
@@ -119,7 +121,7 @@
         </Setter>
         <Style.Triggers>
             <Trigger Property="behaviors:SurfaceShadow.SuppressChildShadows" Value="True">
-                <Setter Property="Effect" Value="{x:Null}" />
+                <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect" Value="{x:Null}" />
             </Trigger>
         </Style.Triggers>
     </Style>
@@ -132,7 +134,8 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Card.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Input.TextBox.Border}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Effect" Value="{DynamicResource Effect.Card.Surface}" />
+        <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect"
+                Value="{DynamicResource Effect.Card.Surface}" />
         <Setter Property="CaretBrush" Value="{DynamicResource Brush.F4F4F4}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True" />
@@ -143,6 +146,7 @@
                             behaviors:BackdropBlurHost.IsApplied="True"
                             behaviors:BackdropBlurHost.IsBlurEnabled="{DynamicResource Is.Surface.BackdropBlur.Enabled}"
                             behaviors:BackdropBlurHost.FallbackBrush="{TemplateBinding Background}"
+                            behaviors:BackdropBlurHost.LightweightShadowEffect="{Binding Path=(behaviors:BackdropBlurHost.LightweightShadowEffect), RelativeSource={RelativeSource TemplatedParent}}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="8">
@@ -196,7 +200,7 @@
         </Setter>
         <Style.Triggers>
             <Trigger Property="behaviors:SurfaceShadow.SuppressChildShadows" Value="True">
-                <Setter Property="Effect" Value="{x:Null}" />
+                <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect" Value="{x:Null}" />
             </Trigger>
         </Style.Triggers>
     </Style>
@@ -242,6 +246,7 @@
                             behaviors:BackdropBlurHost.IsApplied="True"
                             behaviors:BackdropBlurHost.IsBlurEnabled="{DynamicResource Is.Surface.BackdropBlur.Enabled}"
                             behaviors:BackdropBlurHost.FallbackBrush="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                            behaviors:BackdropBlurHost.LightweightShadowEffect="{Binding Path=(behaviors:BackdropBlurHost.LightweightShadowEffect), RelativeSource={RelativeSource AncestorType=ComboBox}}"
                             BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                             BorderThickness="{Binding BorderThickness, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                             CornerRadius="8">
@@ -428,7 +433,8 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Card.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Input.TextBox.Border}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Effect" Value="{DynamicResource Effect.Card.Surface}" />
+        <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect"
+                Value="{DynamicResource Effect.Card.Surface}" />
         <Setter Property="MaxDropDownHeight" Value="260" />
         <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
         <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
@@ -888,7 +894,7 @@
         </Setter>
         <Style.Triggers>
             <Trigger Property="behaviors:SurfaceShadow.SuppressChildShadows" Value="True">
-                <Setter Property="Effect" Value="{x:Null}" />
+                <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect" Value="{x:Null}" />
             </Trigger>
         </Style.Triggers>
     </Style>
