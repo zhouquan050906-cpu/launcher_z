@@ -39,10 +39,31 @@ internal static class UiPerformanceLog
     private static int hasLoggedRenderEnvironment;
 
     /// <summary>
-    /// 诊断日志开启时最低级别为 Verbose，关闭时为 Information，
-    /// 因此 Debug 是否启用正好等价于“用户打开了诊断日志”。
+    /// 界面性能埋点默认完全关闭，不随诊断日志开关一起输出：
+    /// 它的采样字段是为性能调查准备的，混进常规诊断日志只会淹没真正有用的信息。
+    /// 需要排查卡顿时，把环境变量 <c>BHL_UI_PERF_DIAG</c> 设为 1（或 true/yes/on）
+    /// 并同时打开诊断日志开关，采样即恢复。
     /// </summary>
-    internal static bool IsEnabled => Log.IsEnabled(LogEventLevel.Debug);
+    internal static bool IsEnabled => IsInstrumentationRequested && Log.IsEnabled(LogEventLevel.Debug);
+
+    internal const string InstrumentationVariableName = "BHL_UI_PERF_DIAG";
+
+    /// <summary>
+    /// 环境变量只在进程启动时读一次：埋点判断位于每帧路径上，
+    /// 不能承担反复查询环境变量的开销。
+    /// </summary>
+    private static readonly bool IsInstrumentationRequested =
+        IsTruthy(Environment.GetEnvironmentVariable(InstrumentationVariableName));
+
+    internal static bool IsTruthy(string? value)
+    {
+        var trimmed = value?.Trim();
+        return trimmed is not null
+            && (trimmed.Equals("1", StringComparison.Ordinal)
+                || trimmed.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || trimmed.Equals("yes", StringComparison.OrdinalIgnoreCase)
+                || trimmed.Equals("on", StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// 开始一次交互采样。关闭诊断日志或不在 UI 线程时返回不做任何事的作用域。
@@ -92,15 +113,19 @@ internal static class UiPerformanceLog
 
     /// <summary>
     /// 在启动时记录一次渲染环境快照。渲染层级和软件渲染是老机器卡顿的首要判定依据，
-    /// 单行且每进程只写一次，因此保留在 Information 级别，便于直接从用户日志中读取。
+    /// 所以它跟随诊断日志开关而不是埋点环境变量：用户报障时只会被引导着打开诊断日志，
+    /// 藏在环境变量后面等于拿不到。单行且每进程只写一次，常规运行不会看到它。
     /// </summary>
     internal static void LogRenderEnvironment(SystemMemorySnapshot? memorySnapshot, Visual? dpiSource)
     {
+        if (!Log.IsEnabled(LogEventLevel.Debug))
+            return;
+
         if (Interlocked.Exchange(ref hasLoggedRenderEnvironment, 1) != 0)
             return;
 
         var dpiScale = TryGetDpiScale(dpiSource);
-        Log.Information(
+        Log.Debug(
             "Render environment evaluated. RenderTier={RenderTier} ProcessRenderMode={ProcessRenderMode} "
             + "PixelShader30Supported={PixelShader30Supported} MaxTextureSize={MaxTextureWidth}x{MaxTextureHeight} "
             + "DpiScale={DpiScale} ProcessorCount={ProcessorCount} TotalMemoryMb={TotalMemoryMb} "

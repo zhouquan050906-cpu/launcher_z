@@ -56,7 +56,9 @@ internal sealed class UiThreadStallMonitor : IDisposable
 
     internal void Start()
     {
-        if (isDisposed || timer.IsEnabled)
+        // 埋点未开启时连探测定时器都不要启动：
+        // 它的回调会周期性唤醒 Dispatcher，而这些唤醒对普通运行没有任何价值。
+        if (isDisposed || timer.IsEnabled || !UiPerformanceLog.IsEnabled)
             return;
 
         lastTickTimestamp = Stopwatch.GetTimestamp();
