@@ -66,6 +66,16 @@ public static class SmoothScrollBehavior
             typeof(SmoothScrollBehavior),
             new PropertyMetadata(130d));
 
+    // 逐帧时钟。必须由动画系统驱动：WPF 一帧的顺序是动画 tick -> 布局 ->
+    // CompositionTarget.Rendering，只有在 tick 阶段改写偏移，同一帧的布局才能生效，
+    // 依赖控件位置的背板模糊几何才不会滞后一帧出现错位。
+    private static readonly DependencyProperty MomentumClockProperty =
+        DependencyProperty.RegisterAttached(
+            "MomentumClock",
+            typeof(double),
+            typeof(SmoothScrollBehavior),
+            new PropertyMetadata(0d, OnMomentumClockChanged));
+
     // 每个滚动区域的动量状态：一组仍在衰减的滚轮冲量，以及它们累积出的偏移。
     private static readonly DependencyProperty MomentumProperty =
         DependencyProperty.RegisterAttached(
@@ -391,20 +401,35 @@ public static class SmoothScrollBehavior
 
     private static void EnsureRenderingHook(ScrollViewer scrollViewer, ScrollMomentum momentum)
     {
-        if (momentum.RenderingHandler is not null)
+        if (momentum.IsClockRunning)
             return;
 
-        momentum.RenderingHandler = (_, _) => AdvanceMomentum(scrollViewer, momentum);
-        CompositionTarget.Rendering += momentum.RenderingHandler;
+        momentum.IsClockRunning = true;
+        // 时钟的取值本身没有意义，只借动画系统在每帧的正确阶段触发回调。
+        scrollViewer.BeginAnimation(
+            MomentumClockProperty,
+            new DoubleAnimation(0d, 1d, new Duration(TimeSpan.FromSeconds(1)))
+            {
+                RepeatBehavior = RepeatBehavior.Forever
+            });
     }
 
     private static void ReleaseRenderingHook(ScrollViewer scrollViewer, ScrollMomentum momentum)
     {
-        if (momentum.RenderingHandler is null)
+        if (!momentum.IsClockRunning)
             return;
 
-        CompositionTarget.Rendering -= momentum.RenderingHandler;
-        momentum.RenderingHandler = null;
+        momentum.IsClockRunning = false;
+        scrollViewer.BeginAnimation(MomentumClockProperty, null);
+    }
+
+    private static void OnMomentumClockChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is ScrollViewer scrollViewer
+            && scrollViewer.GetValue(MomentumProperty) is ScrollMomentum momentum)
+        {
+            AdvanceMomentum(scrollViewer, momentum);
+        }
     }
 
     /// <summary>
@@ -451,7 +476,7 @@ public static class SmoothScrollBehavior
 
         internal double Offset { get; set; }
 
-        internal EventHandler? RenderingHandler { get; set; }
+        internal bool IsClockRunning { get; set; }
     }
 
     private sealed class ScrollImpulse
