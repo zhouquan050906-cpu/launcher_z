@@ -17,6 +17,7 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -32,6 +33,10 @@ namespace Launcher.App.Behaviors;
 /// </summary>
 public static class SmoothScrollBehavior
 {
+    // EaseOut 指数。与原先的 CubicEase 一致，冲量在开始时最快、随后平滑衰减。
+    private const double EasingExponent = 3d;
+    private const double MinimumFrameDelta = 0.001d;
+
     // 附加属性保存目标偏移和动画版本，使行为无需全局字典即可随控件生命周期回收。
     public static readonly DependencyProperty IsEnabledProperty =
         DependencyProperty.RegisterAttached(
@@ -61,19 +66,13 @@ public static class SmoothScrollBehavior
             typeof(SmoothScrollBehavior),
             new PropertyMetadata(130d));
 
-    private static readonly DependencyProperty AnimatedVerticalOffsetProperty =
+    // 每个滚动区域的动量状态：一组仍在衰减的滚轮冲量，以及它们累积出的偏移。
+    private static readonly DependencyProperty MomentumProperty =
         DependencyProperty.RegisterAttached(
-            "AnimatedVerticalOffset",
-            typeof(double),
+            "Momentum",
+            typeof(ScrollMomentum),
             typeof(SmoothScrollBehavior),
-            new PropertyMetadata(0d, OnAnimatedVerticalOffsetChanged));
-
-    private static readonly DependencyProperty TargetVerticalOffsetProperty =
-        DependencyProperty.RegisterAttached(
-            "TargetVerticalOffset",
-            typeof(double),
-            typeof(SmoothScrollBehavior),
-            new PropertyMetadata(double.NaN));
+            new PropertyMetadata(null));
 
     private static readonly DependencyProperty IsInternalScrollUpdateProperty =
         DependencyProperty.RegisterAttached(
@@ -122,11 +121,16 @@ public static class SmoothScrollBehavior
 
     public static void CancelAnimation(ScrollViewer scrollViewer)
     {
-        // 取消时将目标同步到当前实际位置，下一次滚轮从用户看到的位置继续。
+        // 取消时丢弃全部剩余冲量，并把动量同步到当前实际位置，
+        // 下一次滚轮从用户看到的位置重新开始累积。
         ReleaseInteractionScope(scrollViewer);
-        scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, null);
-        SetAnimatedVerticalOffset(scrollViewer, scrollViewer.VerticalOffset);
-        SetTargetVerticalOffset(scrollViewer, scrollViewer.VerticalOffset);
+        if (scrollViewer.GetValue(MomentumProperty) is ScrollMomentum momentum)
+        {
+            momentum.Impulses.Clear();
+            momentum.Offset = scrollViewer.VerticalOffset;
+            ReleaseRenderingHook(scrollViewer, momentum);
+        }
+
         SetIsAnimating(scrollViewer, false);
     }
 
@@ -139,13 +143,6 @@ public static class SmoothScrollBehavior
         return true;
     }
 
-    private static double GetAnimatedVerticalOffset(DependencyObject element) => (double)element.GetValue(AnimatedVerticalOffsetProperty);
-
-    private static void SetAnimatedVerticalOffset(DependencyObject element, double value) => element.SetValue(AnimatedVerticalOffsetProperty, value);
-
-    private static double GetTargetVerticalOffset(DependencyObject element) => (double)element.GetValue(TargetVerticalOffsetProperty);
-
-    private static void SetTargetVerticalOffset(DependencyObject element, double value) => element.SetValue(TargetVerticalOffsetProperty, value);
 
     private static bool GetIsInternalScrollUpdate(DependencyObject element) => (bool)element.GetValue(IsInternalScrollUpdateProperty);
 
@@ -155,7 +152,7 @@ public static class SmoothScrollBehavior
 
     private static void SetIsAnimating(DependencyObject element, bool value) => element.SetValue(IsAnimatingProperty, value);
 
-    private static void EnsureInteractionScope(ScrollViewer scrollViewer)
+    private static void BeginScrollInteractionScope(ScrollViewer scrollViewer)
     {
         if (scrollViewer.GetValue(InteractionScopeProperty) is UiInteractionScope)
             return;
@@ -250,17 +247,14 @@ public static class SmoothScrollBehavior
             scrollViewer.PreviewMouseWheel += ScrollViewer_PreviewMouseWheel;
             scrollViewer.ScrollChanged += ScrollViewer_ScrollChanged;
             scrollViewer.Unloaded += ScrollViewer_Unloaded;
-            SetAnimatedVerticalOffset(scrollViewer, scrollViewer.VerticalOffset);
-            SetTargetVerticalOffset(scrollViewer, scrollViewer.VerticalOffset);
+            EnsureMomentum(scrollViewer).Offset = scrollViewer.VerticalOffset;
             return;
         }
 
         scrollViewer.PreviewMouseWheel -= ScrollViewer_PreviewMouseWheel;
         scrollViewer.ScrollChanged -= ScrollViewer_ScrollChanged;
         scrollViewer.Unloaded -= ScrollViewer_Unloaded;
-        ReleaseInteractionScope(scrollViewer);
-        scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, null);
-        SetIsAnimating(scrollViewer, false);
+        CancelAnimation(scrollViewer);
     }
 
     private static void UpdateDescendantScrollHost(DependencyObject d, bool isEnabled)
@@ -295,11 +289,7 @@ public static class SmoothScrollBehavior
     private static void ScrollViewer_Unloaded(object sender, RoutedEventArgs e)
     {
         if (sender is ScrollViewer scrollViewer)
-        {
-            ReleaseInteractionScope(scrollViewer);
-            scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, null);
-            SetIsAnimating(scrollViewer, false);
-        }
+            CancelAnimation(scrollViewer);
     }
 
     private static void ScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
@@ -312,8 +302,12 @@ public static class SmoothScrollBehavior
             return;
         }
 
-        SetAnimatedVerticalOffset(scrollViewer, scrollViewer.VerticalOffset);
-        SetTargetVerticalOffset(scrollViewer, scrollViewer.VerticalOffset);
+        if (scrollViewer.GetValue(MomentumProperty) is ScrollMomentum momentum)
+        {
+            momentum.Impulses.Clear();
+            momentum.Offset = scrollViewer.VerticalOffset;
+            ReleaseRenderingHook(scrollViewer, momentum);
+        }
     }
 
     private static void ScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -332,71 +326,144 @@ public static class SmoothScrollBehavior
 
     private static bool HandleMouseWheel(ScrollViewer scrollViewer, MouseWheelEventArgs e, DependencyObject optionsSource)
     {
-        // 多次滚轮在当前目标值上累加，而不是每次从实际偏移重启，快速滚动仍保持连续。
+        // 每次滚轮叠加一个独立衰减的冲量，而不是重建一个指向新目标的动画。
+        // 连续滚动时多个冲量同时生效，速度保持连续，不会出现"快-慢-快"的顿挫。
         if (scrollViewer.ScrollableHeight <= 0
             || (scrollViewer.CanContentScroll && !GetAllowContentScroll(optionsSource)))
         {
             return false;
         }
 
-        var currentOffset = GetAnimatedVerticalOffset(scrollViewer);
-        if (double.IsNaN(currentOffset) || double.IsInfinity(currentOffset))
-            currentOffset = scrollViewer.VerticalOffset;
-
-        var targetOffset = GetTargetVerticalOffset(scrollViewer);
-        if (double.IsNaN(targetOffset) || double.IsInfinity(targetOffset))
-            targetOffset = currentOffset;
-
         var wheelStep = GetScrollAmount(optionsSource) * Math.Max(1d, Math.Abs(e.Delta) / 120d);
         var delta = e.Delta > 0 ? -wheelStep : wheelStep;
-        var nextOffset = Math.Clamp(targetOffset + delta, 0d, scrollViewer.ScrollableHeight);
+        var momentum = EnsureMomentum(scrollViewer);
+        var projected = Math.Clamp(
+            momentum.Offset + GetRemainingDelta(momentum),
+            0d,
+            scrollViewer.ScrollableHeight);
 
-        if (Math.Abs(nextOffset - targetOffset) < 0.1d && Math.Abs(nextOffset - currentOffset) < 0.1d)
+        // 已经贴住边界且继续朝同方向滚动时不再累积，避免空转的冲量。
+        if ((delta < 0d && projected <= 0.1d)
+            || (delta > 0d && projected >= scrollViewer.ScrollableHeight - 0.1d))
         {
             e.Handled = true;
             return true;
         }
 
-        SetTargetVerticalOffset(scrollViewer, nextOffset);
-        SetAnimatedVerticalOffset(scrollViewer, currentOffset);
-        SetIsAnimating(scrollViewer, true);
-        // 连续滚轮共用同一个会话，掉帧摘要覆盖整段滚动而不是单次滚轮。
-        EnsureInteractionScope(scrollViewer);
-        // 版本号使旧动画 Completed 回调失效，避免它清理刚启动的新动画状态。
-        var animationVersion = GetAnimationVersion(scrollViewer) + 1;
-        SetAnimationVersion(scrollViewer, animationVersion);
-
         var durationMilliseconds = GetWheelAnimationDurationMilliseconds(optionsSource);
         if (GetAllowContentScroll(optionsSource))
             durationMilliseconds = Math.Clamp(durationMilliseconds, 100d, 160d);
 
-        var animation = new DoubleAnimation
+        momentum.Impulses.Add(new ScrollImpulse
         {
-            From = currentOffset,
-            To = nextOffset,
-            Duration = TimeSpan.FromMilliseconds(durationMilliseconds),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-            FillBehavior = FillBehavior.Stop
-        };
+            TotalDelta = delta,
+            StartedAt = Stopwatch.GetTimestamp(),
+            DurationMilliseconds = Math.Max(durationMilliseconds, 1d)
+        });
 
-        animation.Completed += (_, _) =>
-        {
-            if (GetAnimationVersion(scrollViewer) != animationVersion)
-                return;
-
-            SetIsInternalScrollUpdate(scrollViewer, true);
-            scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, null);
-            SetAnimatedVerticalOffset(scrollViewer, nextOffset);
-            scrollViewer.ScrollToVerticalOffset(nextOffset);
-            SetTargetVerticalOffset(scrollViewer, nextOffset);
-            SetIsInternalScrollUpdate(scrollViewer, false);
-            SetIsAnimating(scrollViewer, false);
-            ReleaseInteractionScope(scrollViewer);
-        };
-
-        scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
+        SetIsAnimating(scrollViewer, true);
+        BeginScrollInteractionScope(scrollViewer);
+        EnsureRenderingHook(scrollViewer, momentum);
         e.Handled = true;
         return true;
+    }
+
+    private static ScrollMomentum EnsureMomentum(ScrollViewer scrollViewer)
+    {
+        if (scrollViewer.GetValue(MomentumProperty) is ScrollMomentum existing)
+            return existing;
+
+        var momentum = new ScrollMomentum { Offset = scrollViewer.VerticalOffset };
+        scrollViewer.SetValue(MomentumProperty, momentum);
+        return momentum;
+    }
+
+    /// <summary>
+    /// 所有在途冲量尚未兑现的位移之和，用于在累积新冲量前判断是否已经到边界。
+    /// </summary>
+    private static double GetRemainingDelta(ScrollMomentum momentum)
+    {
+        var remaining = 0d;
+        foreach (var impulse in momentum.Impulses)
+            remaining += impulse.TotalDelta * (1d - impulse.AppliedProgress);
+        return remaining;
+    }
+
+    private static void EnsureRenderingHook(ScrollViewer scrollViewer, ScrollMomentum momentum)
+    {
+        if (momentum.RenderingHandler is not null)
+            return;
+
+        momentum.RenderingHandler = (_, _) => AdvanceMomentum(scrollViewer, momentum);
+        CompositionTarget.Rendering += momentum.RenderingHandler;
+    }
+
+    private static void ReleaseRenderingHook(ScrollViewer scrollViewer, ScrollMomentum momentum)
+    {
+        if (momentum.RenderingHandler is null)
+            return;
+
+        CompositionTarget.Rendering -= momentum.RenderingHandler;
+        momentum.RenderingHandler = null;
+    }
+
+    /// <summary>
+    /// 每个合成帧推进一次：累加所有在途冲量在这一帧新增的位移，然后一次性提交。
+    /// </summary>
+    private static void AdvanceMomentum(ScrollViewer scrollViewer, ScrollMomentum momentum)
+    {
+        var frameDelta = 0d;
+        for (var index = momentum.Impulses.Count - 1; index >= 0; index--)
+        {
+            var impulse = momentum.Impulses[index];
+            var elapsed = Stopwatch.GetElapsedTime(impulse.StartedAt).TotalMilliseconds;
+            var linear = Math.Clamp(elapsed / impulse.DurationMilliseconds, 0d, 1d);
+            var progress = 1d - Math.Pow(1d - linear, EasingExponent);
+            frameDelta += impulse.TotalDelta * (progress - impulse.AppliedProgress);
+            impulse.AppliedProgress = progress;
+            if (linear >= 1d)
+                momentum.Impulses.RemoveAt(index);
+        }
+
+        if (Math.Abs(frameDelta) > MinimumFrameDelta)
+        {
+            momentum.Offset = Math.Clamp(
+                momentum.Offset + frameDelta,
+                0d,
+                scrollViewer.ScrollableHeight);
+            SetIsInternalScrollUpdate(scrollViewer, true);
+            scrollViewer.ScrollToVerticalOffset(momentum.Offset);
+            SetIsInternalScrollUpdate(scrollViewer, false);
+        }
+
+        if (momentum.Impulses.Count > 0)
+            return;
+
+        ReleaseRenderingHook(scrollViewer, momentum);
+        momentum.Offset = scrollViewer.VerticalOffset;
+        SetIsAnimating(scrollViewer, false);
+        ReleaseInteractionScope(scrollViewer);
+    }
+
+    private sealed class ScrollMomentum
+    {
+        internal List<ScrollImpulse> Impulses { get; } = [];
+
+        internal double Offset { get; set; }
+
+        internal EventHandler? RenderingHandler { get; set; }
+    }
+
+    private sealed class ScrollImpulse
+    {
+        internal double TotalDelta { get; init; }
+
+        internal long StartedAt { get; init; }
+
+        internal double DurationMilliseconds { get; init; }
+
+        /// <summary>已经兑现的缓动进度，用于把总位移拆成逐帧增量。</summary>
+        internal double AppliedProgress { get; set; }
     }
 
     public static bool HandleMouseWheelFromDescendant(
@@ -418,20 +485,6 @@ public static class SmoothScrollBehavior
         return handled;
     }
 
-    private static void OnAnimatedVerticalOffsetChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        // 标记内部更新，ScrollChanged 才能区分动画帧和用户/代码发起的真实滚动。
-        if (d is not ScrollViewer scrollViewer || GetIsInternalScrollUpdate(scrollViewer))
-            return;
-
-        var offset = (double)e.NewValue;
-        if (double.IsNaN(offset) || double.IsInfinity(offset))
-            return;
-
-        SetIsInternalScrollUpdate(scrollViewer, true);
-        scrollViewer.ScrollToVerticalOffset(offset);
-        SetIsInternalScrollUpdate(scrollViewer, false);
-    }
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
     {
