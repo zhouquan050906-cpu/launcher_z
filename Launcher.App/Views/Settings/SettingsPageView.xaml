@@ -79,14 +79,15 @@
         </controls:SecondaryMenuFrame>
 
         <controls:ListPageFrame x:Name="SettingsListFrame"
-                                Margin="284,36,24,8"
+                                Margin="272,36,24,8"
                                 Title="{Binding SectionTitle}"
                                 IsSearchVisible="False"
                                 IsListVisible="True"
                                 IsProgressiveBlurEnabled="{DynamicResource Is.ProgressiveBlur.Enabled}"
                                 UseFrameScrollViewer="True">
             <controls:ListPageFrame.ListContent>
-                <Grid Loaded="SectionContentRoot_OnLoaded"
+                <Grid Margin="12,0,0,0"
+                      Loaded="SectionContentRoot_OnLoaded"
                       Unloaded="SectionContentRoot_OnUnloaded">
                     <Grid.RenderTransform>
                         <TranslateTransform />

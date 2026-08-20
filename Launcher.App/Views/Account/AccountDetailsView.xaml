@@ -46,7 +46,7 @@
                 <ScrollViewer x:Name="AccountDetailsScrollViewer"
                               Style="{StaticResource ListPageScrollViewerStyle}">
         <StackPanel x:Name="DetailsContentRoot"
-                    Margin="0,132,12,72"
+                    Margin="12,132,12,72"
                     MaxWidth="{StaticResource DetailPageContentMaxWidth}"
                     HorizontalAlignment="Stretch">
             <StackPanel.RenderTransform>

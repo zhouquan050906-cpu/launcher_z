@@ -197,7 +197,7 @@
             </Border.Style>
             <Grid>
                 <Grid x:Name="PART_HeaderTitleRow"
-                      Margin="0,6,12,0"
+                      Margin="12,6,12,0"
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Top">
                     <Grid.ColumnDefinitions>
@@ -251,7 +251,7 @@
                 <ContentPresenter Content="{Binding DataContext, ElementName=Root}"
                                   ContentTemplate="{Binding SearchToolbarContentTemplate, ElementName=Root}"
                                   Height="30"
-                                  Margin="0,46,12,0"
+                                  Margin="12,46,12,0"
                                   VerticalAlignment="Top">
                     <ContentPresenter.Style>
                         <Style TargetType="ContentPresenter">
@@ -270,13 +270,13 @@
                     <Grid.Style>
                         <Style TargetType="Grid">
                             <Setter Property="Visibility" Value="Visible" />
-                            <Setter Property="Margin" Value="0,58,12,0" />
+                            <Setter Property="Margin" Value="12,58,12,0" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsSearchVisible, ElementName=Root}" Value="False">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding IsSearchToolbarVisible, ElementName=Root}" Value="True">
-                                    <Setter Property="Margin" Value="0,82,12,0" />
+                                    <Setter Property="Margin" Value="12,82,12,0" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -342,14 +342,14 @@
                                   VerticalAlignment="Top">
                     <ContentPresenter.Style>
                         <Style TargetType="ContentPresenter">
-                            <Setter Property="Margin" Value="0,100,12,0" />
+                            <Setter Property="Margin" Value="12,100,12,0" />
                             <Setter Property="Visibility" Value="Collapsed" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsSearchFilterVisible, ElementName=Root}" Value="True">
                                     <Setter Property="Visibility" Value="Visible" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding IsSearchToolbarVisible, ElementName=Root}" Value="True">
-                                    <Setter Property="Margin" Value="0,124,12,0" />
+                                    <Setter Property="Margin" Value="12,124,12,0" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>

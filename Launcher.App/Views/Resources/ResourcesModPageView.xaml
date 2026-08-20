@@ -169,7 +169,7 @@
                          behaviors:VirtualizedListItemStateBehavior.ContentTopOffset="132">
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <VirtualizingStackPanel Margin="0,132,12,64"
+                            <VirtualizingStackPanel Margin="12,132,12,64"
                                                     VirtualizingPanel.IsVirtualizing="True"
                                                     VirtualizingPanel.VirtualizationMode="Recycling"
                                                     VirtualizingPanel.ScrollUnit="Pixel" />
@@ -178,17 +178,17 @@
                 </ListBox>
             </controls:DeferredListContentHost>
 
-            <TextBlock Margin="0,132,12,0"
+            <TextBlock Margin="12,132,12,0"
                        Text="{Binding ProjectList.LoadingMessage}"
                        Style="{StaticResource PageEmptyStateTextStyle}"
                        Visibility="{Binding ProjectList.CanShowLoadingState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-            <TextBlock Margin="0,132,12,0"
+            <TextBlock Margin="12,132,12,0"
                        Text="{Binding ProjectList.EmptyMessage}"
                        Style="{StaticResource PageEmptyStateTextStyle}"
                        Visibility="{Binding ProjectList.CanShowEmptyState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-            <StackPanel Margin="0,132,12,0"
+            <StackPanel Margin="12,132,12,0"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Visibility="{Binding ProjectList.CanShowLoadErrorState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}">
@@ -229,7 +229,7 @@
                                   behaviors:SmoothScrollBehavior.WheelAnimationDurationMilliseconds="130">
                         <StackPanel MaxWidth="{StaticResource DetailPageContentMaxWidth}"
                                     HorizontalAlignment="Stretch"
-                                    Margin="0,82,0,64">
+                                    Margin="12,82,0,64">
                     <GroupBox Header="{Binding DataContext.Details.InfoSectionText, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}}"
                               Style="{StaticResource LauncherContentSectionStyle}">
                         <Border Style="{StaticResource SectionFieldSurfaceStyle}">
@@ -524,7 +524,7 @@
                                  behaviors:VirtualizedListItemStateBehavior.ContentTopOffset="172">
                             <ListBox.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <VirtualizingStackPanel Margin="0,172,0,64"
+                                    <VirtualizingStackPanel Margin="12,172,0,64"
                                                             VirtualizingPanel.IsVirtualizing="True"
                                                             VirtualizingPanel.VirtualizationMode="Recycling"
                                                             VirtualizingPanel.ScrollUnit="Pixel" />
@@ -533,17 +533,17 @@
                         </ListBox>
                     </controls:DeferredListContentHost>
 
-                    <TextBlock Margin="0,172,12,64"
+                    <TextBlock Margin="12,172,12,64"
                                Text="{Binding DataContext.Versions.LoadingMessage, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}}"
                                Style="{StaticResource PageEmptyStateTextStyle}"
                                Visibility="{Binding DataContext.Versions.CanShowLoadingState, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-                    <TextBlock Margin="0,172,12,64"
+                    <TextBlock Margin="12,172,12,64"
                                Text="{Binding DataContext.Versions.EmptyMessage, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}}"
                                Style="{StaticResource PageEmptyStateTextStyle}"
                                Visibility="{Binding DataContext.Versions.CanShowEmptyState, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-                    <TextBlock Margin="0,172,12,64"
+                    <TextBlock Margin="12,172,12,64"
                                Text="{Binding DataContext.Versions.LoadErrorMessage, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}}"
                                Style="{StaticResource PageEmptyStateTextStyle}"
                                Visibility="{Binding DataContext.Versions.CanShowLoadErrorState, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />

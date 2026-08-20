@@ -48,7 +48,7 @@
         </controls:SecondaryMenuFrame>
 
         <controls:ListPageFrame x:Name="DownloadVersionListFrame"
-                                Margin="284,36,24,8"
+                                Margin="272,36,24,8"
                                 Title="{Binding PageTitle}"
                                 TitleIconSource="{Binding PageTitleIconSource}"
                                 IsHeaderBackButtonVisible="{Binding IsInstanceOptionsStep}"
@@ -71,7 +71,7 @@
                         </Style>
                     </Grid.Style>
 
-                    <TextBlock Margin="0,122,0,0"
+                    <TextBlock Margin="12,122,0,0"
                                Text="{x:Static res:Strings.Download_LoadingVersions}">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource DownloadOverlayEmptyStateTextStyle}">
@@ -84,7 +84,7 @@
                         </TextBlock.Style>
                     </TextBlock>
 
-                    <StackPanel Margin="0,122,0,0"
+                    <StackPanel Margin="12,122,0,0"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center">
                         <StackPanel.Style>
@@ -108,7 +108,7 @@
                                 Style="{StaticResource LauncherDialogButtonStyle}" />
                     </StackPanel>
 
-                    <TextBlock Margin="0,122,0,0"
+                    <TextBlock Margin="12,122,0,0"
                                Text="{Binding VersionList.VersionEmptyMessage}">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource DownloadOverlayEmptyStateTextStyle}">

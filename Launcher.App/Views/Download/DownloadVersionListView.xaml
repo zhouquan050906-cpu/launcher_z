@@ -38,7 +38,7 @@
              behaviors:VirtualizedListItemStateBehavior.ContentTopOffset="132">
         <ListBox.ItemsPanel>
             <ItemsPanelTemplate>
-                <VirtualizingStackPanel Margin="0,132,0,64"
+                <VirtualizingStackPanel Margin="12,132,0,64"
                                         VirtualizingPanel.IsVirtualizing="True"
                                         VirtualizingPanel.VirtualizationMode="Recycling"
                                         VirtualizingPanel.ScrollUnit="Pixel" />

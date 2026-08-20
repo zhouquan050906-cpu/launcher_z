@@ -21,7 +21,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Focusable="False">
-    <StackPanel Margin="0,0,12,72"
+    <StackPanel Margin="12,0,12,72"
                 HorizontalAlignment="Stretch">
         <TextBlock Margin="0,120,0,0"
                    Text="{Binding PlaceholderMessage}"

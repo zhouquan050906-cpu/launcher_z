@@ -26,7 +26,7 @@
     <Grid x:Name="CreateLobbyStepHost"
           ClipToBounds="True">
         <StackPanel x:Name="CreateLobbySetupLayer"
-                    Margin="0,62,12,72"
+                    Margin="12,62,12,72"
                     MaxWidth="{StaticResource DetailPageContentMaxWidth}"
                     HorizontalAlignment="Stretch">
             <StackPanel.RenderTransform>
@@ -62,7 +62,7 @@
                 <TranslateTransform />
             </Grid.RenderTransform>
 
-            <StackPanel Margin="0,62,12,72"
+            <StackPanel Margin="12,62,12,72"
                         MaxWidth="{StaticResource DetailPageContentMaxWidth}"
                         HorizontalAlignment="Stretch">
                 <controls:SvgIcon Width="64"

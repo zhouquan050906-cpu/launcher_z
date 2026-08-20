@@ -92,7 +92,7 @@
         </controls:SecondaryMenuFrame>
 
         <controls:ListPageFrame x:Name="GameSettingsListFrame"
-                                Margin="284,36,24,8"
+                                Margin="272,36,24,8"
                                 Title="{Binding PageTitle}"
                                 TitleIconSource="{Binding PageTitleIconSource}"
                                 IsHeaderBackButtonVisible="{Binding IsDetailsStep}"
@@ -375,7 +375,7 @@
                         </Style>
                     </Grid.Style>
 
-                    <TextBlock Margin="0,122,0,0"
+                    <TextBlock Margin="12,122,0,0"
                                Text="{Binding InstanceList.LoadError}">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource PageEmptyStateTextStyle}">
@@ -390,7 +390,7 @@
                         </TextBlock.Style>
                     </TextBlock>
 
-                    <TextBlock Margin="0,122,0,0"
+                    <TextBlock Margin="12,122,0,0"
                                Text="{Binding InstanceList.EmptyMessage}">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource PageEmptyStateTextStyle}">
@@ -427,7 +427,7 @@
                                  ScrollViewer.CanContentScroll="True">
                             <ListBox.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <VirtualizingStackPanel Margin="0,132,0,64"
+                                    <VirtualizingStackPanel Margin="12,132,0,64"
                                                             VirtualizingPanel.IsVirtualizing="True"
                                                             VirtualizingPanel.VirtualizationMode="Recycling"
                                                             VirtualizingPanel.ScrollUnit="Pixel" />

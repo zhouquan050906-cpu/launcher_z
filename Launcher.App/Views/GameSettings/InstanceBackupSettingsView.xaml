@@ -143,7 +143,7 @@
                      behaviors:VirtualizedListItemStateBehavior.ContentTopOffset="132">
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <VirtualizingStackPanel Margin="0,132,12,64"
+                        <VirtualizingStackPanel Margin="12,132,12,64"
                                                 VirtualizingPanel.IsVirtualizing="True"
                                                 VirtualizingPanel.VirtualizationMode="Recycling"
                                                 VirtualizingPanel.ScrollUnit="Pixel" />
@@ -152,12 +152,12 @@
             </ListBox>
         </controls:DeferredListContentHost>
 
-        <TextBlock Margin="0,260,12,0"
+        <TextBlock Margin="12,260,12,0"
                    Text="{x:Static res:Strings.GameSettings_BackupLoading}"
                    Style="{StaticResource PageEmptyStateTextStyle}"
                    Visibility="{Binding CanShowBackupLoadingState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-        <TextBlock Margin="0,260,12,0"
+        <TextBlock Margin="12,260,12,0"
                    Text="{Binding BackupEmptyMessage}"
                    Style="{StaticResource PageEmptyStateTextStyle}"
                    Visibility="{Binding CanShowBackupEmptyState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />

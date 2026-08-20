@@ -23,7 +23,7 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <StackPanel Margin="0,62,12,72"
+    <StackPanel Margin="12,62,12,72"
                 MaxWidth="{StaticResource DetailPageContentMaxWidth}"
                 HorizontalAlignment="Stretch">
         <GroupBox Header="{x:Static res:Strings.Multiplayer_SectionJoinLobby}"

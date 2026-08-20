@@ -138,7 +138,7 @@
                      behaviors:VirtualizedListItemStateBehavior.ContentTopOffset="132">
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <VirtualizingStackPanel Margin="0,132,12,64"
+                        <VirtualizingStackPanel Margin="12,132,12,64"
                                                 VirtualizingPanel.IsVirtualizing="True"
                                                 VirtualizingPanel.VirtualizationMode="Recycling"
                                                 VirtualizingPanel.ScrollUnit="Pixel" />
@@ -147,17 +147,17 @@
             </ListBox>
         </controls:DeferredListContentHost>
 
-        <TextBlock Margin="0,260,12,0"
+        <TextBlock Margin="12,260,12,0"
                    Text="{x:Static res:Strings.GameSettings_ResourcePackManagementLoading}"
                    Style="{StaticResource PageEmptyStateTextStyle}"
                    Visibility="{Binding CanShowResourcePackLoadingState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-        <TextBlock Margin="0,260,12,0"
+        <TextBlock Margin="12,260,12,0"
                    Text="{Binding ResourcePackEmptyMessage}"
                    Style="{StaticResource PageEmptyStateTextStyle}"
                    Visibility="{Binding CanShowResourcePackEmptyState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-        <TextBlock Margin="0,260,12,0"
+        <TextBlock Margin="12,260,12,0"
                    Text="{Binding ResourcePackEmptyMessage}"
                    Style="{StaticResource PageEmptyStateTextStyle}"
                    Visibility="{Binding CanShowNoResourcePacksEmptyState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />

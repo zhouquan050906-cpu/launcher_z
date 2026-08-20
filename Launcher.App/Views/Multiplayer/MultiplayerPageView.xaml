@@ -56,7 +56,7 @@
         </controls:SecondaryMenuFrame>
 
         <controls:ListPageFrame x:Name="MultiplayerListFrame"
-                                Margin="284,36,24,8"
+                                Margin="272,36,24,8"
                                 Title="{Binding SectionTitle}"
                                 IsHeaderBackButtonVisible="{Binding IsLobbyStep}"
                                 HeaderBackCommand="{Binding RequestLeaveLobbyCommand}"

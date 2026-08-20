@@ -224,7 +224,7 @@
                      behaviors:VirtualizedListItemStateBehavior.ContentTopOffset="132">
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <VirtualizingStackPanel Margin="0,132,12,64"
+                        <VirtualizingStackPanel Margin="12,132,12,64"
                                                 VirtualizingPanel.IsVirtualizing="True"
                                                 VirtualizingPanel.VirtualizationMode="Recycling"
                                                 VirtualizingPanel.ScrollUnit="Pixel" />
@@ -233,22 +233,22 @@
             </ListBox>
         </controls:DeferredListContentHost>
 
-        <TextBlock Margin="0,260,12,0"
+        <TextBlock Margin="12,260,12,0"
                    Text="{x:Static res:Strings.GameSettings_ModManagementLoading}"
                    Style="{StaticResource PageEmptyStateTextStyle}"
                    Visibility="{Binding CanShowModLoadingState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-        <TextBlock Margin="0,260,12,0"
+        <TextBlock Margin="12,260,12,0"
                    Text="{Binding ModEmptyMessage}"
                    Style="{StaticResource PageEmptyStateTextStyle}"
                    Visibility="{Binding CanShowModEmptyState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-        <TextBlock Margin="0,260,12,0"
+        <TextBlock Margin="12,260,12,0"
                    Text="{Binding ModEmptyMessage}"
                    Style="{StaticResource PageEmptyStateTextStyle}"
                    Visibility="{Binding CanShowNoModsEmptyState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-        <TextBlock Margin="0,122,12,0"
+        <TextBlock Margin="12,122,12,0"
                    Text="{Binding ModUnavailableMessage}"
                    Style="{StaticResource PageEmptyStateTextStyle}"
                    Visibility="{Binding CanShowModUnavailableState, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />

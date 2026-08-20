@@ -34,9 +34,10 @@
         </controls:SecondaryMenuFrame>
 
         <Grid x:Name="AccountContentHost"
-              Margin="284,36,24,8"
+              Margin="272,36,24,8"
               ClipToBounds="True">
             <TextBlock x:Name="AccountEmptyStateView"
+                       Margin="12,0,0,0"
                        Text="{x:Static res:Strings.Account_EmptySelection}"
                        Style="{StaticResource PageEmptyStateTextStyle}" />
 

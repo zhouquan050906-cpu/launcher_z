@@ -63,7 +63,7 @@
                 </Style>
             </ScrollViewer.Style>
             <StackPanel x:Name="SectionContentRoot"
-                        Margin="0,132,12,72"
+                        Margin="12,132,12,72"
                         MaxWidth="{StaticResource DetailPageContentMaxWidth}"
                         HorizontalAlignment="Stretch">
                 <StackPanel.RenderTransform>

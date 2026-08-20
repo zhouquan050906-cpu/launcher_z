@@ -25,13 +25,13 @@
              x:Name="Root"
              Focusable="False">
     <Grid x:Name="PageRoot">
-        <controls:ListPageFrame Margin="28,36,24,8"
+        <controls:ListPageFrame Margin="16,36,24,8"
                                 Title="{x:Static res:Strings.Page_Install}"
                                 IsSearchVisible="False"
                                 IsListVisible="{Binding HasTasks}"
                                 IsProgressiveBlurEnabled="{DynamicResource Is.ProgressiveBlur.Enabled}">
             <controls:ListPageFrame.OverlayContent>
-                <TextBlock Margin="0,42,0,0"
+                <TextBlock Margin="12,42,0,0"
                            Text="{x:Static res:Strings.Install_Empty}">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock" BasedOn="{StaticResource PageEmptyStateTextStyle}">
@@ -47,7 +47,8 @@
             </controls:ListPageFrame.OverlayContent>
 
             <controls:ListPageFrame.ListContent>
-                <ItemsControl ItemsSource="{Binding Tasks}">
+                <ItemsControl Margin="12,0,0,0"
+                              ItemsSource="{Binding Tasks}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border Style="{StaticResource InstallTaskCardStyle}">

@@ -168,7 +168,7 @@
         </DataTemplate>
     </UserControl.Resources>
     <ScrollViewer Style="{StaticResource ListPageScrollViewerStyle}">
-        <StackPanel Margin="0,132,12,72"
+        <StackPanel Margin="12,132,12,72"
                     MaxWidth="{StaticResource DetailPageContentMaxWidth}"
                     HorizontalAlignment="Stretch">
             <TextBlock Margin="0,0,0,8"

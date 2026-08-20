@@ -44,7 +44,7 @@
 
     <Grid ClipToBounds="True">
         <ScrollViewer Style="{StaticResource ListPageScrollViewerStyle}">
-            <StackPanel Margin="0,132,12,96"
+            <StackPanel Margin="12,132,12,96"
                         MaxWidth="{StaticResource DetailPageContentMaxWidth}"
                         HorizontalAlignment="Stretch">
                 <GroupBox Header="{x:Static res:Strings.GameSettings_ExportModpackInfoSection}"
