@@ -9,10 +9,12 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Launcher.App.Diagnostics;
 
 namespace Launcher.App.Controls;
 
@@ -54,6 +56,11 @@ internal sealed class BackdropBlurRefreshCoordinator
     private TimeSpan? lastRenderingTime;
     private long totalBatchCount;
     private long totalRefreshCount;
+    // 连续刷新会话从第一个租约开始、到最后一个租约释放为止，用于衡量动画期间的实际重建量。
+    private long continuousSessionStartedTimestamp;
+    private long continuousSessionStartBatchCount;
+    private long continuousSessionStartRefreshCount;
+    private int continuousSessionScopeCount;
 
     private BackdropBlurRefreshCoordinator(Window window)
     {
@@ -78,6 +85,13 @@ internal sealed class BackdropBlurRefreshCoordinator
     internal long TotalBatchCount => totalBatchCount;
 
     internal long TotalRefreshCount => totalRefreshCount;
+
+    /// <summary>
+    /// 该滚动区域上注册的背板模糊控件数量。滚动会让它们逐帧重算几何并可能重建模糊，
+    /// 是一笔与视口面积无关的固定每帧开销。
+    /// </summary>
+    internal int GetScrollViewerControlCount(ScrollViewer scrollViewer) =>
+        controlsByScrollViewer.TryGetValue(scrollViewer, out var controls) ? controls.Count : 0;
 
     internal static BackdropBlurRefreshCoordinator? TryGet(FrameworkElement element)
     {
@@ -326,11 +340,16 @@ internal sealed class BackdropBlurRefreshCoordinator
         if (isClosed)
             return;
 
+        if (continuousScopes.Count == 0)
+            BeginContinuousSession();
+
         foreach (var scope in scopes)
         {
             continuousScopes.TryGetValue(scope, out var count);
             continuousScopes[scope] = count + 1;
         }
+
+        continuousSessionScopeCount = Math.Max(continuousSessionScopeCount, continuousScopes.Count);
 
         UpdateRenderingSubscription();
     }
@@ -348,7 +367,32 @@ internal sealed class BackdropBlurRefreshCoordinator
                 continuousScopes[scope] = count - 1;
         }
 
+        if (continuousScopes.Count == 0)
+            EndContinuousSession();
+
         UpdateRenderingSubscription();
+    }
+
+    private void BeginContinuousSession()
+    {
+        continuousSessionStartedTimestamp = Stopwatch.GetTimestamp();
+        continuousSessionStartBatchCount = totalBatchCount;
+        continuousSessionStartRefreshCount = totalRefreshCount;
+        continuousSessionScopeCount = 0;
+    }
+
+    private void EndContinuousSession()
+    {
+        if (continuousSessionStartedTimestamp == 0)
+            return;
+
+        var durationMs = Stopwatch.GetElapsedTime(continuousSessionStartedTimestamp).TotalMilliseconds;
+        continuousSessionStartedTimestamp = 0;
+        UiPerformanceLog.LogContinuousBackdropRefresh(
+            durationMs,
+            continuousSessionScopeCount,
+            totalBatchCount - continuousSessionStartBatchCount,
+            totalRefreshCount - continuousSessionStartRefreshCount);
     }
 
     private void UpdateRenderingSubscription()

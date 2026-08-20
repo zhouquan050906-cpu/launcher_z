@@ -12,6 +12,7 @@
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
+using Launcher.App.Diagnostics;
 using Serilog;
 
 namespace Launcher.App.Services;
@@ -87,6 +88,23 @@ internal sealed class TransitionRenderCacheScope : IDisposable
     }
 
     internal static TransitionRenderCacheScope TryAcquire(
+        string transitionKind,
+        IReadOnlyList<FrameworkElement> elements,
+        TransitionRenderCacheCapabilities capabilities)
+    {
+        var scope = TryAcquireCore(transitionKind, elements, capabilities);
+        if (scope.FallbackReason is not TransitionRenderCacheFallbackReason.None)
+        {
+            UiPerformanceLog.LogTransitionRenderCacheFallback(
+                transitionKind,
+                scope.FallbackReason.ToString(),
+                scope.EstimatedBytes);
+        }
+
+        return scope;
+    }
+
+    private static TransitionRenderCacheScope TryAcquireCore(
         string transitionKind,
         IReadOnlyList<FrameworkElement> elements,
         TransitionRenderCacheCapabilities capabilities)

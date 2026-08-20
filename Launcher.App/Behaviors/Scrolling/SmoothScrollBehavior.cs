@@ -22,6 +22,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using Launcher.App.Controls;
+using Launcher.App.Diagnostics;
 
 namespace Launcher.App.Behaviors;
 
@@ -94,6 +96,14 @@ public static class SmoothScrollBehavior
             typeof(SmoothScrollBehavior),
             new PropertyMetadata(0));
 
+    // 一次滚动会话覆盖连续滚轮产生的多段动画，作用域随控件生命周期存放在附加属性上。
+    private static readonly DependencyProperty InteractionScopeProperty =
+        DependencyProperty.RegisterAttached(
+            "InteractionScope",
+            typeof(UiInteractionScope),
+            typeof(SmoothScrollBehavior),
+            new PropertyMetadata(null));
+
     public static bool GetIsEnabled(DependencyObject element) => (bool)element.GetValue(IsEnabledProperty);
 
     public static void SetIsEnabled(DependencyObject element, bool value) => element.SetValue(IsEnabledProperty, value);
@@ -113,6 +123,7 @@ public static class SmoothScrollBehavior
     public static void CancelAnimation(ScrollViewer scrollViewer)
     {
         // 取消时将目标同步到当前实际位置，下一次滚轮从用户看到的位置继续。
+        ReleaseInteractionScope(scrollViewer);
         scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, null);
         SetAnimatedVerticalOffset(scrollViewer, scrollViewer.VerticalOffset);
         SetTargetVerticalOffset(scrollViewer, scrollViewer.VerticalOffset);
@@ -144,6 +155,83 @@ public static class SmoothScrollBehavior
 
     private static void SetIsAnimating(DependencyObject element, bool value) => element.SetValue(IsAnimatingProperty, value);
 
+    private static void EnsureInteractionScope(ScrollViewer scrollViewer)
+    {
+        if (scrollViewer.GetValue(InteractionScopeProperty) is UiInteractionScope)
+            return;
+
+        var detail = ResolveScrollDetail(scrollViewer);
+        UiPerformanceLog.LogScrollSurface(scrollViewer, detail);
+        var scope = UiPerformanceLog.BeginInteraction("Scroll", detail, scrollViewer);
+        scope.RenderPath = UiRenderPaths.Live;
+        scope.SurfaceWidth = scrollViewer.ViewportWidth;
+        scope.SurfaceHeight = scrollViewer.ViewportHeight;
+        var coordinator = BackdropBlurRefreshCoordinator.TryGet(scrollViewer);
+        if (coordinator is not null)
+        {
+            scope.BackdropControlCount = coordinator.GetScrollViewerControlCount(scrollViewer);
+            scope.BackdropCounterReader = () => (coordinator.TotalBatchCount, coordinator.TotalRefreshCount);
+        }
+
+        scope.HasAncestorBitmapCache = HasBitmapCache(scrollViewer);
+        scope.HasOpacityMask = HasOpacityMask(scrollViewer);
+        scope.ScrollOffsetReader = () => scrollViewer.VerticalOffset;
+        scope.CaptureBackdropBaseline();
+        scrollViewer.SetValue(InteractionScopeProperty, scope);
+    }
+
+    /// <summary>
+    /// 位图缓存既可能挂在滚动内容上（ScrollViewer 的子），也可能挂在整页上（祖先），两处都要查。
+    /// </summary>
+    private static bool HasBitmapCache(ScrollViewer scrollViewer)
+    {
+        if (scrollViewer.Content is UIElement { CacheMode: BitmapCache })
+            return true;
+
+        return HasAncestor(scrollViewer, static element => element.CacheMode is BitmapCache);
+    }
+
+    private static bool HasOpacityMask(ScrollViewer scrollViewer) =>
+        HasAncestor(scrollViewer, static element => element.OpacityMask is not null);
+
+    private static bool HasAncestor(DependencyObject element, Func<UIElement, bool> predicate)
+    {
+        for (DependencyObject? current = element;
+             current is not null;
+             current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is UIElement uiElement && predicate(uiElement))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static void ReleaseInteractionScope(ScrollViewer scrollViewer)
+    {
+        if (scrollViewer.GetValue(InteractionScopeProperty) is not UiInteractionScope scope)
+            return;
+
+        scrollViewer.ClearValue(InteractionScopeProperty);
+        scope.Dispose();
+    }
+
+    /// <summary>
+    /// 用最近的具名元素标识滚动区域，便于把掉帧摘要对应到具体列表。
+    /// </summary>
+    private static string ResolveScrollDetail(ScrollViewer scrollViewer)
+    {
+        for (DependencyObject? current = scrollViewer;
+             current is not null;
+             current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is FrameworkElement { Name.Length: > 0 } named)
+                return named.Name;
+        }
+
+        return scrollViewer.GetType().Name;
+    }
+
     private static int GetAnimationVersion(DependencyObject element) => (int)element.GetValue(AnimationVersionProperty);
 
     private static void SetAnimationVersion(DependencyObject element, int value) => element.SetValue(AnimationVersionProperty, value);
@@ -170,6 +258,7 @@ public static class SmoothScrollBehavior
         scrollViewer.PreviewMouseWheel -= ScrollViewer_PreviewMouseWheel;
         scrollViewer.ScrollChanged -= ScrollViewer_ScrollChanged;
         scrollViewer.Unloaded -= ScrollViewer_Unloaded;
+        ReleaseInteractionScope(scrollViewer);
         scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, null);
         SetIsAnimating(scrollViewer, false);
     }
@@ -207,6 +296,7 @@ public static class SmoothScrollBehavior
     {
         if (sender is ScrollViewer scrollViewer)
         {
+            ReleaseInteractionScope(scrollViewer);
             scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, null);
             SetIsAnimating(scrollViewer, false);
         }
@@ -270,6 +360,8 @@ public static class SmoothScrollBehavior
         SetTargetVerticalOffset(scrollViewer, nextOffset);
         SetAnimatedVerticalOffset(scrollViewer, currentOffset);
         SetIsAnimating(scrollViewer, true);
+        // 连续滚轮共用同一个会话，掉帧摘要覆盖整段滚动而不是单次滚轮。
+        EnsureInteractionScope(scrollViewer);
         // 版本号使旧动画 Completed 回调失效，避免它清理刚启动的新动画状态。
         var animationVersion = GetAnimationVersion(scrollViewer) + 1;
         SetAnimationVersion(scrollViewer, animationVersion);
@@ -299,6 +391,7 @@ public static class SmoothScrollBehavior
             SetTargetVerticalOffset(scrollViewer, nextOffset);
             SetIsInternalScrollUpdate(scrollViewer, false);
             SetIsAnimating(scrollViewer, false);
+            ReleaseInteractionScope(scrollViewer);
         };
 
         scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);

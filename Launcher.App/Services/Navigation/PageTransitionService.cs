@@ -22,6 +22,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Launcher.App.Controls;
+using Launcher.App.Diagnostics;
 
 namespace Launcher.App.Services;
 
@@ -49,6 +50,7 @@ public sealed class PageTransitionService
     private int transitionToken;
     private IDisposable? blurRefreshLease;
     private TransitionRenderCacheScope? renderCacheScope;
+    private UiInteractionScope? interactionScope;
     private FrameworkElement? activeTarget;
 
     public PageTransitionService(
@@ -177,6 +179,12 @@ public sealed class PageTransitionService
                 blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(target);
         }
 
+        // 采样必须覆盖整段动画，因此在渲染路径确定之后、动画开始之前打开。
+        interactionScope = UiPerformanceLog.BeginInteraction("PageTransition", page, target);
+        interactionScope.RenderPath = UiRenderPaths.Resolve(
+            renderCacheScope?.IsActive is true,
+            blurRefreshLease is not null);
+
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
         var fadeAnimation = new DoubleAnimation
         {
@@ -218,6 +226,12 @@ public sealed class PageTransitionService
         blurRefreshLease = null;
     }
 
+    private void ReleaseInteractionScope()
+    {
+        interactionScope?.Dispose();
+        interactionScope = null;
+    }
+
     private void CompleteTransition(FrameworkElement target, TranslateTransform transform)
     {
         target.BeginAnimation(UIElement.OpacityProperty, null);
@@ -231,6 +245,7 @@ public sealed class PageTransitionService
     {
         if (activeTarget is not { } target)
         {
+            ReleaseInteractionScope();
             ReleaseBlurRefreshLease();
             renderCacheScope?.Dispose();
             renderCacheScope = null;
@@ -248,6 +263,7 @@ public sealed class PageTransitionService
     private void ReleaseTransitionResources(FrameworkElement target, bool requestFinalRefresh)
     {
         target.Unloaded -= ActiveTarget_Unloaded;
+        ReleaseInteractionScope();
         ReleaseBlurRefreshLease();
         var usedRenderCache = renderCacheScope?.IsActive is true;
         renderCacheScope?.Dispose();

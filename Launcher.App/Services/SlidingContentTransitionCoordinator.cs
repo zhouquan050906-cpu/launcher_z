@@ -21,6 +21,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using Launcher.App.Controls;
+using Launcher.App.Diagnostics;
 
 namespace Launcher.App.Services;
 
@@ -47,6 +48,7 @@ public sealed class SlidingContentTransitionCoordinator
     private int transitionToken;
     private IDisposable? blurRefreshLease;
     private TransitionRenderCacheScope? renderCacheScope;
+    private UiInteractionScope? interactionScope;
 
     public SlidingContentTransitionCoordinator(
         FrameworkElement loadedElement,
@@ -172,6 +174,15 @@ public sealed class SlidingContentTransitionCoordinator
             }
         }
 
+        // 采样必须覆盖整段动画，因此在渲染路径确定之后、动画开始之前打开。
+        interactionScope = UiPerformanceLog.BeginInteraction(
+            "LayerTransition",
+            loadedElement.GetType().Name,
+            loadedElement);
+        interactionScope.RenderPath = UiRenderPaths.Resolve(
+            renderCacheScope?.IsActive is true,
+            blurRefreshLease is not null);
+
         AnimateFloatingElements(showSecondaryLayer, token);
 
         var previousSlide = useSlideTransition
@@ -242,6 +253,8 @@ public sealed class SlidingContentTransitionCoordinator
 
     private void ReleaseTransitionResources(bool requestFinalRefresh)
     {
+        interactionScope?.Dispose();
+        interactionScope = null;
         ReleaseBlurRefreshLease();
         var usedRenderCache = renderCacheScope?.IsActive is true;
         renderCacheScope?.Dispose();

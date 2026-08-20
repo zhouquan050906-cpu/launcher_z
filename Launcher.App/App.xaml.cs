@@ -23,6 +23,7 @@ using System.Windows.Controls;
 using Launcher.Application.Accounts;
 using Launcher.Application.DependencyInjection;
 using Launcher.Application.Services;
+using Launcher.App.Diagnostics;
 using Launcher.App.Logging;
 using Launcher.App.Services;
 using Launcher.Domain.Models;
@@ -132,6 +133,7 @@ public partial class App : System.Windows.Application
             services.AddSingleton<IMicrosoftLoginBrowserPageProvider, MicrosoftLoginBrowserPageProvider>();
             services.AddSingleton<IAccountDialogService, AccountDialogService>();
             services.AddSingleton<IUiDispatcher, WpfUiDispatcher>();
+            services.AddSingleton(_ => new UiThreadStallMonitor(Dispatcher));
             services.AddSingleton<IThemeService, ThemeService>();
             services.AddSingleton<IHomePageViewModelFactory, HomePageViewModelFactory>();
             services.AddSingleton<LauncherSessionCoordinator>();
@@ -207,6 +209,8 @@ public partial class App : System.Windows.Application
             serviceProvider.GetRequiredService<MainWindowPlacementService>()
                 .Restore(mainWindow, mainViewModel.Settings);
             mainWindow.Show();
+            UiPerformanceLog.LogRenderEnvironment(TryReadSystemMemorySnapshot(serviceProvider), mainWindow);
+            serviceProvider.GetRequiredService<UiThreadStallMonitor>().Start();
             Log.Information(
                 "Launcher startup completed. DurationMs={DurationMs} Language={Language} DiagnosticLogging={DiagnosticLogging}",
                 System.Diagnostics.Stopwatch.GetElapsedTime(startupStartedAt).TotalMilliseconds,
@@ -240,6 +244,22 @@ public partial class App : System.Windows.Application
         {
             Log.Fatal(exception, "Launcher startup failed.");
             Shutdown(-1);
+        }
+    }
+
+    /// <summary>
+    /// 渲染环境快照中的内存信息只用于诊断；读取失败时省略该字段，不影响启动。
+    /// </summary>
+    private static SystemMemorySnapshot? TryReadSystemMemorySnapshot(IServiceProvider serviceProvider)
+    {
+        try
+        {
+            return serviceProvider.GetRequiredService<ISystemMemoryService>().GetSnapshot();
+        }
+        catch (Exception exception)
+        {
+            Log.Debug(exception, "Failed to read the system memory snapshot for the render environment log.");
+            return null;
         }
     }
 
