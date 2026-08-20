@@ -17,6 +17,11 @@ internal sealed class CardShadowChrome : FrameworkElement
 {
     private const int MaximumBandCount = 24;
     private const double MinimumBandCount = 4d;
+    // 位图缓存在软件渲染和 Tier 1 上得不到硬件加速，反而可能比重新绘制更慢。
+    private const int MinimumRenderCacheTier = 2;
+    // 单个阴影纹理的显存上限。超大表面缓存收益仍在，但会显著抬高显存占用，
+    // 此时回退到直接绘制更稳妥。
+    private const long MaximumRenderCacheBytes = 8L * 1024L * 1024L;
 
     internal static readonly DependencyProperty ReferenceEffectProperty =
         DependencyProperty.Register(
@@ -81,6 +86,51 @@ internal sealed class CardShadowChrome : FrameworkElement
     {
         Focusable = false;
         IsHitTestVisible = false;
+    }
+
+    /// <summary>
+    /// 阴影绘制在尺寸不变时是静态的，但滚动会让它逐帧重新光栅化多层渐变环。
+    /// 提升为位图缓存后滚动只需搬运纹理，视觉输出不变。
+    /// 尺寸和 DPI 变化会走到这里重新判定，WPF 自身也会在这些变化时重建缓存内容。
+    /// </summary>
+    private void ApplyRenderCache()
+    {
+        var dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        var shouldCache = ShouldUseRenderCache(
+            RenderCapability.Tier >> 16,
+            ActualWidth,
+            ActualHeight,
+            dpiScale);
+        if (shouldCache == CacheMode is BitmapCache)
+            return;
+
+        CacheMode = shouldCache
+            ? new BitmapCache
+            {
+                EnableClearType = false,
+                RenderAtScale = 1d,
+                SnapsToDevicePixels = true
+            }
+            : null;
+    }
+
+    internal static bool ShouldUseRenderCache(
+        int renderingTier,
+        double width,
+        double height,
+        double dpiScale)
+    {
+        if (renderingTier < MinimumRenderCacheTier)
+            return false;
+        if (width <= 0d || height <= 0d || dpiScale <= 0d)
+            return false;
+
+        var pixelWidth = (long)Math.Ceiling(width * dpiScale);
+        var pixelHeight = (long)Math.Ceiling(height * dpiScale);
+        if (pixelWidth > MaximumRenderCacheBytes / 4L / Math.Max(pixelHeight, 1L))
+            return false;
+
+        return pixelWidth * pixelHeight * 4L <= MaximumRenderCacheBytes;
     }
 
     internal DropShadowEffect? ReferenceEffect
@@ -148,12 +198,14 @@ internal sealed class CardShadowChrome : FrameworkElement
     {
         base.OnRenderSizeChanged(sizeInfo);
         InvalidateDrawing();
+        ApplyRenderCache();
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
         base.OnDpiChanged(oldDpi, newDpi);
         InvalidateDrawing();
+        ApplyRenderCache();
     }
 
     private DrawingGroup? BuildDrawing()

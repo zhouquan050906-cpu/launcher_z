@@ -47,8 +47,25 @@ public sealed class CardShadowChromeTests
         }
     }
 
+    /// <summary>
+    /// 位图缓存是否启用取决于运行环境的渲染层级与纹理预算，
+    /// 因此断言实际状态必须与该判定一致，而不能写死。
+    /// </summary>
+    private static void AssertRenderCacheMatchesCapability(CardShadowChrome chrome)
+    {
+        var expected = CardShadowChrome.ShouldUseRenderCache(
+            RenderCapability.Tier >> 16,
+            chrome.ActualWidth,
+            chrome.ActualHeight,
+            VisualTreeHelper.GetDpi(chrome).DpiScaleX);
+        if (expected)
+            Assert.IsType<BitmapCache>(chrome.CacheMode);
+        else
+            Assert.Null(chrome.CacheMode);
+    }
+
     [Fact]
-    public void ChromeBuildsRetainedDrawingWithoutEffectOrBitmapCache()
+    public void ChromeBuildsRetainedDrawingWithoutWpfEffect()
     {
         RunOnStaThread(() =>
         {
@@ -70,8 +87,9 @@ public sealed class CardShadowChromeTests
                 PumpDispatcher(DispatcherPriority.Render);
                 window.UpdateLayout();
 
+                // 设计意图是不依赖 WPF 的 DropShadowEffect；位图缓存则按渲染能力启用。
                 Assert.Null(chrome.Effect);
-                Assert.Null(chrome.CacheMode);
+                AssertRenderCacheMatchesCapability(chrome);
                 var initialBuildCount = chrome.DrawingBuildCount;
                 Assert.InRange(initialBuildCount, 1, 2);
                 Assert.InRange(chrome.DrawingPrimitiveCount, 2, 25);
@@ -178,7 +196,7 @@ public sealed class CardShadowChromeTests
                 var chrome = Assert.Single(FindDescendants<CardShadowChrome>(border));
                 Assert.NotNull(chrome.ReferenceEffect);
                 Assert.Null(chrome.Effect);
-                Assert.Null(chrome.CacheMode);
+                AssertRenderCacheMatchesCapability(chrome);
                 Assert.Null(border.Effect);
                 Assert.True(chrome.ReferenceEffect!.IsFrozen);
                 Assert.Same(originalContent, Assert.Single(FindDescendants<TextBlock>(border)));
