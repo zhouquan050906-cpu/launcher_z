@@ -80,6 +80,18 @@ internal sealed class TransitionRenderCacheScope : IDisposable
 
     internal static int ActiveOwnedCacheCount { get; private set; }
 
+    /// <summary>
+    /// 位图缓存拿不到时是否仍需连续背板刷新兜底。
+    /// ElementNotReady 只是首次布局尚未完成的一次性时序问题，页面切过一次就能拿到缓存；
+    /// 实测这种降级开出的租约在整段动画里一次刷新都没有，纯粹让动画处于强制连续渲染。
+    /// 其余原因（尤其渲染层级过低）是持久的，低端设备每次过渡都会走到，
+    /// 必须保留兜底，否则动画期间模糊会错位。
+    /// </summary>
+    internal static bool RequiresContinuousRefreshFallback(
+        TransitionRenderCacheFallbackReason reason) =>
+        reason is not (TransitionRenderCacheFallbackReason.None
+            or TransitionRenderCacheFallbackReason.ElementNotReady);
+
     internal static TransitionRenderCacheScope TryAcquire(
         string transitionKind,
         IReadOnlyList<FrameworkElement> elements)

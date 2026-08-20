@@ -166,7 +166,8 @@ public sealed class SlidingContentTransitionCoordinator
             renderCacheScope = renderCacheFactory(
                 $"Sliding:{loadedElement.GetType().Name}",
                 [previousLayer, nextLayer]);
-            if (!renderCacheScope.IsActive)
+            if (TransitionRenderCacheScope.RequiresContinuousRefreshFallback(
+                    renderCacheScope.FallbackReason))
             {
                 blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(
                     previousLayer,

@@ -175,8 +175,11 @@ public sealed class PageTransitionService
         else
         {
             renderCacheScope = renderCacheFactory($"Page:{page}", [target]);
-            if (!renderCacheScope.IsActive)
+            if (TransitionRenderCacheScope.RequiresContinuousRefreshFallback(
+                    renderCacheScope.FallbackReason))
+            {
                 blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(target);
+            }
         }
 
         // 采样必须覆盖整段动画，因此在渲染路径确定之后、动画开始之前打开。
