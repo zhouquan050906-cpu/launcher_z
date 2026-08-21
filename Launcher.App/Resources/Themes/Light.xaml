@@ -349,7 +349,7 @@
                       BlurRadius="17"
                       Color="{StaticResource Color.Shadow}"
                       Direction="270"
-                      Opacity="0.13"
+                      Opacity="0.08"
                       ShadowDepth="0" />
     <Color x:Key="Color.Accent.Primary">#2196F3</Color>
 </ResourceDictionary>

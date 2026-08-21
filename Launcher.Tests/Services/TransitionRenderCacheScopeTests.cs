@@ -43,7 +43,9 @@ public sealed class TransitionRenderCacheScopeTests
                 var cache = Assert.IsType<BitmapCache>(fixture.Element.CacheMode);
                 Assert.Equal(1d, cache.RenderAtScale);
                 Assert.False(cache.EnableClearType);
-                Assert.True(cache.SnapsToDevicePixels);
+                // 过渡缓存必须保持关闭像素对齐，否则平移中的缓存层会被吸附到像素栅格，
+                // 释放缓存时内容会横向跳动一格。
+                Assert.False(cache.SnapsToDevicePixels);
                 Assert.Equal(initialOwnedCount + 1, TransitionRenderCacheScope.ActiveOwnedCacheCount);
 
                 scope.Dispose();

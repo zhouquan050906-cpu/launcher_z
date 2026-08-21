@@ -51,7 +51,7 @@ public sealed class ThemeResourceContractTests
 
         Assert.Equal("17", shadow.Attribute("BlurRadius")?.Value);
         Assert.Equal("270", shadow.Attribute("Direction")?.Value);
-        Assert.Equal("0.13", shadow.Attribute("Opacity")?.Value);
+        Assert.Equal("0.08", shadow.Attribute("Opacity")?.Value);
         Assert.Equal("0", shadow.Attribute("ShadowDepth")?.Value);
     }
 

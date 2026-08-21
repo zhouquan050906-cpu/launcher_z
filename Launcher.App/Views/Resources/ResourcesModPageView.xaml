@@ -543,10 +543,19 @@
                                Style="{StaticResource PageEmptyStateTextStyle}"
                                Visibility="{Binding DataContext.Versions.CanShowEmptyState, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
 
-                    <TextBlock Margin="12,172,12,64"
-                               Text="{Binding DataContext.Versions.LoadErrorMessage, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}}"
-                               Style="{StaticResource PageEmptyStateTextStyle}"
-                               Visibility="{Binding DataContext.Versions.CanShowLoadErrorState, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
+                    <StackPanel Margin="12,172,12,64"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding DataContext.Versions.CanShowLoadErrorState, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}">
+                        <TextBlock Text="{Binding DataContext.Versions.LoadErrorMessage, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}}"
+                                   Style="{StaticResource PageEmptyStateTextStyle}" />
+
+                        <Button Margin="0,16,0,0"
+                                HorizontalAlignment="Center"
+                                Content="{x:Static res:Strings.Refresh_Button}"
+                                Command="{Binding DataContext.Versions.RefreshCommand, RelativeSource={RelativeSource AncestorType={x:Type views:ResourcesModPageView}}}"
+                                Style="{StaticResource LauncherDialogButtonStyle}" />
+                    </StackPanel>
 
                 </Grid>
             </Grid>

@@ -199,7 +199,17 @@ public sealed partial class ResourcesProjectVersionsViewModel : ObservableObject
         SelectedTarget = target;
         IsUnknownInstanceVersionDialogOpen = ResourcesAvailableVersionListBuilder.IsUnknownInstanceVersionTarget(target);
         TargetSelected?.Invoke(target);
-        _ = LoadVersionsAsync(target);
+        _ = RefreshAsync();
+    }
+
+    [RelayCommand]
+    public Task RefreshAsync()
+    {
+        var target = SelectedTarget;
+        if (resourceCatalogService is null || currentProject is null || target is null)
+            return Task.CompletedTask;
+
+        return LoadVersionsAsync(target);
     }
 
     [RelayCommand]

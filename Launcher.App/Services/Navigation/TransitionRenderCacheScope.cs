@@ -224,11 +224,15 @@ internal sealed class TransitionRenderCacheScope : IDisposable
             {
                 if (originalCacheMode is null)
                 {
+                    // 过渡层在整个缓存生命周期里都在平移，且缓存边界被卡片阴影向外扩张。
+                    // 打开像素对齐会把这层纹理整体吸附到像素栅格上，实测水平方向固定偏左 1px，
+                    // 动画结束释放缓存后又跳回真实位置，看起来就是内容突然右移一格。
+                    // 缓存只是性能手段，不能改变绘制位置，因此这里不做对齐。
                     installedCache = new BitmapCache
                     {
                         RenderAtScale = 1d,
                         EnableClearType = false,
-                        SnapsToDevicePixels = true
+                        SnapsToDevicePixels = false
                     };
                     element.CacheMode = installedCache;
                     ActiveOwnedCacheCount++;

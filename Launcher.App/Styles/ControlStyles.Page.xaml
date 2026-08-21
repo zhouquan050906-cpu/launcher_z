@@ -406,7 +406,7 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Card.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Card.Border}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="CornerRadius" Value="10" />
         <Setter Property="behaviors:BackdropBlurHost.LightweightShadowEffect"
                 Value="{DynamicResource Effect.Card.Surface}" />
         <Setter Property="behaviors:BackdropBlurHost.IsApplied" Value="True" />
