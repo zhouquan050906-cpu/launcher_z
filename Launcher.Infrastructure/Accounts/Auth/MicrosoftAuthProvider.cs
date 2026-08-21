@@ -550,6 +550,23 @@ internal sealed class MicrosoftAuthProvider
             || value?.Contains("Interactive Microsoft OAuth", StringComparison.OrdinalIgnoreCase) == true;
     }
 
+    private static int ResolveStatusCode(JEAuthException exception)
+    {
+        if (exception.StatusCode != 0)
+            return exception.StatusCode;
+
+        // 响应体不是预期的 JSON 错误结构时，CmlLib 降级为 new JEAuthException($"{statusCode}: {reasonPhrase}")，
+        // 该构造函数不会填充 StatusCode，因此真实状态码只能从消息前缀还原。
+        var message = exception.Message;
+        if (message.Length >= 3
+            && (message.Length == 3 || message[3] == ':')
+            && int.TryParse(message.AsSpan(0, 3), out var parsed)
+            && parsed is >= 100 and <= 599)
+            return parsed;
+
+        return 0;
+    }
+
     internal static JELoginHandler CreateLoginHandler(
         IXboxGameAccountManager accountManager,
         IPublicClientApplication msalApplication,
@@ -616,17 +633,17 @@ internal sealed class MicrosoftAuthProvider
                 LaunchAccountSessionFailureReason.InvalidAuthenticationResponse,
                 "Microsoft authentication failed.",
                 exception),
-            JEAuthException jeException when jeException.StatusCode == (int)HttpStatusCode.Forbidden
+            JEAuthException jeException when ResolveStatusCode(jeException) == (int)HttpStatusCode.Forbidden
                 => new MicrosoftAccountAuthenticationException(
                     LaunchAccountSessionFailureReason.AuthenticationApplicationNotAuthorized,
                     "The Microsoft application is not authorized by Minecraft services.",
                     exception),
-            JEAuthException jeException when jeException.StatusCode == (int)HttpStatusCode.Unauthorized
+            JEAuthException jeException when ResolveStatusCode(jeException) == (int)HttpStatusCode.Unauthorized
                 => new MicrosoftAccountAuthenticationException(
                     LaunchAccountSessionFailureReason.ReauthenticationRequired,
                     "Microsoft account credentials were rejected.",
                     exception),
-            JEAuthException jeException when jeException.StatusCode >= 500
+            JEAuthException jeException when ResolveStatusCode(jeException) >= 500
                 => new MicrosoftAccountAuthenticationException(
                     LaunchAccountSessionFailureReason.AuthenticationServerUnavailable,
                     "Minecraft authentication services are unavailable.",
