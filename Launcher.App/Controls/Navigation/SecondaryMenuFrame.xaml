@@ -27,51 +27,72 @@
     <Border Style="{StaticResource SecondaryMenuPanelShadowStyle}">
         <controls:BackdropBlurBorder Style="{StaticResource SecondaryMenuBackdropStyle}">
             <Grid>
-                <ScrollViewer behaviors:VerticalEdgeOpacityMask.IsEnabled="True"
-                              behaviors:VerticalEdgeOpacityMask.TopFadeLength="50"
-                              behaviors:VerticalEdgeOpacityMask.BottomFadeLength="24"
-                              behaviors:VerticalEdgeOpacityMask.MinimumOpacity="0">
-                    <ScrollViewer.Style>
-                        <Style TargetType="ScrollViewer" BasedOn="{StaticResource SecondaryMenuScrollViewerStyle}">
-                            <Setter Property="Visibility" Value="Visible" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding UseInternalScrollViewer, ElementName=Root}" Value="False">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ScrollViewer.Style>
-                    <StackPanel>
-                        <Border Style="{StaticResource SecondaryMenuHeaderSpacerStyle}" />
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-                        <StackPanel Style="{StaticResource SecondaryMenuItemsPanelStyle}">
-                            <ContentControl x:Name="ScrollableContentHost" />
-                            <Border Style="{StaticResource SecondaryMenuBottomSpacerStyle}" />
+                <Grid Grid.Row="0">
+                    <ScrollViewer behaviors:VerticalEdgeOpacityMask.IsEnabled="True"
+                                  behaviors:VerticalEdgeOpacityMask.TopFadeLength="50"
+                                  behaviors:VerticalEdgeOpacityMask.BottomFadeLength="24"
+                                  behaviors:VerticalEdgeOpacityMask.MinimumOpacity="0">
+                        <ScrollViewer.Style>
+                            <Style TargetType="ScrollViewer" BasedOn="{StaticResource SecondaryMenuScrollViewerStyle}">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding UseInternalScrollViewer, ElementName=Root}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ScrollViewer.Style>
+                        <StackPanel>
+                            <Border Style="{StaticResource SecondaryMenuHeaderSpacerStyle}" />
+
+                            <StackPanel Style="{StaticResource SecondaryMenuItemsPanelStyle}">
+                                <ContentControl x:Name="ScrollableContentHost" />
+                                <Border Style="{StaticResource SecondaryMenuBottomSpacerStyle}" />
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-                </ScrollViewer>
+                    </ScrollViewer>
 
-                <ContentControl x:Name="DirectContentHost"
-                                behaviors:VerticalEdgeOpacityMask.IsEnabled="True"
-                                behaviors:VerticalEdgeOpacityMask.TopFadeLength="50"
-                                behaviors:VerticalEdgeOpacityMask.BottomFadeLength="24"
-                                behaviors:VerticalEdgeOpacityMask.MinimumOpacity="0">
+                    <ContentControl x:Name="DirectContentHost"
+                                    behaviors:VerticalEdgeOpacityMask.IsEnabled="True"
+                                    behaviors:VerticalEdgeOpacityMask.TopFadeLength="50"
+                                    behaviors:VerticalEdgeOpacityMask.BottomFadeLength="24"
+                                    behaviors:VerticalEdgeOpacityMask.MinimumOpacity="0">
+                        <ContentControl.Style>
+                            <Style TargetType="ContentControl">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding UseInternalScrollViewer, ElementName=Root}" Value="False">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ContentControl.Style>
+                    </ContentControl>
+
+                    <Border Style="{StaticResource SecondaryMenuHeaderOverlayStyle}">
+                        <TextBlock Text="{Binding Title, ElementName=Root}"
+                                   Style="{StaticResource SecondaryMenuHeaderTextStyle}" />
+                    </Border>
+                </Grid>
+
+                <ContentControl Grid.Row="1"
+                                Content="{Binding FooterContent, ElementName=Root}">
                     <ContentControl.Style>
                         <Style TargetType="ContentControl">
-                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Setter Property="Visibility" Value="Visible" />
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding UseInternalScrollViewer, ElementName=Root}" Value="False">
-                                    <Setter Property="Visibility" Value="Visible" />
+                                <DataTrigger Binding="{Binding Content, RelativeSource={RelativeSource Self}}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </ContentControl.Style>
                 </ContentControl>
-
-                <Border Style="{StaticResource SecondaryMenuHeaderOverlayStyle}">
-                    <TextBlock Text="{Binding Title, ElementName=Root}"
-                               Style="{StaticResource SecondaryMenuHeaderTextStyle}" />
-                </Border>
             </Grid>
         </controls:BackdropBlurBorder>
     </Border>

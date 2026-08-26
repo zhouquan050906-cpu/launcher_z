@@ -936,6 +936,16 @@
                 </Grid>
             </controls:DialogHost>
 
+            <controls:DialogHost x:Name="MinecraftDirectorySwitchDialogHost"
+                                 Grid.ColumnSpan="2"
+                                 Grid.RowSpan="2"
+                                 DialogWidth="520"
+                                 UseIntegratedOverlay="True"
+                                 IsOpen="{Binding DataContext.SettingsPage.General.MinecraftDirectorySwitchDialog.IsOpen, ElementName=RootWindow}"
+                                 DataContext="{Binding DataContext.SettingsPage.General.MinecraftDirectorySwitchDialog, ElementName=RootWindow}">
+                <gameSettingsDialogViews:MinecraftDirectorySwitchDialogView />
+            </controls:DialogHost>
+
             <controls:DialogHost x:Name="RemoveMinecraftDirectoryDialogHost"
                                  Grid.ColumnSpan="2"
                                  Grid.RowSpan="2"

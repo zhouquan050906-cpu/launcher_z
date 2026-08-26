@@ -112,6 +112,8 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
 
     public event Action? InstanceListActivated;
 
+    public event Action? MinecraftDirectorySwitchRequested;
+
     public event Action<ResourceProjectReference>? ResourceProjectDetailsRequested;
 
     public GameSettingsInstanceListViewModel InstanceList { get; }
@@ -317,6 +319,12 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
         InstanceList.SetPreserveFilteredSelection(false);
     }
 
+    private bool CanRequestMinecraftDirectorySwitch() => IsListStep;
+
+    [RelayCommand(CanExecute = nameof(CanRequestMinecraftDirectorySwitch))]
+    private void RequestMinecraftDirectorySwitch() =>
+        MinecraftDirectorySwitchRequested?.Invoke();
+
     [RelayCommand]
     private void OpenInstanceFolder(GameSettingsInstanceItem instance)
     {
@@ -346,6 +354,7 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
         OnPropertyChanged(nameof(CurrentSecondaryMenuItems));
         OnPropertyChanged(nameof(PageTitle));
         OnPropertyChanged(nameof(PageTitleIconSource));
+        RequestMinecraftDirectorySwitchCommand.NotifyCanExecuteChanged();
         RaiseTopSearchPropertyChanges();
         if (value is GameSettingsPageStep.List)
             InstanceListActivated?.Invoke();

@@ -41,6 +41,13 @@ public partial class SecondaryMenuFrame : UserControl
             typeof(SecondaryMenuFrame),
             new PropertyMetadata(true, OnContentHostPropertyChanged));
 
+    public static readonly DependencyProperty FooterContentProperty =
+        DependencyProperty.Register(
+            nameof(FooterContent),
+            typeof(object),
+            typeof(SecondaryMenuFrame),
+            new PropertyMetadata(null));
+
     public SecondaryMenuFrame()
     {
         InitializeComponent();
@@ -63,6 +70,12 @@ public partial class SecondaryMenuFrame : UserControl
     {
         get => (bool)GetValue(UseInternalScrollViewerProperty);
         set => SetValue(UseInternalScrollViewerProperty, value);
+    }
+
+    public object? FooterContent
+    {
+        get => GetValue(FooterContentProperty);
+        set => SetValue(FooterContentProperty, value);
     }
 
     private static void OnContentHostPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

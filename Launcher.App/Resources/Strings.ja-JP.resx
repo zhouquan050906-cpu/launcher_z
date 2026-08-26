@@ -1159,6 +1159,12 @@
   <data name="Nav_GameInstanceList" xml:space="preserve">
     <value>ゲーム設定</value>
   </data>
+  <data name="GameSettings_SwitchMinecraftDirectoryButton" xml:space="preserve">
+    <value>ディレクトリを切り替え</value>
+  </data>
+  <data name="Dialog_SwitchMinecraftDirectoryTitle" xml:space="preserve">
+    <value>.minecraft ディレクトリを切り替え</value>
+  </data>
   <data name="Nav_JavaMemory" xml:space="preserve">
     <value>Java/メモリ</value>
   </data>

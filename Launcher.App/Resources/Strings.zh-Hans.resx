@@ -395,6 +395,8 @@
   <data name="GameSettings_DetailBackup" xml:space="preserve"><value>备份</value></data>
   <data name="GameSettings_DetailExport" xml:space="preserve"><value>导出</value></data>
   <data name="Nav_GameInstanceList" xml:space="preserve"><value>游戏设置</value></data>
+  <data name="GameSettings_SwitchMinecraftDirectoryButton" xml:space="preserve"><value>切换目录</value></data>
+  <data name="Dialog_SwitchMinecraftDirectoryTitle" xml:space="preserve"><value>切换 .minecraft 目录</value></data>
   <data name="Nav_JavaMemory" xml:space="preserve"><value>Java/内存</value></data>
   <data name="Nav_DirectoryManagement" xml:space="preserve"><value>目录管理</value></data>
   <data name="Nav_Mod" xml:space="preserve"><value>模组</value></data>

@@ -143,6 +143,7 @@ public sealed partial class MainViewModel : ObservableObject
         HomePage.LaunchFailureReported += HomePage_LaunchFailureReported;
         GameSettingsPage.LocalImportRequested += GameSettingsPage_LocalImportRequested;
         GameSettingsPage.ResourceProjectDetailsRequested += GameSettingsPage_ResourceProjectDetailsRequested;
+        GameSettingsPage.MinecraftDirectorySwitchRequested += GameSettingsPage_MinecraftDirectorySwitchRequested;
 
         statusService.MessageReported += message => StatusMessage = message;
         floatingMessageService.MessageRequested += ShowFloatingMessage;

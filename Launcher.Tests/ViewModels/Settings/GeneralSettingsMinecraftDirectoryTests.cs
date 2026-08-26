@@ -103,6 +103,7 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
         await settingsService.SaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.False(viewModel.CanChangeMinecraftDirectory);
+        Assert.False(viewModel.IsMinecraftDirectoryChangeBlocked);
         Assert.True(MinecraftDirectoryPath.Equals(target, viewModel.SelectedMinecraftDirectory?.DirectoryPath));
         Assert.True(viewModel.CanAddMinecraftDirectory);
         Assert.True(viewModel.AddMinecraftDirectoryCommand.CanExecute(null));
@@ -236,9 +237,190 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
 
         viewModel.SelectedMinecraftDirectory = viewModel.MinecraftDirectories[1];
 
+        Assert.True(viewModel.IsMinecraftDirectoryChangeBlocked);
+        Assert.False(viewModel.CanChangeMinecraftDirectory);
         Assert.False(viewModel.AddMinecraftDirectoryCommand.CanExecute(null));
         Assert.True(MinecraftDirectoryPath.Equals(current, viewModel.SelectedMinecraftDirectory?.DirectoryPath));
         Assert.True(MinecraftDirectoryPath.Equals(current, settings.MinecraftDirectory));
+    }
+
+    [Fact]
+    public async Task SwitchDialogSelectsCurrentAndConfirmsAvailableTargetOnce()
+    {
+        var current = CreateDirectory("current");
+        var target = CreateDirectory("target");
+        var settings = CreateSettings(current, target);
+        var status = new RecordingStatusService();
+        using var coordinator = CreateCoordinator(new TestSettingsService(settings), settings, status);
+        using var viewModel = CreateViewModel(
+            coordinator,
+            status,
+            new StubFilePickerService(null),
+            new StubInstanceFolderService());
+        viewModel.Load(settings);
+        var changedCount = 0;
+        viewModel.MinecraftDirectoryChanged += (_, _) => changedCount++;
+
+        viewModel.OpenMinecraftDirectorySwitchDialog();
+        var dialog = viewModel.MinecraftDirectorySwitchDialog;
+
+        Assert.True(dialog.IsOpen);
+        Assert.True(dialog.CancelCommand.CanExecute(null));
+        Assert.Same(viewModel.MinecraftDirectories[0], dialog.SelectedDirectory);
+        Assert.False(dialog.ConfirmCommand.CanExecute(null));
+        dialog.SelectedDirectory = viewModel.MinecraftDirectories[1];
+        Assert.True(dialog.ConfirmCommand.CanExecute(null));
+        await dialog.ConfirmCommand.ExecuteAsync(null);
+
+        Assert.False(dialog.IsOpen);
+        Assert.Equal(1, changedCount);
+        Assert.Equal(MinecraftDirectoryPath.Normalize(target), settings.MinecraftDirectory);
+        Assert.True(MinecraftDirectoryPath.Equals(
+            target,
+            dialog.SelectedDirectory?.DirectoryPath));
+    }
+
+    [Fact]
+    public void SwitchDialogCancelDoesNotChangeDirectory()
+    {
+        var current = CreateDirectory("current");
+        var target = CreateDirectory("target");
+        var settings = CreateSettings(current, target);
+        var status = new RecordingStatusService();
+        using var coordinator = CreateCoordinator(new TestSettingsService(settings), settings, status);
+        using var viewModel = CreateViewModel(
+            coordinator,
+            status,
+            new StubFilePickerService(null),
+            new StubInstanceFolderService());
+        viewModel.Load(settings);
+
+        viewModel.OpenMinecraftDirectorySwitchDialog();
+        viewModel.MinecraftDirectorySwitchDialog.SelectedDirectory = viewModel.MinecraftDirectories[1];
+        viewModel.MinecraftDirectorySwitchDialog.CancelCommand.Execute(null);
+
+        Assert.False(viewModel.MinecraftDirectorySwitchDialog.IsOpen);
+        Assert.Equal(MinecraftDirectoryPath.Normalize(current), settings.MinecraftDirectory);
+        Assert.True(MinecraftDirectoryPath.Equals(
+            current,
+            viewModel.MinecraftDirectorySwitchDialog.SelectedDirectory?.DirectoryPath));
+    }
+
+    [Fact]
+    public void SwitchDialogFreezesSelectionWhileDownloadTaskIsActive()
+    {
+        var current = CreateDirectory("current");
+        var target = CreateDirectory("target");
+        var settings = CreateSettings(current, target);
+        var status = new RecordingStatusService();
+        var downloadTasks = new DownloadTasksPageViewModel();
+        var activeTask = downloadTasks.BeginTask("Download", "Running");
+        using var coordinator = CreateCoordinator(new TestSettingsService(settings), settings, status);
+        using var viewModel = CreateViewModel(
+            coordinator,
+            status,
+            new StubFilePickerService(null),
+            new StubInstanceFolderService(),
+            downloadTasks);
+        viewModel.Load(settings);
+
+        viewModel.OpenMinecraftDirectorySwitchDialog();
+        var dialog = viewModel.MinecraftDirectorySwitchDialog;
+        dialog.SelectedDirectory = viewModel.MinecraftDirectories[1];
+
+        Assert.True(dialog.IsChangeBlockedByActiveTasks);
+        Assert.True(MinecraftDirectoryPath.Equals(current, dialog.SelectedDirectory?.DirectoryPath));
+        Assert.False(dialog.ConfirmCommand.CanExecute(null));
+
+        activeTask.Complete("Done");
+        dialog.SelectedDirectory = viewModel.MinecraftDirectories[1];
+
+        Assert.False(dialog.IsChangeBlockedByActiveTasks);
+        Assert.True(dialog.ConfirmCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void SwitchDialogCannotSelectUnavailableDirectory()
+    {
+        var current = CreateDirectory("current");
+        var missing = Path.Combine(TempRoot, "missing");
+        var settings = CreateSettings(current, missing);
+        var status = new RecordingStatusService();
+        using var coordinator = CreateCoordinator(new TestSettingsService(settings), settings, status);
+        using var viewModel = CreateViewModel(
+            coordinator,
+            status,
+            new StubFilePickerService(null),
+            new StubInstanceFolderService());
+        viewModel.Load(settings);
+
+        viewModel.OpenMinecraftDirectorySwitchDialog();
+        var dialog = viewModel.MinecraftDirectorySwitchDialog;
+        dialog.SelectedDirectory = viewModel.MinecraftDirectories[1];
+
+        Assert.False(viewModel.MinecraftDirectories[1].IsAvailable);
+        Assert.True(MinecraftDirectoryPath.Equals(current, dialog.SelectedDirectory?.DirectoryPath));
+        Assert.False(dialog.ConfirmCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task FailedSwitchFromDialogKeepsDialogOpenAndRestoresCurrent()
+    {
+        var current = CreateDirectory("current");
+        var target = CreateDirectory("target");
+        var settings = CreateSettings(current, target);
+        var status = new RecordingStatusService();
+        using var coordinator = CreateCoordinator(new FailingSettingsService(settings), settings, status);
+        using var viewModel = CreateViewModel(
+            coordinator,
+            status,
+            new StubFilePickerService(null),
+            new StubInstanceFolderService());
+        viewModel.Load(settings);
+
+        viewModel.OpenMinecraftDirectorySwitchDialog();
+        var dialog = viewModel.MinecraftDirectorySwitchDialog;
+        dialog.SelectedDirectory = viewModel.MinecraftDirectories[1];
+        await dialog.ConfirmCommand.ExecuteAsync(null);
+
+        Assert.True(dialog.IsOpen);
+        Assert.Equal(MinecraftDirectoryPath.Normalize(current), settings.MinecraftDirectory);
+        Assert.True(MinecraftDirectoryPath.Equals(current, dialog.SelectedDirectory?.DirectoryPath));
+    }
+
+    [Fact]
+    public async Task DownloadTaskStartingDuringDialogSaveRestoresCurrentAndKeepsDialogOpen()
+    {
+        var current = CreateDirectory("current");
+        var target = CreateDirectory("target");
+        var settings = CreateSettings(current, target);
+        var downloadTasks = new DownloadTasksPageViewModel();
+        var settingsService = new CallbackSettingsService(
+            settings,
+            () =>
+            {
+                if (!downloadTasks.HasActiveOperations)
+                    downloadTasks.BeginTask("Download", "Running");
+            });
+        var status = new RecordingStatusService();
+        using var coordinator = CreateCoordinator(settingsService, settings, status);
+        using var viewModel = CreateViewModel(
+            coordinator,
+            status,
+            new StubFilePickerService(null),
+            new StubInstanceFolderService(),
+            downloadTasks);
+        viewModel.Load(settings);
+
+        viewModel.OpenMinecraftDirectorySwitchDialog();
+        var dialog = viewModel.MinecraftDirectorySwitchDialog;
+        dialog.SelectedDirectory = viewModel.MinecraftDirectories[1];
+        await dialog.ConfirmCommand.ExecuteAsync(null);
+
+        Assert.True(dialog.IsOpen);
+        Assert.True(dialog.IsChangeBlockedByActiveTasks);
+        Assert.Equal(MinecraftDirectoryPath.Normalize(current), settings.MinecraftDirectory);
+        Assert.True(MinecraftDirectoryPath.Equals(current, dialog.SelectedDirectory?.DirectoryPath));
     }
 
     [Fact]

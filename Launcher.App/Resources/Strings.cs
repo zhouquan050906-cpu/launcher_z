@@ -713,6 +713,8 @@ public static class Strings
     public static string GameSettings_OpenResourceDetailsTooltip => Get(nameof(GameSettings_OpenResourceDetailsTooltip));
     public static string GameSettings_SelectInstanceAndGoHomeTooltip => Get(nameof(GameSettings_SelectInstanceAndGoHomeTooltip));
     public static string Nav_GameInstanceList => Get(nameof(Nav_GameInstanceList));
+    public static string GameSettings_SwitchMinecraftDirectoryButton => Get(nameof(GameSettings_SwitchMinecraftDirectoryButton));
+    public static string Dialog_SwitchMinecraftDirectoryTitle => Get(nameof(Dialog_SwitchMinecraftDirectoryTitle));
     public static string Nav_JavaMemory => Get(nameof(Nav_JavaMemory));
     public static string Nav_DirectoryManagement => Get(nameof(Nav_DirectoryManagement));
     public static string Nav_Mod => Get(nameof(Nav_Mod));

@@ -60,6 +60,11 @@ public Task SyncExternalInstanceCatalogAsync()
         DownloadPage.LocalImportDialog.Open();
     }
 
+    private void GameSettingsPage_MinecraftDirectorySwitchRequested()
+    {
+        SettingsPage.General.OpenMinecraftDirectorySwitchDialog();
+    }
+
     private void GameSettingsPage_ResourceProjectDetailsRequested(ResourceProjectReference reference)
     {
         ObserveShellTask(OpenResourceProjectDetailsAsync(reference), "open recognized resource project details");

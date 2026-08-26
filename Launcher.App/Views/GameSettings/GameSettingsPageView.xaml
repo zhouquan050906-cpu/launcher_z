@@ -89,6 +89,14 @@
                     </ItemsControl>
                 </Grid>
             </controls:SecondaryMenuFrame.MenuContent>
+            <controls:SecondaryMenuFrame.FooterContent>
+                <Grid Margin="14,0,14,14"
+                      Visibility="{Binding IsListStep, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}">
+                    <controls:SecondaryMenuOptionButton Text="{x:Static res:Strings.GameSettings_SwitchMinecraftDirectoryButton}"
+                                                        IconKey="instance_setting_page/folder-conversion"
+                                                        Command="{Binding RequestMinecraftDirectorySwitchCommand}" />
+                </Grid>
+            </controls:SecondaryMenuFrame.FooterContent>
         </controls:SecondaryMenuFrame>
 
         <controls:ListPageFrame x:Name="GameSettingsListFrame"
@@ -525,4 +533,3 @@
 
     </Grid>
 </UserControl>
-

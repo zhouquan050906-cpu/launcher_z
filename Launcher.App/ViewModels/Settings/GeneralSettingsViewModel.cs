@@ -65,6 +65,12 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
         this.downloadTasksPage = downloadTasksPage;
         this.logLevelController = logLevelController;
         this.logger = logger;
+        MinecraftDirectorySwitchDialog = new MinecraftDirectorySwitchDialogViewModel(
+            MinecraftDirectories,
+            () => MinecraftDirectory,
+            () => CanChangeMinecraftDirectory,
+            () => IsMinecraftDirectoryChangeBlocked,
+            SelectMinecraftDirectoryAsync);
         if (downloadTasksPage is not null)
             downloadTasksPage.ActivityChanged += DownloadTasksPage_ActivityChanged;
     }
@@ -77,7 +83,8 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
     public bool CanAddMinecraftDirectory =>
         downloadTasksPage?.HasActiveOperations != true;
 
-    public bool IsMinecraftDirectoryChangeBlocked => !CanChangeMinecraftDirectory;
+    public bool IsMinecraftDirectoryChangeBlocked =>
+        downloadTasksPage?.HasActiveOperations == true;
 
     [ObservableProperty]
     private string minecraftDirectory = string.Empty;
@@ -120,6 +127,8 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
 
     public ObservableCollection<SettingsMinecraftDirectoryItem> MinecraftDirectories { get; } = [];
 
+    public MinecraftDirectorySwitchDialogViewModel MinecraftDirectorySwitchDialog { get; }
+
     public string MinecraftDirectoryNameDialogTitle => isMinecraftDirectoryNameDialogForAdd
         ? Strings.Dialog_AddMinecraftDirectoryNameTitle
         : Strings.Dialog_RenameMinecraftDirectoryNameTitle;
@@ -152,6 +161,12 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
             LauncherLogDirectory = LauncherLogConfiguration.ResolveLogDirectory();
             DiagnosticLoggingEnabled = settings.EnableDiagnosticLogging;
         });
+    }
+
+    public void OpenMinecraftDirectorySwitchDialog()
+    {
+        LoadState(() => LoadMinecraftDirectories(Settings));
+        MinecraftDirectorySwitchDialog.Open();
     }
 
     partial void OnDiagnosticLoggingEnabledChanged(bool value)
@@ -562,6 +577,7 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
         RequestRemoveMinecraftDirectoryCommand.NotifyCanExecuteChanged();
         ConfirmRemoveMinecraftDirectoryCommand.NotifyCanExecuteChanged();
         ConfirmMinecraftDirectoryNameCommand.NotifyCanExecuteChanged();
+        MinecraftDirectorySwitchDialog.NotifyDirectoryChangeStateChanged();
     }
 
     private void LoadMinecraftDirectories(LauncherSettings settings)
@@ -598,6 +614,7 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
             MinecraftDirectories.RemoveAt(MinecraftDirectories.Count - 1);
 
         SetSelectedMinecraftDirectory(FindMinecraftDirectoryItem(settings.MinecraftDirectory));
+        MinecraftDirectorySwitchDialog.SynchronizeWithCurrentDirectory();
     }
 
     private int FindMinecraftDirectoryItemIndex(string directoryPath, int startIndex)

@@ -52,11 +52,22 @@
                                 Style="{StaticResource LauncherPrimaryDialogButtonStyle}" />
                     </Grid>
 
-                    <ListBox ItemsSource="{Binding MinecraftDirectories}"
+                    <TextBlock Margin="0,8,0,0"
+                               Text="{x:Static res:Strings.Settings_MinecraftDirectoryChangeBlockedByActiveTasks}"
+                               Foreground="{DynamicResource LauncherDangerBrush}"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding IsMinecraftDirectoryChangeBlocked, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
+
+                    <ListBox x:Name="MinecraftDirectoryListBox"
+                             ItemsSource="{Binding MinecraftDirectories}"
                              SelectedItem="{Binding SelectedMinecraftDirectory, Mode=TwoWay}"
                              ItemTemplate="{StaticResource MinecraftDirectoryItemTemplate}"
                              ItemContainerStyle="{StaticResource SettingsChoiceListBoxItemStyle}"
-                             Style="{StaticResource SettingsChoiceListBoxStyle}" />
+                             Style="{StaticResource SettingsChoiceListBoxStyle}"
+                             PreviewMouseLeftButtonDown="MinecraftDirectoryListBox_PreviewMouseLeftButtonDown"
+                             PreviewKeyDown="MinecraftDirectoryListBox_PreviewKeyDown"
+                             SelectionChanged="MinecraftDirectoryListBox_SelectionChanged" />
                 </StackPanel>
             </Border>
         </GroupBox>
