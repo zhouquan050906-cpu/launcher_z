@@ -194,6 +194,89 @@ public sealed class DownloadViewModelTests
         Assert.Equal("snapshot", request.MinecraftVersionType);
     }
 
+    [Fact]
+    public async Task ExistingRawVersionDirectoryShowsDuplicateNameBeforeInstall()
+    {
+        var service = new FakeGameInstanceService();
+        var availability = new StubInstanceInstallNameAvailabilityService
+        {
+            Result = InstanceInstallNameAvailability.Occupied
+        };
+        using var viewModel = new DownloadInstanceOptionsViewModel(
+            service,
+            [],
+            new DownloadInstanceNameTracker(),
+            availability);
+
+        await viewModel.PrepareAsync(
+            new DownloadMinecraftVersionItem(
+                new MinecraftVersionInfo("1.20.1", "release", false)));
+
+        Assert.Equal(Strings.Status_DuplicateInstanceName, viewModel.InstanceNameDuplicateMessage);
+        Assert.False(viewModel.CanInstall);
+        Assert.Equal("1.20.1", Assert.Single(availability.CheckedNames));
+    }
+
+    [Fact]
+    public async Task RefreshNameAvailabilityRechecksAfterMinecraftDirectoryChanges()
+    {
+        var service = new FakeGameInstanceService();
+        var availability = new StubInstanceInstallNameAvailabilityService();
+        using var viewModel = new DownloadInstanceOptionsViewModel(
+            service,
+            [],
+            new DownloadInstanceNameTracker(),
+            availability);
+        await viewModel.PrepareAsync(
+            new DownloadMinecraftVersionItem(
+                new MinecraftVersionInfo("1.20.1", "release", false)));
+        Assert.Empty(viewModel.InstanceNameDuplicateMessage);
+
+        availability.Result = InstanceInstallNameAvailability.Occupied;
+        await viewModel.RefreshNameAvailabilityAsync();
+
+        Assert.Equal(Strings.Status_DuplicateInstanceName, viewModel.InstanceNameDuplicateMessage);
+        Assert.False(viewModel.CanInstall);
+        Assert.Equal(2, availability.CheckedNames.Count);
+    }
+
+    [Fact]
+    public async Task StaleNameAvailabilityResultCannotOverrideTheLatestName()
+    {
+        var staleResult = new TaskCompletionSource<InstanceInstallNameAvailability>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var staleCheckStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var availability = new SequencedInstanceInstallNameAvailabilityService(
+            (_, _) => Task.FromResult(InstanceInstallNameAvailability.Available),
+            async (_, _) =>
+            {
+                staleCheckStarted.TrySetResult();
+                return await staleResult.Task;
+            },
+            (_, _) => Task.FromResult(InstanceInstallNameAvailability.Available));
+        using var viewModel = new DownloadInstanceOptionsViewModel(
+            new FakeGameInstanceService(),
+            [],
+            new DownloadInstanceNameTracker(),
+            availability);
+        await viewModel.PrepareAsync(
+            new DownloadMinecraftVersionItem(
+                new MinecraftVersionInfo("1.20.1", "release", false)));
+
+        viewModel.InstanceName = "occupied";
+        var staleRefresh = viewModel.RefreshNameAvailabilityAsync();
+        await staleCheckStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        viewModel.InstanceName = "free";
+        await viewModel.RefreshNameAvailabilityAsync();
+        staleResult.TrySetResult(InstanceInstallNameAvailability.Occupied);
+        await staleRefresh;
+
+        Assert.Equal("free", viewModel.InstanceName);
+        Assert.Empty(viewModel.InstanceNameDuplicateMessage);
+        Assert.True(viewModel.CanInstall);
+    }
+
     private static DownloadInstallViewModel CreateInstallViewModel(
         FakeGameInstanceService service,
         DownloadTasksPageViewModel tasks,
@@ -249,6 +332,36 @@ public sealed class DownloadViewModelTests
             CallCount++;
             return responses.Dequeue()();
         }
+    }
+
+    private sealed class StubInstanceInstallNameAvailabilityService
+        : IInstanceInstallNameAvailabilityService
+    {
+        public InstanceInstallNameAvailability Result { get; set; } =
+            InstanceInstallNameAvailability.Available;
+
+        public List<string> CheckedNames { get; } = [];
+
+        public Task<InstanceInstallNameAvailability> CheckAsync(
+            string instanceName,
+            CancellationToken cancellationToken = default)
+        {
+            CheckedNames.Add(instanceName);
+            return Task.FromResult(Result);
+        }
+    }
+
+    private sealed class SequencedInstanceInstallNameAvailabilityService(
+        params Func<string, CancellationToken, Task<InstanceInstallNameAvailability>>[] responses)
+        : IInstanceInstallNameAvailabilityService
+    {
+        private readonly Queue<Func<string, CancellationToken, Task<InstanceInstallNameAvailability>>> responses =
+            new(responses);
+
+        public Task<InstanceInstallNameAvailability> CheckAsync(
+            string instanceName,
+            CancellationToken cancellationToken = default) =>
+            responses.Dequeue()(instanceName, cancellationToken);
     }
 
     private sealed class RecordingFloatingMessageService : IFloatingMessageService

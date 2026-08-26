@@ -47,6 +47,8 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
         IStatusService statusService,
         ISystemMemoryService systemMemoryService,
         IJavaRuntimeDiscoveryService javaRuntimeDiscoveryService,
+        IMinecraftDirectoryFileSystem minecraftDirectoryFileSystem,
+        MinecraftDirectoryManagementService minecraftDirectoryManagementService,
         IFilePickerService filePickerService,
         ICustomFileDownloadService customFileDownloadService,
         IInstanceFolderService instanceFolderService,
@@ -73,6 +75,8 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
             statusService,
             filePickerService,
             instanceFolderService,
+            minecraftDirectoryFileSystem,
+            minecraftDirectoryManagementService,
             downloadTasksPage,
             logLevelController,
             resolvedLogger);

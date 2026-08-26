@@ -45,6 +45,9 @@ public sealed class LauncherSettings
     public LauncherUpdateChannel UpdateChannel { get; set; } = LauncherDefaults.DefaultUpdateChannel;
     public string DataDirectory { get; set; } = string.Empty;
     public string MinecraftDirectory { get; set; } = string.Empty;
+    public List<string> MinecraftDirectories { get; set; } = [];
+    public Dictionary<string, string> MinecraftDirectoryDisplayNames { get; set; } = [];
+    public List<string> ExcludedMinecraftDirectories { get; set; } = [];
     public DownloadSourcePreference DownloadSourcePreference { get; set; } = LauncherDefaults.DefaultDownloadSourcePreference;
     public int MaximumDownloadConcurrency { get; set; } = LauncherDefaults.DefaultMaximumDownloadConcurrency;
     public int DownloadSpeedLimitMbPerSecond { get; set; }

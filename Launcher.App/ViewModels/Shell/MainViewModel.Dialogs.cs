@@ -35,7 +35,7 @@ namespace Launcher.App.ViewModels.Shell;
 
 public sealed partial class MainViewModel
 {
-[RelayCommand]
+    [RelayCommand]
     private void CancelDownloadCloseConfirmation()
     {
         logger.LogInformation("Launcher close canceled because downloads are running.");

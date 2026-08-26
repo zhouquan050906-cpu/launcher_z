@@ -936,6 +936,84 @@
                 </Grid>
             </controls:DialogHost>
 
+            <controls:DialogHost x:Name="RemoveMinecraftDirectoryDialogHost"
+                                 Grid.ColumnSpan="2"
+                                 Grid.RowSpan="2"
+                                 DialogWidth="460"
+                                 UseIntegratedOverlay="True"
+                                 IsOpen="{Binding DataContext.SettingsPage.General.IsRemoveMinecraftDirectoryDialogOpen, ElementName=RootWindow}"
+                                 DataContext="{Binding DataContext.SettingsPage.General, ElementName=RootWindow}">
+                <Grid Style="{StaticResource DialogContentGridStyle}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="{x:Static res:Strings.Dialog_RemoveMinecraftDirectoryTitle}"
+                               Style="{StaticResource DialogTitleTextStyle}" />
+
+                    <TextBlock Grid.Row="1"
+                               Margin="0,16,0,24"
+                               Text="{Binding RemoveMinecraftDirectoryDialogMessage}"
+                               Style="{StaticResource DialogBodyTextStyle}"
+                               TextWrapping="Wrap" />
+
+                    <StackPanel Grid.Row="2"
+                                Style="{StaticResource DialogFooterStyle}">
+                        <Button Style="{StaticResource LauncherDialogButtonStyle}"
+                                Content="{x:Static res:Strings.Cancel_Button}"
+                                Command="{Binding CancelRemoveMinecraftDirectoryCommand}" />
+                        <Button Style="{StaticResource LauncherDangerDialogButtonStyle}"
+                                Margin="{StaticResource DialogTrailingButtonMargin}"
+                                Content="{x:Static res:Strings.Settings_RemoveMinecraftDirectoryConfirmButton}"
+                                Command="{Binding ConfirmRemoveMinecraftDirectoryCommand}" />
+                    </StackPanel>
+                </Grid>
+            </controls:DialogHost>
+
+            <controls:DialogHost x:Name="MinecraftDirectoryNameDialogHost"
+                                 Grid.ColumnSpan="2"
+                                 Grid.RowSpan="2"
+                                 DialogWidth="460"
+                                 UseIntegratedOverlay="True"
+                                 IsOpen="{Binding DataContext.SettingsPage.General.IsMinecraftDirectoryNameDialogOpen, ElementName=RootWindow}"
+                                 DataContext="{Binding DataContext.SettingsPage.General, ElementName=RootWindow}">
+                <Grid Style="{StaticResource DialogContentGridStyle}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="{Binding MinecraftDirectoryNameDialogTitle}"
+                               Style="{StaticResource DialogTitleTextStyle}" />
+
+                    <StackPanel Grid.Row="1"
+                                Style="{StaticResource DialogFormPanelStyle}">
+                        <TextBlock Text="{x:Static res:Strings.Dialog_MinecraftDirectoryNameLabel}"
+                                   Style="{StaticResource DialogFieldLabelTextStyle}" />
+                        <TextBox Style="{StaticResource LauncherDialogTextBoxStyle}"
+                                 Text="{Binding MinecraftDirectoryName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="{x:Static res:Strings.Dialog_MinecraftDirectoryNameValidation}"
+                                   Style="{StaticResource DialogValidationTextStyle}"
+                                   Visibility="{Binding IsMinecraftDirectoryNameInvalid, Converter={StaticResource BooleanToMenuTextVisibilityConverter}}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2"
+                                Style="{StaticResource DialogFooterStyle}">
+                        <Button Style="{StaticResource LauncherDialogButtonStyle}"
+                                Content="{x:Static res:Strings.Cancel_Button}"
+                                Command="{Binding CancelMinecraftDirectoryNameCommand}" />
+                        <Button Style="{StaticResource LauncherPrimaryDialogButtonStyle}"
+                                Margin="{StaticResource DialogTrailingButtonMargin}"
+                                Content="{Binding MinecraftDirectoryNameDialogConfirmButtonText}"
+                                IsEnabled="{Binding CanConfirmMinecraftDirectoryName}"
+                                Command="{Binding ConfirmMinecraftDirectoryNameCommand}" />
+                    </StackPanel>
+                </Grid>
+            </controls:DialogHost>
+
             <controls:DialogHost x:Name="SettingsFeedbackDialogHost"
                                  Grid.ColumnSpan="2"
                                  Grid.RowSpan="2"
@@ -1267,6 +1345,37 @@
                                 Command="{Binding ExportReportCommand}" />
                         <Button Style="{StaticResource LauncherPrimaryDialogButtonStyle}"
                                 Margin="{StaticResource DialogTrailingButtonMargin}"
+                                Content="{x:Static res:Strings.Confirm_Button}"
+                                Command="{Binding CloseCommand}" />
+                    </StackPanel>
+                </Grid>
+            </controls:DialogHost>
+
+            <controls:DialogHost Grid.ColumnSpan="2"
+                                 Grid.RowSpan="2"
+                                 DialogWidth="500"
+                                 UseIntegratedOverlay="True"
+                                 IsOpen="{Binding IsOpen}"
+                                 DataContext="{Binding MinecraftDirectoryStartupRecoveryDialog}">
+                <Grid Style="{StaticResource DialogContentGridStyle}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="{x:Static res:Strings.Dialog_MinecraftDirectoryStartupRecoveryTitle}"
+                               Style="{StaticResource DialogTitleTextStyle}" />
+
+                    <TextBlock Grid.Row="1"
+                               Margin="0,16,0,24"
+                               Text="{Binding Message}"
+                               Style="{StaticResource DialogBodyTextStyle}"
+                               TextWrapping="Wrap" />
+
+                    <StackPanel Grid.Row="2"
+                                Style="{StaticResource DialogFooterStyle}">
+                        <Button Style="{StaticResource LauncherPrimaryDialogButtonStyle}"
                                 Content="{x:Static res:Strings.Confirm_Button}"
                                 Command="{Binding CloseCommand}" />
                     </StackPanel>

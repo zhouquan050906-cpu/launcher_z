@@ -2888,8 +2888,62 @@
   <data name="Settings_MinecraftDirectoryItemTitle" xml:space="preserve">
     <value>.minecraft ディレクトリ</value>
   </data>
-  <data name="Settings_MinecraftDirectoryDescription" xml:space="preserve">
-    <value>ここではランチャーがインスタンス、バージョン、関連するゲームファイルをスキャンする場所を指定します。</value>
+  <data name="Settings_MinecraftDirectoryListLabel" xml:space="preserve">
+    <value>Minecraft ディレクトリ一覧</value>
+  </data>
+  <data name="Settings_AddMinecraftDirectoryButton" xml:space="preserve">
+    <value>ディレクトリを追加</value>
+  </data>
+  <data name="Settings_RenameMinecraftDirectoryButton" xml:space="preserve">
+    <value>名前を変更</value>
+  </data>
+  <data name="Settings_AddMinecraftDirectoryConfirmButton" xml:space="preserve">
+    <value>追加</value>
+  </data>
+  <data name="Settings_RenameMinecraftDirectoryConfirmButton" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="Dialog_AddMinecraftDirectoryNameTitle" xml:space="preserve">
+    <value>Minecraft ディレクトリに名前を付ける</value>
+  </data>
+  <data name="Dialog_RenameMinecraftDirectoryNameTitle" xml:space="preserve">
+    <value>Minecraft ディレクトリの名前を変更</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryNameLabel" xml:space="preserve">
+    <value>ディレクトリ名</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryNameValidation" xml:space="preserve">
+    <value>1～64 文字のディレクトリ名を入力してください。</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryTitle" xml:space="preserve">
+    <value>現在の Minecraft ディレクトリを利用できません</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupSwitchedMessageFormat" xml:space="preserve">
+    <value>前回選択した Minecraft ディレクトリは利用できなくなりました：&#xA;&#xA;{0}&#xA;&#xA;ランチャーは次のディレクトリへ自動的に切り替えました：&#xA;&#xA;{1}</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupDefaultMessageFormat" xml:space="preserve">
+    <value>前回選択した Minecraft ディレクトリは利用できなくなりました：&#xA;&#xA;{0}&#xA;&#xA;リストに利用可能な別のディレクトリがないため、既定のディレクトリを準備して選択しました：&#xA;&#xA;{1}</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryFailedTitle" xml:space="preserve">
+    <value>Minecraft ディレクトリを復旧できません</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryFailedMessageFormat" xml:space="preserve">
+    <value>使用可能な Minecraft ディレクトリを作成または保存できませんでした：&#xA;&#xA;{0}&#xA;&#xA;ランチャーを終了します。このディレクトリへのアクセス権とランチャー設定への書き込み権限を確認してから再試行してください。</value>
+  </data>
+  <data name="Settings_RemoveMinecraftDirectoryFromListButton" xml:space="preserve">
+    <value>リストから除外</value>
+  </data>
+  <data name="Settings_RemoveMinecraftDirectoryConfirmButton" xml:space="preserve">
+    <value>除外</value>
+  </data>
+  <data name="Dialog_RemoveMinecraftDirectoryTitle" xml:space="preserve">
+    <value>Minecraft ディレクトリをリストから除外</value>
+  </data>
+  <data name="Dialog_RemoveMinecraftDirectoryMessageFormat" xml:space="preserve">
+    <value>次のディレクトリをリストから除外しますか？&#xA;&#xA;{0}&#xA;&#xA;ランチャーのリストから除外するだけで、ディレクトリやその中のファイルは削除されません。</value>
+  </data>
+  <data name="Settings_MinecraftDirectoryUnavailable" xml:space="preserve">
+    <value>ディレクトリを利用できません</value>
   </data>
   <data name="Settings_MinecraftDirectoryChangeBlockedByActiveTasks" xml:space="preserve">
     <value>ダウンロードまたはインストール中はディレクトリを変更できません。</value>
@@ -2905,6 +2959,30 @@
   </data>
   <data name="Status_MinecraftDirectoryChanged" xml:space="preserve">
     <value>.minecraft ディレクトリを更新しました。</value>
+  </data>
+  <data name="Status_MinecraftDirectoryAdded" xml:space="preserve">
+    <value>.minecraft ディレクトリを追加して切り替えました。</value>
+  </data>
+  <data name="Status_AddMinecraftDirectoryFailed" xml:space="preserve">
+    <value>.minecraft ディレクトリを追加できませんでした。ディレクトリが存在し、アクセスできることを確認してください。</value>
+  </data>
+  <data name="Status_MinecraftDirectoryUnavailable" xml:space="preserve">
+    <value>この .minecraft ディレクトリは存在しないか、アクセスできません。</value>
+  </data>
+  <data name="Status_MinecraftDirectorySwitchFailed" xml:space="preserve">
+    <value>.minecraft ディレクトリの切り替えに失敗しました。しばらくしてから再試行してください。</value>
+  </data>
+  <data name="Status_MinecraftDirectoryRemovedFromList" xml:space="preserve">
+    <value>.minecraft ディレクトリをリストから除外しました。</value>
+  </data>
+  <data name="Status_RemoveMinecraftDirectoryFromListFailed" xml:space="preserve">
+    <value>.minecraft ディレクトリをリストから除外できませんでした。しばらくしてから再試行してください。</value>
+  </data>
+  <data name="Status_MinecraftDirectoryRenamed" xml:space="preserve">
+    <value>Minecraft ディレクトリ名を更新しました。</value>
+  </data>
+  <data name="Status_RenameMinecraftDirectoryFailed" xml:space="preserve">
+    <value>Minecraft ディレクトリ名を変更できませんでした。しばらくしてから再試行してください。</value>
   </data>
   <data name="Status_MinecraftDirectoryChangeFailed" xml:space="preserve">
     <value>.minecraft ディレクトリの変更に失敗しました。しばらくしてから再試行してください。</value>

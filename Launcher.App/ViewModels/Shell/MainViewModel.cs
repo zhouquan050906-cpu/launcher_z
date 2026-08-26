@@ -107,6 +107,7 @@ public sealed partial class MainViewModel : ObservableObject
         IHomePageViewModelFactory homePageFactory,
         LaunchStatusDialogViewModel launchStatusDialog,
         UserAgreementDialogViewModel userAgreementDialog,
+        MinecraftDirectoryStartupRecoveryDialogViewModel minecraftDirectoryStartupRecoveryDialog,
         TerracottaAgreementDialogViewModel terracottaAgreementDialog,
         LauncherBackgroundViewModel launcherBackground,
         ILogger<MainViewModel>? logger = null)
@@ -126,6 +127,7 @@ public sealed partial class MainViewModel : ObservableObject
         GameManagement = gameManagement;
         LaunchStatusDialog = launchStatusDialog;
         UserAgreementDialog = userAgreementDialog;
+        MinecraftDirectoryStartupRecoveryDialog = minecraftDirectoryStartupRecoveryDialog;
         TerracottaAgreementDialog = terracottaAgreementDialog;
         LauncherBackground = launcherBackground;
         HomePage = homePageFactory.Create(
@@ -171,6 +173,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     public UserAgreementDialogViewModel UserAgreementDialog { get; }
 
+    public MinecraftDirectoryStartupRecoveryDialogViewModel MinecraftDirectoryStartupRecoveryDialog { get; }
+
     public TerracottaAgreementDialogViewModel TerracottaAgreementDialog { get; }
 
     public LauncherBackgroundViewModel LauncherBackground { get; }
@@ -181,13 +185,16 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<NavigationItem> SecondaryItems { get; } = [];
 
-    public async Task PrimeAsync(LauncherSettings? initialSettings = null)
+    public async Task PrimeAsync(
+        LauncherSettings? initialSettings = null,
+        MinecraftDirectoryStartupRecoveryResult? minecraftDirectoryStartupRecovery = null)
     {
         // Prime 使用已加载设置建立首屏，完整异步初始化随后执行，缩短窗口首次可见时间。
         if (hasPrimedSettings)
             return;
 
         Settings = initialSettings ?? await settingsService.LoadAsync();
+        MinecraftDirectoryStartupRecoveryDialog.Prime(minecraftDirectoryStartupRecovery);
         LauncherBackground.ApplyEffect(Settings.LauncherBackgroundEffect, reportFailure: false);
         UserAgreementDialog.Prime(Settings);
         IsMenuExpanded = Settings.IsMenuExpanded;
@@ -205,6 +212,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         // SessionCoordinator 统一初始化共享状态，Shell 不自行重复加载实例或版本目录。
         await PrimeAsync();
+        MinecraftDirectoryStartupRecoveryDialog.ShowPending();
         await AccountPage.InitializeAsync(Settings);
         await sessionCoordinator.InitializeAsync();
         UpdateSecondaryItems();
@@ -212,4 +220,5 @@ public sealed partial class MainViewModel : ObservableObject
         UpdateAccountNavigationAvatar();
         hasInitialized = true;
     }
+
 }

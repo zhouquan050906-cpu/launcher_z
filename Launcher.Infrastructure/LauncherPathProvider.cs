@@ -39,6 +39,8 @@ public sealed class LauncherPathProvider
 
     public string ApplicationId => LauncherApplicationIdentity.StorageDirectoryName;
 
+    public string ApplicationBaseDirectory => applicationBaseDirectory;
+
     public string DefaultDataDirectory =>
         Path.Combine(applicationBaseDirectory, ApplicationId);
 
@@ -46,5 +48,8 @@ public sealed class LauncherPathProvider
         Path.Combine(roamingApplicationDataDirectory, ApplicationId, "accounts");
 
     public string DefaultMinecraftDirectory =>
-        Path.Combine(AppContext.BaseDirectory, ".minecraft");
+        Path.Combine(applicationBaseDirectory, ".minecraft");
+
+    public string OfficialMinecraftDirectory =>
+        Path.Combine(roamingApplicationDataDirectory, ".minecraft");
 }

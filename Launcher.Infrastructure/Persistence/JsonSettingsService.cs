@@ -249,9 +249,39 @@ public sealed class JsonSettingsService : ISettingsService
                 continue;
             var baselineValue = property.GetValue(baseline);
             var proposedValue = property.GetValue(proposed);
-            if (!Equals(baselineValue, proposedValue))
+            if (!PersistedValuesEqual(property.Name, baselineValue, proposedValue))
                 property.SetValue(latest, proposedValue);
         }
+    }
+
+    private static bool PersistedValuesEqual(string propertyName, object? left, object? right)
+    {
+        if (string.Equals(propertyName, nameof(LauncherSettings.MinecraftDirectories), StringComparison.Ordinal)
+            || string.Equals(
+                propertyName,
+                nameof(LauncherSettings.ExcludedMinecraftDirectories),
+                StringComparison.Ordinal))
+        {
+            var leftDirectories = left as IEnumerable<string> ?? [];
+            var rightDirectories = right as IEnumerable<string> ?? [];
+            return leftDirectories.SequenceEqual(rightDirectories, MinecraftDirectoryPath.Comparer);
+        }
+
+        if (string.Equals(
+                propertyName,
+                nameof(LauncherSettings.MinecraftDirectoryDisplayNames),
+                StringComparison.Ordinal))
+        {
+            var leftNames = left as IEnumerable<KeyValuePair<string, string>> ?? [];
+            var rightNames = (right as IEnumerable<KeyValuePair<string, string>> ?? []).ToList();
+            var leftNamesList = leftNames.ToList();
+            return leftNamesList.Count == rightNames.Count
+                   && leftNamesList.All(leftName => rightNames.Any(rightName =>
+                       MinecraftDirectoryPath.Equals(leftName.Key, rightName.Key)
+                       && string.Equals(leftName.Value, rightName.Value, StringComparison.Ordinal)));
+        }
+
+        return Equals(left, right);
     }
 
     private static void CopyPersistedProperties(LauncherSettings source, LauncherSettings destination)
@@ -317,8 +347,19 @@ public sealed class JsonSettingsService : ISettingsService
             settings.DataDirectory = pathProvider.DefaultDataDirectory;
 
         settings.MinecraftDirectory = string.IsNullOrWhiteSpace(settings.MinecraftDirectory)
-            ? Path.GetFullPath(pathProvider.DefaultMinecraftDirectory)
-            : Path.GetFullPath(settings.MinecraftDirectory);
+            ? MinecraftDirectoryPath.Normalize(pathProvider.DefaultMinecraftDirectory)
+            : MinecraftDirectoryPath.Normalize(settings.MinecraftDirectory);
+        settings.MinecraftDirectories = NormalizeMinecraftDirectories(
+            settings.MinecraftDirectories,
+            settings.MinecraftDirectory);
+        settings.MinecraftDirectoryDisplayNames = NormalizeMinecraftDirectoryDisplayNames(
+            settings.MinecraftDirectoryDisplayNames,
+            settings.MinecraftDirectories);
+        settings.ExcludedMinecraftDirectories = GetValidMinecraftDirectories(
+                settings.ExcludedMinecraftDirectories)
+            .Where(directory =>
+                !settings.MinecraftDirectories.Contains(directory, MinecraftDirectoryPath.Comparer))
+            .ToList();
 
         settings.DefaultMemoryMb = Math.Clamp(settings.DefaultMemoryMb, 1024, 32768);
         if (settings.DefaultMemorySettingsMode is not MemorySettingsMode.Auto
@@ -357,6 +398,75 @@ public sealed class JsonSettingsService : ISettingsService
             settings.SelectedJavaExecutablePath = null;
 
         return settings;
+    }
+
+    private IReadOnlyList<string> GetValidMinecraftDirectories(IEnumerable<string>? directories)
+    {
+        var normalizedDirectories = new List<string>();
+        var knownDirectories = new HashSet<string>(MinecraftDirectoryPath.Comparer);
+        foreach (var directory in directories ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+                continue;
+
+            try
+            {
+                var normalizedDirectory = MinecraftDirectoryPath.Normalize(directory);
+                if (knownDirectories.Add(normalizedDirectory))
+                    normalizedDirectories.Add(normalizedDirectory);
+            }
+            catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Invalid Minecraft directory encountered in launcher settings. Directory={MinecraftDirectory}",
+                    directory);
+            }
+        }
+
+        return normalizedDirectories;
+    }
+
+    private List<string> NormalizeMinecraftDirectories(
+        IEnumerable<string>? directories,
+        string currentDirectory)
+    {
+        var normalizedDirectories = GetValidMinecraftDirectories(directories).ToList();
+        if (!normalizedDirectories.Contains(currentDirectory, MinecraftDirectoryPath.Comparer))
+            normalizedDirectories.Insert(0, currentDirectory);
+        return normalizedDirectories;
+    }
+
+    private Dictionary<string, string> NormalizeMinecraftDirectoryDisplayNames(
+        IEnumerable<KeyValuePair<string, string>>? displayNames,
+        IReadOnlyList<string> directories)
+    {
+        var namesByPath = new Dictionary<string, string>(MinecraftDirectoryPath.Comparer);
+        foreach (var pair in displayNames ?? [])
+        {
+            try
+            {
+                namesByPath[MinecraftDirectoryPath.Normalize(pair.Key)] = pair.Value;
+            }
+            catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Invalid Minecraft directory display name path encountered in launcher settings. Directory={MinecraftDirectory}",
+                    pair.Key);
+            }
+        }
+
+        var normalizedNames = new Dictionary<string, string>(MinecraftDirectoryPath.Comparer);
+        foreach (var directory in directories)
+        {
+            namesByPath.TryGetValue(directory, out var displayName);
+            normalizedNames[directory] = MinecraftDirectoryDisplayName.NormalizeOrDefault(
+                displayName,
+                directory);
+        }
+
+        return normalizedNames;
     }
 
     private static double NormalizeWindowDimension(double value, double defaultValue, double minimumValue)

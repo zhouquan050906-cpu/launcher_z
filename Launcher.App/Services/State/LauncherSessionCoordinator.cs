@@ -454,6 +454,7 @@ public sealed class LauncherSessionCoordinator : IDisposable
         try
         {
             await gameManagement.RefreshInstancesAsync();
+            await downloadPage.InstanceOptions.RefreshNameAvailabilityAsync();
             var latestSettings = await settingsService.LoadAsync();
             if (settings is not null
                 && PathsEqual(settings.MinecraftDirectory, latestSettings.MinecraftDirectory))

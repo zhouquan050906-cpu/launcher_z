@@ -142,6 +142,7 @@ public partial class App : System.Windows.Application
             services.AddSingleton<MainWindowPlacementService>();
             services.AddSingleton<LaunchStatusDialogViewModel>();
             services.AddSingleton<UserAgreementDialogViewModel>();
+            services.AddSingleton<MinecraftDirectoryStartupRecoveryDialogViewModel>();
             services.AddSingleton<TerracottaAgreementDialogViewModel>();
             services.AddSingleton<LauncherBackgroundViewModel>();
             services.AddSingleton<AccountListViewModel>();
@@ -183,6 +184,11 @@ public partial class App : System.Windows.Application
             logLevelController.SetDiagnosticLoggingEnabled(startupSettings.EnableDiagnosticLogging);
             ApplyLauncherCulture(startupSettings.LauncherLanguage);
             Log.Debug("Launcher culture initialized. Language={Language}", CultureInfo.CurrentUICulture.Name);
+            startupSettings = await RegisterDiscoveredMinecraftDirectoriesOnStartupAsync(startupSettings);
+            startupSettings = await serviceProvider.GetRequiredService<ISettingsService>().LoadAsync();
+            var (recoveredSettings, minecraftDirectoryStartupRecovery) =
+                await RecoverInvalidMinecraftDirectoryOnStartupAsync(startupSettings);
+            startupSettings = recoveredSettings;
             base.OnStartup(e);
 
             await CleanupModpackWorkspacesOnStartupAsync();
@@ -195,7 +201,7 @@ public partial class App : System.Windows.Application
                 serviceProvider.GetRequiredService<IInstanceRenameRecoveryService>());
 
             var mainViewModel = serviceProvider.GetRequiredService<MainViewModel>();
-            await mainViewModel.PrimeAsync(startupSettings);
+            await mainViewModel.PrimeAsync(startupSettings, minecraftDirectoryStartupRecovery);
             var themeService = serviceProvider.GetRequiredService<IThemeService>();
             themeService.ApplyPreference(
                 mainViewModel.Settings.Theme,
@@ -240,10 +246,111 @@ public partial class App : System.Windows.Application
             }
             _ = CheckForLauncherUpdatesAfterAgreementAsync(mainViewModel);
         }
+        catch (MinecraftDirectoryStartupRecoveryException exception)
+        {
+            Log.Fatal(exception, "Minecraft directory startup recovery failed.");
+            MessageBox.Show(
+                string.Format(
+                    global::Launcher.App.Resources.Strings.Dialog_MinecraftDirectoryStartupRecoveryFailedMessageFormat,
+                    exception.DirectoryPath),
+                global::Launcher.App.Resources.Strings.Dialog_MinecraftDirectoryStartupRecoveryFailedTitle,
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(-1);
+        }
         catch (Exception exception)
         {
             Log.Fatal(exception, "Launcher startup failed.");
             Shutdown(-1);
+        }
+    }
+
+    private async Task<LauncherSettings> RegisterDiscoveredMinecraftDirectoriesOnStartupAsync(
+        LauncherSettings startupSettings)
+    {
+        if (serviceProvider is null)
+            return startupSettings;
+
+        try
+        {
+            var discoveryService = serviceProvider.GetRequiredService<IMinecraftDirectoryDiscoveryService>();
+            var managementService = serviceProvider.GetRequiredService<MinecraftDirectoryManagementService>();
+            var discoveredDirectories = discoveryService.DiscoverExistingDirectories();
+            if (!discoveredDirectories.Any(directory =>
+                    !startupSettings.MinecraftDirectories.Contains(
+                        directory,
+                        MinecraftDirectoryPath.Comparer)
+                    && !startupSettings.ExcludedMinecraftDirectories.Contains(
+                        directory,
+                        MinecraftDirectoryPath.Comparer)))
+            {
+                return startupSettings;
+            }
+
+            var updatedSettings = await serviceProvider.GetRequiredService<ISettingsService>().UpdateAsync(
+                settings => managementService.RegisterDiscoveredDirectories(settings, discoveredDirectories));
+            Log.Information(
+                "Minecraft directories discovered during startup. DiscoveredCount={DiscoveredCount} RegisteredCount={RegisteredCount} CurrentMinecraftDirectory={CurrentMinecraftDirectory}",
+                discoveredDirectories.Count,
+                updatedSettings.MinecraftDirectories.Count,
+                updatedSettings.MinecraftDirectory);
+            return updatedSettings;
+        }
+        catch (Exception exception)
+        {
+            Log.Warning(exception, "Failed to discover and register Minecraft directories during startup.");
+            return startupSettings;
+        }
+    }
+
+    private async Task<(LauncherSettings Settings, MinecraftDirectoryStartupRecoveryResult? Recovery)>
+        RecoverInvalidMinecraftDirectoryOnStartupAsync(LauncherSettings startupSettings)
+    {
+        if (serviceProvider is null)
+            return (startupSettings, null);
+
+        var fileSystem = serviceProvider.GetRequiredService<IMinecraftDirectoryFileSystem>();
+        if (fileSystem.DirectoryIsAccessible(startupSettings.MinecraftDirectory))
+            return (startupSettings, null);
+
+        var pathProvider = serviceProvider.GetRequiredService<Launcher.Infrastructure.LauncherPathProvider>();
+        var recoveryService = serviceProvider.GetRequiredService<MinecraftDirectoryStartupRecoveryService>();
+        MinecraftDirectoryStartupRecoveryResult? recovery = null;
+        try
+        {
+            var updatedSettings = await serviceProvider.GetRequiredService<ISettingsService>().UpdateAsync(
+                settings => recovery = recoveryService.Recover(
+                    settings,
+                    pathProvider.DefaultMinecraftDirectory));
+            if (!fileSystem.DirectoryIsAccessible(updatedSettings.MinecraftDirectory))
+            {
+                throw new MinecraftDirectoryStartupRecoveryException(
+                    pathProvider.DefaultMinecraftDirectory,
+                    "The recovered Minecraft directory is not accessible.");
+            }
+
+            if (recovery is not null)
+            {
+                Log.Warning(
+                    "Invalid Minecraft directory recovered during startup. InvalidMinecraftDirectory={InvalidMinecraftDirectory} SelectedMinecraftDirectory={SelectedMinecraftDirectory} UsedDefaultDirectory={UsedDefaultDirectory} CreatedDefaultDirectory={CreatedDefaultDirectory}",
+                    recovery.InvalidDirectory,
+                    recovery.SelectedDirectory,
+                    recovery.UsedDefaultDirectory,
+                    recovery.CreatedDefaultDirectory);
+            }
+
+            return (updatedSettings, recovery);
+        }
+        catch (MinecraftDirectoryStartupRecoveryException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new MinecraftDirectoryStartupRecoveryException(
+                recovery?.SelectedDirectory ?? pathProvider.DefaultMinecraftDirectory,
+                "The recovered Minecraft directory could not be saved.",
+                exception);
         }
     }
 

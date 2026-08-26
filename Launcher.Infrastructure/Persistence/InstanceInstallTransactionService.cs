@@ -68,9 +68,10 @@ public sealed class InstanceInstallTransactionService : IInstanceInstallTransact
             CrossProcessVersionLock.GetMutationPath(minecraftDirectory),
             progress: null,
             cancellationToken).ConfigureAwait(false);
-        if (Directory.Exists(finalDirectory)
-            || File.Exists(finalDirectory)
-            || PendingInstanceInstallDirectory.IsLogicalNameReserved(versionsDirectory, logicalVersionName))
+        if (InstanceInstallNameOccupancy.IsOccupied(
+                versionsDirectory,
+                finalDirectory,
+                logicalVersionName))
         {
             throw new InstanceInstallNameConflictException(logicalVersionName);
         }

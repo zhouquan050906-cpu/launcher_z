@@ -84,7 +84,7 @@ internal sealed class SettingsPersistenceCoordinator : IDisposable
         update(Settings);
         lock (pendingUpdatesLock)
             pendingUpdates.Add(update);
-        await SaveCoreAsync(cancellationToken).ConfigureAwait(false);
+        await SaveCoreAsync(cancellationToken, restoreUpdatesOnFailure: false).ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -96,7 +96,7 @@ internal sealed class SettingsPersistenceCoordinator : IDisposable
     public async Task FlushAsync(CancellationToken cancellationToken = default)
     {
         CancelPendingSave();
-        await SaveCoreAsync(cancellationToken).ConfigureAwait(false);
+        await SaveCoreAsync(cancellationToken, restoreUpdatesOnFailure: true).ConfigureAwait(false);
     }
 
     private void ScheduleSave()
@@ -112,7 +112,7 @@ internal sealed class SettingsPersistenceCoordinator : IDisposable
         try
         {
             await Task.Delay(SaveDelay, cancellation.Token).ConfigureAwait(false);
-            await SaveCoreAsync(cancellation.Token).ConfigureAwait(false);
+            await SaveCoreAsync(cancellation.Token, restoreUpdatesOnFailure: true).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -129,7 +129,7 @@ internal sealed class SettingsPersistenceCoordinator : IDisposable
         }
     }
 
-    private async Task SaveCoreAsync(CancellationToken cancellationToken)
+    private async Task SaveCoreAsync(CancellationToken cancellationToken, bool restoreUpdatesOnFailure)
     {
         await saveLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -155,8 +155,11 @@ internal sealed class SettingsPersistenceCoordinator : IDisposable
             }
             catch
             {
-                lock (pendingUpdatesLock)
-                    pendingUpdates.InsertRange(0, updates);
+                if (restoreUpdatesOnFailure)
+                {
+                    lock (pendingUpdatesLock)
+                        pendingUpdates.InsertRange(0, updates);
+                }
                 throw;
             }
         }

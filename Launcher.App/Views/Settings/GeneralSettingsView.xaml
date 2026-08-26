@@ -37,39 +37,26 @@
                   Style="{StaticResource LauncherContentSectionStyle}">
             <Border Style="{StaticResource SectionFieldSurfaceStyle}">
                 <StackPanel>
-                    <TextBlock Margin="0,0,0,12"
-                               Text="{x:Static res:Strings.Settings_MinecraftDirectoryDescription}"
-                               Style="{StaticResource SettingsDescriptionTextStyle}" />
-                    <Border Style="{StaticResource ReadOnlyFieldSurfaceStyle}">
-                        <TextBlock Text="{Binding MinecraftDirectory}"
-                                   Style="{StaticResource ReadOnlyFieldTextStyle}" />
-                    </Border>
-                    <TextBlock Margin="0,8,0,0"
-                               Foreground="{DynamicResource LauncherDangerBrush}"
-                               Text="{x:Static res:Strings.Settings_MinecraftDirectoryChangeBlockedByActiveTasks}">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock"
-                                   BasedOn="{StaticResource SettingsDescriptionTextStyle}">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsMinecraftDirectoryChangeBlocked}" Value="True">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                    <WrapPanel Margin="0,16,0,0">
-                        <Button Margin="0,0,10,10"
-                                Content="{x:Static res:Strings.Settings_OpenMinecraftDirectoryButton}"
-                                Command="{Binding OpenMinecraftDirectoryCommand}"
-                                Style="{StaticResource LauncherDialogButtonStyle}" />
-                        <Button Margin="0,0,10,10"
-                                Content="{x:Static res:Strings.Settings_ChangeMinecraftDirectoryButton}"
-                                Command="{Binding ChangeMinecraftDirectoryCommand}"
+                        <TextBlock Text="{x:Static res:Strings.Settings_MinecraftDirectoryListLabel}"
+                                   Style="{StaticResource SettingsOptionTextStyle}" />
+
+                        <Button Grid.Column="1"
+                                Content="{x:Static res:Strings.Settings_AddMinecraftDirectoryButton}"
+                                Command="{Binding AddMinecraftDirectoryCommand}"
                                 Style="{StaticResource LauncherPrimaryDialogButtonStyle}" />
-                    </WrapPanel>
+                    </Grid>
+
+                    <ListBox ItemsSource="{Binding MinecraftDirectories}"
+                             SelectedItem="{Binding SelectedMinecraftDirectory, Mode=TwoWay}"
+                             ItemTemplate="{StaticResource MinecraftDirectoryItemTemplate}"
+                             ItemContainerStyle="{StaticResource SettingsChoiceListBoxItemStyle}"
+                             Style="{StaticResource SettingsChoiceListBoxStyle}" />
                 </StackPanel>
             </Border>
         </GroupBox>

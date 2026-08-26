@@ -982,12 +982,38 @@
   <data name="Dialog_LaunchAnalysisOutOfMemoryRecommendation" xml:space="preserve"><value>请在启动设置中适当增加内存，或减少资源包、光影和大型模组。</value></data>
   <data name="Settings_GeneralFilesAndDirectoriesSection" xml:space="preserve"><value>文件与目录</value></data>
   <data name="Settings_MinecraftDirectoryItemTitle" xml:space="preserve"><value>.minecraft 目录</value></data>
-  <data name="Settings_MinecraftDirectoryDescription" xml:space="preserve"><value>这里决定启动器扫描实例、版本和相关游戏文件的位置。</value></data>
+  <data name="Settings_MinecraftDirectoryListLabel" xml:space="preserve"><value>Minecraft 目录列表</value></data>
+  <data name="Settings_AddMinecraftDirectoryButton" xml:space="preserve"><value>添加目录</value></data>
+  <data name="Settings_RenameMinecraftDirectoryButton" xml:space="preserve"><value>改名</value></data>
+  <data name="Settings_AddMinecraftDirectoryConfirmButton" xml:space="preserve"><value>添加</value></data>
+  <data name="Settings_RenameMinecraftDirectoryConfirmButton" xml:space="preserve"><value>保存</value></data>
+  <data name="Dialog_AddMinecraftDirectoryNameTitle" xml:space="preserve"><value>命名 Minecraft 目录</value></data>
+  <data name="Dialog_RenameMinecraftDirectoryNameTitle" xml:space="preserve"><value>重命名 Minecraft 目录</value></data>
+  <data name="Dialog_MinecraftDirectoryNameLabel" xml:space="preserve"><value>目录名称</value></data>
+  <data name="Dialog_MinecraftDirectoryNameValidation" xml:space="preserve"><value>请输入 1 到 64 个字符的目录名称。</value></data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryTitle" xml:space="preserve"><value>当前 Minecraft 目录不可用</value></data>
+  <data name="Dialog_MinecraftDirectoryStartupSwitchedMessageFormat" xml:space="preserve"><value>上次选择的 Minecraft 目录已失效：&#xA;&#xA;{0}&#xA;&#xA;启动器已自动切换到：&#xA;&#xA;{1}</value></data>
+  <data name="Dialog_MinecraftDirectoryStartupDefaultMessageFormat" xml:space="preserve"><value>上次选择的 Minecraft 目录已失效：&#xA;&#xA;{0}&#xA;&#xA;列表中没有其他可用目录，启动器已准备并切换到默认目录：&#xA;&#xA;{1}</value></data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryFailedTitle" xml:space="preserve"><value>无法恢复 Minecraft 目录</value></data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryFailedMessageFormat" xml:space="preserve"><value>启动器无法创建或保存可用的 Minecraft 目录：&#xA;&#xA;{0}&#xA;&#xA;启动器将退出。请检查该目录的访问权限和启动器设置是否可写，然后重试。</value></data>
+  <data name="Settings_RemoveMinecraftDirectoryFromListButton" xml:space="preserve"><value>从列表中移除</value></data>
+  <data name="Settings_RemoveMinecraftDirectoryConfirmButton" xml:space="preserve"><value>移除</value></data>
+  <data name="Dialog_RemoveMinecraftDirectoryTitle" xml:space="preserve"><value>移除 Minecraft 目录</value></data>
+  <data name="Dialog_RemoveMinecraftDirectoryMessageFormat" xml:space="preserve"><value>确定要从列表中移除以下目录吗？&#xA;&#xA;{0}&#xA;&#xA;这只会从启动器列表中移除该目录，不会删除目录或其中的任何文件。</value></data>
+  <data name="Settings_MinecraftDirectoryUnavailable" xml:space="preserve"><value>目录不可用</value></data>
   <data name="Settings_MinecraftDirectoryChangeBlockedByActiveTasks" xml:space="preserve"><value>有下载或安装任务时不可切换目录。</value></data>
   <data name="Settings_OpenMinecraftDirectoryButton" xml:space="preserve"><value>打开目录</value></data>
   <data name="Settings_ChangeMinecraftDirectoryButton" xml:space="preserve"><value>更改目录</value></data>
   <data name="Status_OpenMinecraftDirectoryFailed" xml:space="preserve"><value>打开 .minecraft 目录失败，请稍后重试。</value></data>
   <data name="Status_MinecraftDirectoryChanged" xml:space="preserve"><value>.minecraft 目录已更新。</value></data>
+  <data name="Status_MinecraftDirectoryAdded" xml:space="preserve"><value>.minecraft 目录已添加并切换。</value></data>
+  <data name="Status_AddMinecraftDirectoryFailed" xml:space="preserve"><value>添加 .minecraft 目录失败，请确认目录存在且可以访问。</value></data>
+  <data name="Status_MinecraftDirectoryUnavailable" xml:space="preserve"><value>该 .minecraft 目录不存在或无法访问。</value></data>
+  <data name="Status_MinecraftDirectorySwitchFailed" xml:space="preserve"><value>切换 .minecraft 目录失败，请稍后重试。</value></data>
+  <data name="Status_MinecraftDirectoryRemovedFromList" xml:space="preserve"><value>已从列表中移除 .minecraft 目录。</value></data>
+  <data name="Status_RemoveMinecraftDirectoryFromListFailed" xml:space="preserve"><value>从列表中移除 .minecraft 目录失败，请稍后重试。</value></data>
+  <data name="Status_MinecraftDirectoryRenamed" xml:space="preserve"><value>Minecraft 目录名称已更新。</value></data>
+  <data name="Status_RenameMinecraftDirectoryFailed" xml:space="preserve"><value>更改 Minecraft 目录名称失败，请稍后重试。</value></data>
   <data name="Status_MinecraftDirectoryChangeFailed" xml:space="preserve"><value>更改 .minecraft 目录失败，请稍后重试。</value></data>
   <data name="Status_OpenBackupDirectoryFailed" xml:space="preserve"><value>打开备份目录失败，请稍后重试。</value></data>
   <data name="Status_BackupDirectoryChanged" xml:space="preserve"><value>备份目录已更新。</value></data>

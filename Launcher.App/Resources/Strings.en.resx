@@ -2888,8 +2888,62 @@ The current game folder will be backed up first.</value>
   <data name="Settings_MinecraftDirectoryItemTitle" xml:space="preserve">
     <value>.minecraft Folder</value>
   </data>
-  <data name="Settings_MinecraftDirectoryDescription" xml:space="preserve">
-    <value>This controls where the launcher scans instances, versions, and related game files.</value>
+  <data name="Settings_MinecraftDirectoryListLabel" xml:space="preserve">
+    <value>Minecraft Folder List</value>
+  </data>
+  <data name="Settings_AddMinecraftDirectoryButton" xml:space="preserve">
+    <value>Add Folder</value>
+  </data>
+  <data name="Settings_RenameMinecraftDirectoryButton" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="Settings_AddMinecraftDirectoryConfirmButton" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="Settings_RenameMinecraftDirectoryConfirmButton" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Dialog_AddMinecraftDirectoryNameTitle" xml:space="preserve">
+    <value>Name Minecraft Folder</value>
+  </data>
+  <data name="Dialog_RenameMinecraftDirectoryNameTitle" xml:space="preserve">
+    <value>Rename Minecraft Folder</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryNameLabel" xml:space="preserve">
+    <value>Folder name</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryNameValidation" xml:space="preserve">
+    <value>Enter a folder name between 1 and 64 characters.</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryTitle" xml:space="preserve">
+    <value>Current Minecraft Folder Unavailable</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupSwitchedMessageFormat" xml:space="preserve">
+    <value>The previously selected Minecraft folder is no longer available:&#xA;&#xA;{0}&#xA;&#xA;The launcher automatically switched to:&#xA;&#xA;{1}</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupDefaultMessageFormat" xml:space="preserve">
+    <value>The previously selected Minecraft folder is no longer available:&#xA;&#xA;{0}&#xA;&#xA;No other folder in the list is available. The launcher prepared and selected the default folder:&#xA;&#xA;{1}</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryFailedTitle" xml:space="preserve">
+    <value>Unable to Recover Minecraft Folder</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryFailedMessageFormat" xml:space="preserve">
+    <value>The launcher could not create or save a usable Minecraft folder:&#xA;&#xA;{0}&#xA;&#xA;The launcher will exit. Check access to this folder and make sure the launcher settings are writable, then try again.</value>
+  </data>
+  <data name="Settings_RemoveMinecraftDirectoryFromListButton" xml:space="preserve">
+    <value>Remove from list</value>
+  </data>
+  <data name="Settings_RemoveMinecraftDirectoryConfirmButton" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="Dialog_RemoveMinecraftDirectoryTitle" xml:space="preserve">
+    <value>Remove Minecraft Folder</value>
+  </data>
+  <data name="Dialog_RemoveMinecraftDirectoryMessageFormat" xml:space="preserve">
+    <value>Remove this folder from the list?&#xA;&#xA;{0}&#xA;&#xA;This only removes the folder from the launcher list. It does not delete the folder or any files inside it.</value>
+  </data>
+  <data name="Settings_MinecraftDirectoryUnavailable" xml:space="preserve">
+    <value>Folder unavailable</value>
   </data>
   <data name="Settings_MinecraftDirectoryChangeBlockedByActiveTasks" xml:space="preserve">
     <value>The directory cannot be changed while a download or installation task is running.</value>
@@ -2905,6 +2959,30 @@ The current game folder will be backed up first.</value>
   </data>
   <data name="Status_MinecraftDirectoryChanged" xml:space="preserve">
     <value>Minecraft folder changed.</value>
+  </data>
+  <data name="Status_MinecraftDirectoryAdded" xml:space="preserve">
+    <value>Minecraft folder added and selected.</value>
+  </data>
+  <data name="Status_AddMinecraftDirectoryFailed" xml:space="preserve">
+    <value>Failed to add the Minecraft folder. Make sure it exists and can be accessed.</value>
+  </data>
+  <data name="Status_MinecraftDirectoryUnavailable" xml:space="preserve">
+    <value>This Minecraft folder does not exist or cannot be accessed.</value>
+  </data>
+  <data name="Status_MinecraftDirectorySwitchFailed" xml:space="preserve">
+    <value>Failed to switch Minecraft folder. Try again later.</value>
+  </data>
+  <data name="Status_MinecraftDirectoryRemovedFromList" xml:space="preserve">
+    <value>Minecraft folder removed from the list.</value>
+  </data>
+  <data name="Status_RemoveMinecraftDirectoryFromListFailed" xml:space="preserve">
+    <value>Failed to remove the Minecraft folder from the list. Try again later.</value>
+  </data>
+  <data name="Status_MinecraftDirectoryRenamed" xml:space="preserve">
+    <value>Minecraft folder name updated.</value>
+  </data>
+  <data name="Status_RenameMinecraftDirectoryFailed" xml:space="preserve">
+    <value>Failed to change the Minecraft folder name. Try again later.</value>
   </data>
   <data name="Status_MinecraftDirectoryChangeFailed" xml:space="preserve">
     <value>Failed to change Minecraft folder.</value>

@@ -2888,8 +2888,62 @@
   <data name="Settings_MinecraftDirectoryItemTitle" xml:space="preserve">
     <value>.minecraft 目錄</value>
   </data>
-  <data name="Settings_MinecraftDirectoryDescription" xml:space="preserve">
-    <value>這裡決定啟動器掃描實例、版本和相關遊戲檔案的位置。</value>
+  <data name="Settings_MinecraftDirectoryListLabel" xml:space="preserve">
+    <value>Minecraft 目錄清單</value>
+  </data>
+  <data name="Settings_AddMinecraftDirectoryButton" xml:space="preserve">
+    <value>新增目錄</value>
+  </data>
+  <data name="Settings_RenameMinecraftDirectoryButton" xml:space="preserve">
+    <value>重新命名</value>
+  </data>
+  <data name="Settings_AddMinecraftDirectoryConfirmButton" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="Settings_RenameMinecraftDirectoryConfirmButton" xml:space="preserve">
+    <value>儲存</value>
+  </data>
+  <data name="Dialog_AddMinecraftDirectoryNameTitle" xml:space="preserve">
+    <value>命名 Minecraft 目錄</value>
+  </data>
+  <data name="Dialog_RenameMinecraftDirectoryNameTitle" xml:space="preserve">
+    <value>重新命名 Minecraft 目錄</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryNameLabel" xml:space="preserve">
+    <value>目錄名稱</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryNameValidation" xml:space="preserve">
+    <value>請輸入 1 到 64 個字元的目錄名稱。</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryTitle" xml:space="preserve">
+    <value>目前的 Minecraft 目錄無法使用</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupSwitchedMessageFormat" xml:space="preserve">
+    <value>上次選擇的 Minecraft 目錄已失效：&#xA;&#xA;{0}&#xA;&#xA;啟動器已自動切換到：&#xA;&#xA;{1}</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupDefaultMessageFormat" xml:space="preserve">
+    <value>上次選擇的 Minecraft 目錄已失效：&#xA;&#xA;{0}&#xA;&#xA;清單中沒有其他可用目錄，啟動器已準備並切換到預設目錄：&#xA;&#xA;{1}</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryFailedTitle" xml:space="preserve">
+    <value>無法復原 Minecraft 目錄</value>
+  </data>
+  <data name="Dialog_MinecraftDirectoryStartupRecoveryFailedMessageFormat" xml:space="preserve">
+    <value>啟動器無法建立或儲存可用的 Minecraft 目錄：&#xA;&#xA;{0}&#xA;&#xA;啟動器將結束。請檢查此目錄的存取權限及啟動器設定是否可寫入，然後再試一次。</value>
+  </data>
+  <data name="Settings_RemoveMinecraftDirectoryFromListButton" xml:space="preserve">
+    <value>從清單中移除</value>
+  </data>
+  <data name="Settings_RemoveMinecraftDirectoryConfirmButton" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="Dialog_RemoveMinecraftDirectoryTitle" xml:space="preserve">
+    <value>移除 Minecraft 目錄</value>
+  </data>
+  <data name="Dialog_RemoveMinecraftDirectoryMessageFormat" xml:space="preserve">
+    <value>確定要從清單中移除以下目錄嗎？&#xA;&#xA;{0}&#xA;&#xA;這只會從啟動器清單中移除該目錄，不會刪除目錄或其中的任何檔案。</value>
+  </data>
+  <data name="Settings_MinecraftDirectoryUnavailable" xml:space="preserve">
+    <value>目錄無法使用</value>
   </data>
   <data name="Settings_MinecraftDirectoryChangeBlockedByActiveTasks" xml:space="preserve">
     <value>有下載或安裝工作時不可切換目錄。</value>
@@ -2905,6 +2959,30 @@
   </data>
   <data name="Status_MinecraftDirectoryChanged" xml:space="preserve">
     <value>.minecraft 目錄已更新。</value>
+  </data>
+  <data name="Status_MinecraftDirectoryAdded" xml:space="preserve">
+    <value>.minecraft 目錄已新增並切換。</value>
+  </data>
+  <data name="Status_AddMinecraftDirectoryFailed" xml:space="preserve">
+    <value>新增 .minecraft 目錄失敗，請確認目錄存在且可以存取。</value>
+  </data>
+  <data name="Status_MinecraftDirectoryUnavailable" xml:space="preserve">
+    <value>此 .minecraft 目錄不存在或無法存取。</value>
+  </data>
+  <data name="Status_MinecraftDirectorySwitchFailed" xml:space="preserve">
+    <value>切換 .minecraft 目錄失敗，請稍後再試。</value>
+  </data>
+  <data name="Status_MinecraftDirectoryRemovedFromList" xml:space="preserve">
+    <value>已從清單中移除 .minecraft 目錄。</value>
+  </data>
+  <data name="Status_RemoveMinecraftDirectoryFromListFailed" xml:space="preserve">
+    <value>無法從清單中移除 .minecraft 目錄，請稍後再試。</value>
+  </data>
+  <data name="Status_MinecraftDirectoryRenamed" xml:space="preserve">
+    <value>Minecraft 目錄名稱已更新。</value>
+  </data>
+  <data name="Status_RenameMinecraftDirectoryFailed" xml:space="preserve">
+    <value>變更 Minecraft 目錄名稱失敗，請稍後再試。</value>
   </data>
   <data name="Status_MinecraftDirectoryChangeFailed" xml:space="preserve">
     <value>變更 .minecraft 目錄失敗，請稍後再試。</value>

@@ -98,6 +98,7 @@ public sealed partial class DownloadPageViewModel : ObservableObject, IDisposabl
         IFilePickerService filePickerService,
         ILocalModpackImportService localModpackImportService,
         IExistingFilePathValidator existingFilePathValidator,
+        IInstanceInstallNameAvailabilityService? instanceInstallNameAvailabilityService = null,
         IModrinthService? modrinthService = null,
         ILogger<DownloadLocalImportDialogViewModel>? localImportLogger = null,
         ILogger<DownloadInstallViewModel>? installLogger = null,
@@ -112,6 +113,7 @@ public sealed partial class DownloadPageViewModel : ObservableObject, IDisposabl
             instanceService,
             loaderProviders,
             instanceNameTracker,
+            instanceInstallNameAvailabilityService,
             modrinthService,
             this.logger);
         InstallState = new DownloadInstallViewModel(
