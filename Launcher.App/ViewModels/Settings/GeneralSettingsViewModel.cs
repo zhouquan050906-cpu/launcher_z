@@ -42,8 +42,10 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
     private readonly ILogger logger;
     private bool suppressMinecraftDirectorySelectionChanged;
     private bool isChangingMinecraftDirectory;
+    private bool isGameLaunchInProgress;
     private string? minecraftDirectoryPendingNamePath;
     private bool isMinecraftDirectoryNameDialogForAdd;
+    private int minecraftDirectoryAvailabilityGeneration;
 
     internal GeneralSettingsViewModel(
         SettingsPersistenceCoordinator persistence,
@@ -77,14 +79,83 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
 
     public event EventHandler<SettingsMinecraftDirectoryChangedEventArgs>? MinecraftDirectoryChanged;
 
+    /// <summary>由 Shell 转发首页的启动准备状态；启动期间禁止切换 Minecraft 目录。</summary>
+    public void SetGameLaunchInProgress(bool value)
+    {
+        if (isGameLaunchInProgress == value)
+            return;
+
+        isGameLaunchInProgress = value;
+        NotifyMinecraftDirectoryCommandStateChanged();
+    }
+
+    /// <summary>
+    /// 在后台线程重新探测各目录可用性并回写列表。探测会阻塞——断连的网络路径可达数十秒——
+    /// 因此绝不能在 UI 线程同步执行；界面先沿用上次已知结果。
+    /// </summary>
+    public async Task RefreshMinecraftDirectoryAvailabilityAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var generation = Interlocked.Increment(ref minecraftDirectoryAvailabilityGeneration);
+        var directoryPaths = MinecraftDirectories.Select(item => item.DirectoryPath).ToArray();
+        if (directoryPaths.Length == 0)
+            return;
+
+        var availability = await Task.Run(
+            () =>
+            {
+                var probed = new Dictionary<string, bool>(MinecraftDirectoryPath.Comparer);
+                foreach (var directoryPath in directoryPaths)
+                    probed[directoryPath] = minecraftDirectoryFileSystem.DirectoryIsAccessible(directoryPath);
+                return probed;
+            },
+            cancellationToken).ConfigureAwait(true);
+
+        // 探测期间列表可能已被重建或又发起了新一轮探测，过期结果直接丢弃。
+        if (Volatile.Read(ref minecraftDirectoryAvailabilityGeneration) != generation)
+            return;
+
+        foreach (var item in MinecraftDirectories)
+        {
+            if (availability.TryGetValue(item.DirectoryPath, out var isAvailable))
+                item.SetAvailability(isAvailable);
+        }
+    }
+
+    private async Task<bool> IsMinecraftDirectoryAccessibleAsync(string directoryPath) =>
+        await Task.Run(() => minecraftDirectoryFileSystem.DirectoryIsAccessible(directoryPath))
+            .ConfigureAwait(true);
+
+    private void BeginRefreshMinecraftDirectoryAvailability()
+    {
+        _ = ObserveMinecraftDirectoryAvailabilityRefreshAsync();
+    }
+
+    private async Task ObserveMinecraftDirectoryAvailabilityRefreshAsync()
+    {
+        try
+        {
+            await RefreshMinecraftDirectoryAvailabilityAsync();
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Failed to refresh Minecraft directory availability.");
+        }
+    }
+
     public bool CanChangeMinecraftDirectory =>
-        !isChangingMinecraftDirectory && downloadTasksPage?.HasActiveOperations != true;
+        !isChangingMinecraftDirectory && !HasMinecraftDirectoryBlockingActivity;
 
-    public bool CanAddMinecraftDirectory =>
-        downloadTasksPage?.HasActiveOperations != true;
+    public bool CanAddMinecraftDirectory => !HasMinecraftDirectoryBlockingActivity;
 
-    public bool IsMinecraftDirectoryChangeBlocked =>
-        downloadTasksPage?.HasActiveOperations == true;
+    public bool IsMinecraftDirectoryChangeBlocked => HasMinecraftDirectoryBlockingActivity;
+
+    /// <summary>
+    /// 下载/安装任务与启动准备阶段都会向当前目录写入文件，期间切换目录会让同一次操作横跨两个根目录。
+    /// 游戏进程拉起后启动准备即结束，此时切换是安全的。
+    /// </summary>
+    private bool HasMinecraftDirectoryBlockingActivity =>
+        downloadTasksPage?.HasActiveOperations == true || isGameLaunchInProgress;
 
     [ObservableProperty]
     private string minecraftDirectory = string.Empty;
@@ -124,6 +195,12 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
     [NotifyPropertyChangedFor(nameof(RemoveMinecraftDirectoryDialogMessage))]
     [NotifyCanExecuteChangedFor(nameof(ConfirmRemoveMinecraftDirectoryCommand))]
     private SettingsMinecraftDirectoryItem? minecraftDirectoryPendingRemoval;
+
+    /// <summary>
+    /// 由列表选中触发的目录切换是异步进行的（权威可用性探测在后台线程），
+    /// 此处保留句柄以便等待其完成。
+    /// </summary>
+    internal Task PendingMinecraftDirectoryChange { get; private set; } = Task.CompletedTask;
 
     public ObservableCollection<SettingsMinecraftDirectoryItem> MinecraftDirectories { get; } = [];
 
@@ -197,15 +274,15 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
             return;
         }
 
-        if (!value.IsAvailable
-            || !minecraftDirectoryFileSystem.DirectoryIsAccessible(value.DirectoryPath))
+        if (!value.IsAvailable)
         {
             LoadState(() => LoadMinecraftDirectories(Settings));
             statusService.Report(Strings.Status_MinecraftDirectoryUnavailable);
             return;
         }
 
-        _ = SelectMinecraftDirectoryAsync(value.DirectoryPath);
+        // 上次探测结果可能已过时，ChangeMinecraftDirectoryAsync 会在后台线程做权威校验。
+        PendingMinecraftDirectoryChange = SelectMinecraftDirectoryAsync(value.DirectoryPath);
     }
 
     [RelayCommand]
@@ -397,7 +474,7 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
         if (string.IsNullOrWhiteSpace(selectedDirectory))
             return;
 
-        if (!minecraftDirectoryFileSystem.DirectoryIsAccessible(selectedDirectory))
+        if (!await IsMinecraftDirectoryAccessibleAsync(selectedDirectory))
         {
             statusService.Report(Strings.Status_AddMinecraftDirectoryFailed);
             return;
@@ -474,8 +551,9 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
             return false;
         }
 
-        if (!minecraftDirectoryFileSystem.DirectoryIsAccessible(directoryPath))
+        if (!await IsMinecraftDirectoryAccessibleAsync(directoryPath))
         {
+            FindMinecraftDirectoryItem(directoryPath)?.SetAvailability(false);
             LoadState(() => LoadMinecraftDirectories(Settings));
             statusService.Report(addDirectory
                 ? Strings.Status_AddMinecraftDirectoryFailed
@@ -501,9 +579,11 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
                     minecraftDirectoryManagementService.SelectDirectory(settings, directoryPath);
             });
 
-            var becameUnavailable =
-                !minecraftDirectoryFileSystem.DirectoryIsAccessible(directoryPath);
-            if (downloadTasksPage?.HasActiveOperations == true || becameUnavailable)
+            var becameUnavailable = !await IsMinecraftDirectoryAccessibleAsync(directoryPath);
+            if (becameUnavailable)
+                FindMinecraftDirectoryItem(directoryPath)?.SetAvailability(false);
+            // 保存期间可能刚开始下载或启动游戏，此时必须把目录退回去，避免操作横跨两个根目录。
+            if (HasMinecraftDirectoryBlockingActivity || becameUnavailable)
             {
                 await PersistImmediatelyAsync(settings =>
                 {
@@ -594,17 +674,19 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
                     MinecraftDirectories.Move(existingIndex, targetIndex);
 
                 item = MinecraftDirectories[targetIndex];
+                // 可用性由 RefreshMinecraftDirectoryAvailabilityAsync 在后台线程维护，此处沿用上次结果。
                 item.Update(
                     GetMinecraftDirectoryDisplayName(settings, directory),
-                    minecraftDirectoryFileSystem.DirectoryIsAccessible(directory),
+                    item.IsAvailable,
                     !MinecraftDirectoryPath.Equals(directory, settings.MinecraftDirectory));
             }
             else
             {
+                // 新项先乐观按可用渲染，避免探测完成前整列表闪成"目录不可用"。
                 item = new SettingsMinecraftDirectoryItem(
                     GetMinecraftDirectoryDisplayName(settings, directory),
                     directory,
-                    minecraftDirectoryFileSystem.DirectoryIsAccessible(directory),
+                    isAvailable: true,
                     !MinecraftDirectoryPath.Equals(directory, settings.MinecraftDirectory));
                 MinecraftDirectories.Insert(targetIndex, item);
             }
@@ -615,6 +697,7 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
 
         SetSelectedMinecraftDirectory(FindMinecraftDirectoryItem(settings.MinecraftDirectory));
         MinecraftDirectorySwitchDialog.SynchronizeWithCurrentDirectory();
+        BeginRefreshMinecraftDirectoryAvailability();
     }
 
     private int FindMinecraftDirectoryItemIndex(string directoryPath, int startIndex)

@@ -2951,8 +2951,11 @@ The current game folder will be backed up first.</value>
   <data name="Settings_MinecraftDirectoryUnavailable" xml:space="preserve">
     <value>Folder unavailable</value>
   </data>
+  <data name="Settings_OfficialMinecraftDirectoryDisplayName" xml:space="preserve">
+    <value>Official Launcher Folder</value>
+  </data>
   <data name="Settings_MinecraftDirectoryChangeBlockedByActiveTasks" xml:space="preserve">
-    <value>The directory cannot be changed while a download or installation task is running.</value>
+    <value>The folder cannot be changed while a download, installation, or game launch is in progress.</value>
   </data>
   <data name="Settings_OpenMinecraftDirectoryButton" xml:space="preserve">
     <value>Open Folder</value>

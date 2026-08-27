@@ -13,6 +13,21 @@ namespace Launcher.Tests.Infrastructure.Persistence;
 public sealed class JsonSettingsMinecraftDirectoryTests : TestTempDirectory
 {
     [Fact]
+    public async Task SettingsLoadMetadataReportsOnlyTheCreationLoadAsNew()
+    {
+        var service = new JsonSettingsService(TempRoot);
+
+        var created = await service.LoadWithMetadataAsync();
+        var existing = await service.LoadWithMetadataAsync();
+
+        Assert.True(created.WasCreated);
+        Assert.False(existing.WasCreated);
+        Assert.True(MinecraftDirectoryPath.Equals(
+            created.Settings.MinecraftDirectory,
+            existing.Settings.MinecraftDirectory));
+    }
+
+    [Fact]
     public async Task LoadingLegacySettingsRegistersTheExistingCurrentDirectory()
     {
         Directory.CreateDirectory(TempRoot);

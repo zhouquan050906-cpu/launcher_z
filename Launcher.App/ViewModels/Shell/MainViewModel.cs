@@ -141,6 +141,7 @@ public sealed partial class MainViewModel : ObservableObject
         sessionCoordinator.ProgressChanged += progress => ProgressPercent = progress;
         HomePage.JavaRequirementNotMet += HomePage_JavaRequirementNotMet;
         HomePage.LaunchFailureReported += HomePage_LaunchFailureReported;
+        HomePage.LaunchActivityChanged += HomePage_LaunchActivityChanged;
         GameSettingsPage.LocalImportRequested += GameSettingsPage_LocalImportRequested;
         GameSettingsPage.ResourceProjectDetailsRequested += GameSettingsPage_ResourceProjectDetailsRequested;
         GameSettingsPage.MinecraftDirectorySwitchRequested += GameSettingsPage_MinecraftDirectorySwitchRequested;

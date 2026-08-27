@@ -180,12 +180,18 @@ public partial class App : System.Windows.Application
             var updateCacheCleaner = serviceProvider.GetRequiredService<LauncherUpdateCacheCleaner>();
             updateCacheCleaner.CleanupStaleCache(Environment.ProcessPath);
 
-            var startupSettings = await serviceProvider.GetRequiredService<ISettingsService>().LoadAsync();
+            var startupSettingsLoad = await serviceProvider
+                .GetRequiredService<ISettingsService>()
+                .LoadWithMetadataAsync();
+            var startupSettings = startupSettingsLoad.Settings;
             logLevelController.SetDiagnosticLoggingEnabled(startupSettings.EnableDiagnosticLogging);
             ApplyLauncherCulture(startupSettings.LauncherLanguage);
             Log.Debug("Launcher culture initialized. Language={Language}", CultureInfo.CurrentUICulture.Name);
+            if (startupSettingsLoad.WasCreated)
+                startupSettings = await InitializeDefaultMinecraftDirectoryOnFirstRunAsync();
+            // 上面每一步要么原样返回传入的设置，要么返回 UpdateAsync 落盘后的最新副本，
+            // 两者都已归一化，因此不需要再额外读一次 settings.json。
             startupSettings = await RegisterDiscoveredMinecraftDirectoriesOnStartupAsync(startupSettings);
-            startupSettings = await serviceProvider.GetRequiredService<ISettingsService>().LoadAsync();
             var (recoveredSettings, minecraftDirectoryStartupRecovery) =
                 await RecoverInvalidMinecraftDirectoryOnStartupAsync(startupSettings);
             startupSettings = recoveredSettings;
@@ -276,19 +282,22 @@ public partial class App : System.Windows.Application
             var discoveryService = serviceProvider.GetRequiredService<IMinecraftDirectoryDiscoveryService>();
             var managementService = serviceProvider.GetRequiredService<MinecraftDirectoryManagementService>();
             var discoveredDirectories = discoveryService.DiscoverExistingDirectories();
-            if (!discoveredDirectories.Any(directory =>
+            if (!discoveredDirectories.Any(discovery =>
                     !startupSettings.MinecraftDirectories.Contains(
-                        directory,
+                        discovery.DirectoryPath,
                         MinecraftDirectoryPath.Comparer)
                     && !startupSettings.ExcludedMinecraftDirectories.Contains(
-                        directory,
+                        discovery.DirectoryPath,
                         MinecraftDirectoryPath.Comparer)))
             {
                 return startupSettings;
             }
 
             var updatedSettings = await serviceProvider.GetRequiredService<ISettingsService>().UpdateAsync(
-                settings => managementService.RegisterDiscoveredDirectories(settings, discoveredDirectories));
+                settings => managementService.RegisterDiscoveredDirectories(
+                    settings,
+                    discoveredDirectories,
+                    ResolveDiscoveredMinecraftDirectoryDisplayName));
             Log.Information(
                 "Minecraft directories discovered during startup. DiscoveredCount={DiscoveredCount} RegisteredCount={RegisteredCount} CurrentMinecraftDirectory={CurrentMinecraftDirectory}",
                 discoveredDirectories.Count,
@@ -300,6 +309,53 @@ public partial class App : System.Windows.Application
         {
             Log.Warning(exception, "Failed to discover and register Minecraft directories during startup.");
             return startupSettings;
+        }
+    }
+
+    /// <summary>
+    /// 官方启动器目录和启动器自带目录的文件夹名都是 .minecraft，只用目录名会在列表里重名，
+    /// 因此自动发现官方目录时改用带来源含义的名称。返回 null 表示沿用目录名。
+    /// </summary>
+    /// <remarks>
+    /// 设计如此：显示名在首次登记时写入 settings.json 并固定下来。
+    /// 因此已登记过官方目录的老用户不会自动改名，之后切换界面语言名称也不跟随——
+    /// 显示名被视为可由用户自行重命名的数据，而非每次渲染时解析的标签。
+    /// </remarks>
+    private static string? ResolveDiscoveredMinecraftDirectoryDisplayName(MinecraftDirectoryKind kind) =>
+        kind is MinecraftDirectoryKind.Official
+            ? global::Launcher.App.Resources.Strings.Settings_OfficialMinecraftDirectoryDisplayName
+            : null;
+
+    private async Task<LauncherSettings> InitializeDefaultMinecraftDirectoryOnFirstRunAsync()
+    {
+        if (serviceProvider is null)
+            throw new InvalidOperationException("The launcher service provider is unavailable.");
+
+        var pathProvider = serviceProvider.GetRequiredService<Launcher.Infrastructure.LauncherPathProvider>();
+        var initializationService = serviceProvider
+            .GetRequiredService<MinecraftDirectoryStartupInitializationService>();
+        try
+        {
+            var initializedDirectory = string.Empty;
+            var updatedSettings = await serviceProvider.GetRequiredService<ISettingsService>().UpdateAsync(
+                settings => initializedDirectory = initializationService.InitializeDefaultDirectory(
+                    settings,
+                    pathProvider.DefaultMinecraftDirectory));
+            Log.Information(
+                "Default Minecraft directory initialized for the first launcher run. MinecraftDirectory={MinecraftDirectory}",
+                initializedDirectory);
+            return updatedSettings;
+        }
+        catch (MinecraftDirectoryStartupRecoveryException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new MinecraftDirectoryStartupRecoveryException(
+                pathProvider.DefaultMinecraftDirectory,
+                "The initial Minecraft directory could not be initialized.",
+                exception);
         }
     }
 
@@ -337,6 +393,13 @@ public partial class App : System.Windows.Application
                     recovery.SelectedDirectory,
                     recovery.UsedDefaultDirectory,
                     recovery.CreatedDefaultDirectory);
+            }
+            else
+            {
+                // 目录只是缺失并已就地补建，未发生切换，因此不上报给用户，只留下排查痕迹。
+                Log.Information(
+                    "Missing Minecraft directory recreated in place during startup. MinecraftDirectory={MinecraftDirectory}",
+                    updatedSettings.MinecraftDirectory);
             }
 
             return (updatedSettings, recovery);

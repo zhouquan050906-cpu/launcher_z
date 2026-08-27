@@ -84,7 +84,9 @@ internal sealed class SettingsPersistenceCoordinator : IDisposable
         update(Settings);
         lock (pendingUpdatesLock)
             pendingUpdates.Add(update);
-        await SaveCoreAsync(cancellationToken, restoreUpdatesOnFailure: false).ConfigureAwait(false);
+        // 调用方在失败时会自行回滚内存状态，因此本次更新不能重新入队，
+        // 但同批次里其他分区排队的更新与这次回滚无关，必须保留重试机会。
+        await SaveCoreAsync(cancellationToken, updateToDiscardOnFailure: update).ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -96,7 +98,7 @@ internal sealed class SettingsPersistenceCoordinator : IDisposable
     public async Task FlushAsync(CancellationToken cancellationToken = default)
     {
         CancelPendingSave();
-        await SaveCoreAsync(cancellationToken, restoreUpdatesOnFailure: true).ConfigureAwait(false);
+        await SaveCoreAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void ScheduleSave()
@@ -112,7 +114,7 @@ internal sealed class SettingsPersistenceCoordinator : IDisposable
         try
         {
             await Task.Delay(SaveDelay, cancellation.Token).ConfigureAwait(false);
-            await SaveCoreAsync(cancellation.Token, restoreUpdatesOnFailure: true).ConfigureAwait(false);
+            await SaveCoreAsync(cancellation.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -129,7 +131,13 @@ internal sealed class SettingsPersistenceCoordinator : IDisposable
         }
     }
 
-    private async Task SaveCoreAsync(CancellationToken cancellationToken, bool restoreUpdatesOnFailure)
+    /// <param name="updateToDiscardOnFailure">
+    /// 保存失败时不重新入队的那一个更新（调用方已自行回滚它）；其余更新一律回填等待重试。
+    /// 传 null 表示整批都回填。
+    /// </param>
+    private async Task SaveCoreAsync(
+        CancellationToken cancellationToken,
+        Action<LauncherSettings>? updateToDiscardOnFailure = null)
     {
         await saveLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -155,10 +163,19 @@ internal sealed class SettingsPersistenceCoordinator : IDisposable
             }
             catch
             {
-                if (restoreUpdatesOnFailure)
+                var restorableUpdates = updates.ToList();
+                if (updateToDiscardOnFailure is not null)
+                {
+                    // 只剔除本次这一个；同一个委托实例可能重复排队，因此按索引删除最后一次追加的那个。
+                    var discardedIndex = restorableUpdates.LastIndexOf(updateToDiscardOnFailure);
+                    if (discardedIndex >= 0)
+                        restorableUpdates.RemoveAt(discardedIndex);
+                }
+
+                if (restorableUpdates.Count > 0)
                 {
                     lock (pendingUpdatesLock)
-                        pendingUpdates.InsertRange(0, updates);
+                        pendingUpdates.InsertRange(0, restorableUpdates);
                 }
                 throw;
             }

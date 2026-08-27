@@ -30,6 +30,8 @@ namespace Launcher.Tests.ViewModels.Download;
 
 public sealed class DownloadViewModelTests
 {
+    private const string MinecraftDirectory = @"C:\Games\.minecraft";
+
     [Fact]
     public async Task VersionListLoadsAndFiltersItsOwnCatalog()
     {
@@ -207,6 +209,7 @@ public sealed class DownloadViewModelTests
             [],
             new DownloadInstanceNameTracker(),
             availability);
+        viewModel.ApplyMinecraftDirectory(MinecraftDirectory);
 
         await viewModel.PrepareAsync(
             new DownloadMinecraftVersionItem(
@@ -215,6 +218,7 @@ public sealed class DownloadViewModelTests
         Assert.Equal(Strings.Status_DuplicateInstanceName, viewModel.InstanceNameDuplicateMessage);
         Assert.False(viewModel.CanInstall);
         Assert.Equal("1.20.1", Assert.Single(availability.CheckedNames));
+        Assert.Equal(MinecraftDirectory, Assert.Single(availability.CheckedDirectories));
     }
 
     [Fact]
@@ -227,6 +231,7 @@ public sealed class DownloadViewModelTests
             [],
             new DownloadInstanceNameTracker(),
             availability);
+        viewModel.ApplyMinecraftDirectory(MinecraftDirectory);
         await viewModel.PrepareAsync(
             new DownloadMinecraftVersionItem(
                 new MinecraftVersionInfo("1.20.1", "release", false)));
@@ -260,6 +265,7 @@ public sealed class DownloadViewModelTests
             [],
             new DownloadInstanceNameTracker(),
             availability);
+        viewModel.ApplyMinecraftDirectory(MinecraftDirectory);
         await viewModel.PrepareAsync(
             new DownloadMinecraftVersionItem(
                 new MinecraftVersionInfo("1.20.1", "release", false)));
@@ -342,10 +348,14 @@ public sealed class DownloadViewModelTests
 
         public List<string> CheckedNames { get; } = [];
 
+        public List<string> CheckedDirectories { get; } = [];
+
         public Task<InstanceInstallNameAvailability> CheckAsync(
+            string minecraftDirectory,
             string instanceName,
             CancellationToken cancellationToken = default)
         {
+            CheckedDirectories.Add(minecraftDirectory);
             CheckedNames.Add(instanceName);
             return Task.FromResult(Result);
         }
@@ -359,6 +369,7 @@ public sealed class DownloadViewModelTests
             new(responses);
 
         public Task<InstanceInstallNameAvailability> CheckAsync(
+            string minecraftDirectory,
             string instanceName,
             CancellationToken cancellationToken = default) =>
             responses.Dequeue()(instanceName, cancellationToken);

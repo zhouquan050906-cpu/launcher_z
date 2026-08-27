@@ -115,7 +115,7 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
     }
 
     [Fact]
-    public void MissingDirectoryIsRetainedMarkedUnavailableAndCannotBeSelected()
+    public async Task MissingDirectoryIsRetainedMarkedUnavailableAndCannotBeSelected()
     {
         var current = CreateDirectory("current");
         var missing = Path.Combine(TempRoot, "missing");
@@ -129,6 +129,8 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
             new StubFilePickerService(null),
             new StubInstanceFolderService());
         viewModel.Load(settings);
+        // 可用性探测在后台线程进行，断言前先等它落定。
+        await viewModel.RefreshMinecraftDirectoryAvailabilityAsync();
 
         var missingItem = viewModel.MinecraftDirectories[1];
         viewModel.SelectedMinecraftDirectory = missingItem;
@@ -140,7 +142,7 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
     }
 
     [Fact]
-    public void DirectoryBecomingUnavailableAfterLoadCannotBeSelected()
+    public async Task DirectoryBecomingUnavailableAfterLoadCannotBeSelected()
     {
         var current = CreateDirectory("current");
         var target = CreateDirectory("target");
@@ -154,11 +156,14 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
             new StubFilePickerService(null),
             new StubInstanceFolderService());
         viewModel.Load(settings);
+        await viewModel.RefreshMinecraftDirectoryAvailabilityAsync();
         var staleTargetItem = viewModel.MinecraftDirectories[1];
         Assert.True(staleTargetItem.IsAvailable);
         Directory.Delete(target);
 
+        // 列表里的可用性此刻已过时，选中后应由权威探测拦下。
         viewModel.SelectedMinecraftDirectory = staleTargetItem;
+        await viewModel.PendingMinecraftDirectoryChange;
 
         Assert.Equal(MinecraftDirectoryPath.Normalize(current), settings.MinecraftDirectory);
         Assert.True(MinecraftDirectoryPath.Equals(current, viewModel.SelectedMinecraftDirectory?.DirectoryPath));
@@ -167,7 +172,7 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
     }
 
     [Fact]
-    public void OpenDirectoryCommandUsesItemPathAndDoesNotOpenUnavailableItem()
+    public async Task OpenDirectoryCommandUsesItemPathAndDoesNotOpenUnavailableItem()
     {
         var current = CreateDirectory("current");
         var missing = Path.Combine(TempRoot, "missing");
@@ -182,6 +187,8 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
             new StubFilePickerService(null),
             folders);
         viewModel.Load(settings);
+        // "打开目录"依赖可用性标记，而探测在后台线程进行，断言前先等它落定。
+        await viewModel.RefreshMinecraftDirectoryAvailabilityAsync();
 
         viewModel.OpenMinecraftDirectoryCommand.Execute(viewModel.MinecraftDirectories[0]);
         viewModel.OpenMinecraftDirectoryCommand.Execute(viewModel.MinecraftDirectories[1]);
@@ -242,6 +249,81 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
         Assert.False(viewModel.AddMinecraftDirectoryCommand.CanExecute(null));
         Assert.True(MinecraftDirectoryPath.Equals(current, viewModel.SelectedMinecraftDirectory?.DirectoryPath));
         Assert.True(MinecraftDirectoryPath.Equals(current, settings.MinecraftDirectory));
+    }
+
+    [Fact]
+    public async Task GameLaunchInProgressBlocksAddAndSelectionUntilTheGameHasStarted()
+    {
+        var current = CreateDirectory("current");
+        var target = CreateDirectory("target");
+        var settings = CreateSettings(current, target);
+        var settingsService = new TestSettingsService(settings);
+        var status = new RecordingStatusService();
+        using var coordinator = CreateCoordinator(settingsService, settings, status);
+        using var viewModel = CreateViewModel(
+            coordinator,
+            status,
+            new StubFilePickerService(target),
+            new StubInstanceFolderService());
+        viewModel.Load(settings);
+
+        // 启动准备阶段：与下载任务同等对待，禁止切换。
+        viewModel.SetGameLaunchInProgress(true);
+        viewModel.SelectedMinecraftDirectory = viewModel.MinecraftDirectories[1];
+
+        Assert.True(viewModel.IsMinecraftDirectoryChangeBlocked);
+        Assert.False(viewModel.CanChangeMinecraftDirectory);
+        Assert.False(viewModel.AddMinecraftDirectoryCommand.CanExecute(null));
+        Assert.True(MinecraftDirectoryPath.Equals(current, viewModel.SelectedMinecraftDirectory?.DirectoryPath));
+        Assert.True(MinecraftDirectoryPath.Equals(current, settings.MinecraftDirectory));
+        Assert.Contains(
+            Launcher.App.Resources.Strings.Settings_MinecraftDirectoryChangeBlockedByActiveTasks,
+            status.Messages);
+
+        // 游戏进程已拉起，启动准备结束，切换重新放开。
+        viewModel.SetGameLaunchInProgress(false);
+
+        Assert.False(viewModel.IsMinecraftDirectoryChangeBlocked);
+        Assert.True(viewModel.CanChangeMinecraftDirectory);
+        Assert.True(viewModel.AddMinecraftDirectoryCommand.CanExecute(null));
+
+        viewModel.OpenMinecraftDirectorySwitchDialog();
+        var dialog = viewModel.MinecraftDirectorySwitchDialog;
+        dialog.SelectedDirectory = viewModel.MinecraftDirectories[1];
+        await dialog.ConfirmCommand.ExecuteAsync(null);
+
+        Assert.Equal(MinecraftDirectoryPath.Normalize(target), settings.MinecraftDirectory);
+    }
+
+    [Fact]
+    public void SwitchDialogFreezesSelectionWhileGameLaunchIsInProgress()
+    {
+        var current = CreateDirectory("current");
+        var target = CreateDirectory("target");
+        var settings = CreateSettings(current, target);
+        var status = new RecordingStatusService();
+        using var coordinator = CreateCoordinator(new TestSettingsService(settings), settings, status);
+        using var viewModel = CreateViewModel(
+            coordinator,
+            status,
+            new StubFilePickerService(null),
+            new StubInstanceFolderService());
+        viewModel.Load(settings);
+        viewModel.SetGameLaunchInProgress(true);
+
+        viewModel.OpenMinecraftDirectorySwitchDialog();
+        var dialog = viewModel.MinecraftDirectorySwitchDialog;
+        dialog.SelectedDirectory = viewModel.MinecraftDirectories[1];
+
+        Assert.True(dialog.IsChangeBlockedByActiveTasks);
+        Assert.True(MinecraftDirectoryPath.Equals(current, dialog.SelectedDirectory?.DirectoryPath));
+        Assert.False(dialog.ConfirmCommand.CanExecute(null));
+
+        viewModel.SetGameLaunchInProgress(false);
+        dialog.SelectedDirectory = viewModel.MinecraftDirectories[1];
+
+        Assert.False(dialog.IsChangeBlockedByActiveTasks);
+        Assert.True(dialog.ConfirmCommand.CanExecute(null));
     }
 
     [Fact]
@@ -340,7 +422,7 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
     }
 
     [Fact]
-    public void SwitchDialogCannotSelectUnavailableDirectory()
+    public async Task SwitchDialogCannotSelectUnavailableDirectory()
     {
         var current = CreateDirectory("current");
         var missing = Path.Combine(TempRoot, "missing");
@@ -353,6 +435,7 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
             new StubFilePickerService(null),
             new StubInstanceFolderService());
         viewModel.Load(settings);
+        await viewModel.RefreshMinecraftDirectoryAvailabilityAsync();
 
         viewModel.OpenMinecraftDirectorySwitchDialog();
         var dialog = viewModel.MinecraftDirectorySwitchDialog;
@@ -668,10 +751,12 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
             new StubFilePickerService(null),
             new StubInstanceFolderService());
         viewModel.Load(settings);
+        await viewModel.RefreshMinecraftDirectoryAvailabilityAsync();
 
         viewModel.RequestRenameMinecraftDirectoryCommand.Execute(viewModel.MinecraftDirectories[1]);
         viewModel.MinecraftDirectoryName = "Missing Profile";
         await viewModel.ConfirmMinecraftDirectoryNameCommand.ExecuteAsync(null);
+        await viewModel.RefreshMinecraftDirectoryAvailabilityAsync();
 
         Assert.Equal("Missing Profile", viewModel.MinecraftDirectories[1].DisplayName);
         Assert.False(viewModel.MinecraftDirectories[1].IsAvailable);
@@ -783,16 +868,73 @@ public sealed class GeneralSettingsMinecraftDirectoryTests : TestTempDirectory
         IStatusService statusService,
         IFilePickerService filePickerService,
         IInstanceFolderService instanceFolderService,
-        DownloadTasksPageViewModel? downloadTasksPage = null) => new(
+        DownloadTasksPageViewModel? downloadTasksPage = null,
+        IMinecraftDirectoryFileSystem? minecraftDirectoryFileSystem = null) => new(
             coordinator,
             statusService,
             filePickerService,
             instanceFolderService,
-            new StubMinecraftDirectoryFileSystem(),
+            minecraftDirectoryFileSystem ?? new StubMinecraftDirectoryFileSystem(),
             new MinecraftDirectoryManagementService(),
             downloadTasksPage,
             logLevelController: null,
             NullLogger.Instance);
+
+    [Fact]
+    public async Task SlowDirectoryProbeDoesNotBlockLoadingTheDirectoryList()
+    {
+        var current = CreateDirectory("current");
+        var settings = CreateSettings(current);
+        var status = new RecordingStatusService();
+        using var probeGate = new ManualResetEventSlim(false);
+        var fileSystem = new BlockingMinecraftDirectoryFileSystem(probeGate);
+        using var coordinator = CreateCoordinator(new TestSettingsService(settings), settings, status);
+        using var viewModel = CreateViewModel(
+            coordinator,
+            status,
+            new StubFilePickerService(null),
+            new StubInstanceFolderService(),
+            minecraftDirectoryFileSystem: fileSystem);
+
+        try
+        {
+            // 探测被卡住（模拟断连的网络路径），但列表加载必须立即返回，不能挂在 UI 线程上。
+            var load = Task.Run(() => viewModel.Load(settings));
+            var finished = await Task.WhenAny(load, Task.Delay(TimeSpan.FromSeconds(5)));
+
+            Assert.True(
+                ReferenceEquals(finished, load),
+                "加载目录列表不应等待目录可用性探测完成。");
+            await load;
+            Assert.Equal(
+                MinecraftDirectoryPath.Normalize(current),
+                Assert.Single(viewModel.MinecraftDirectories).DirectoryPath);
+            // 探测未完成前先乐观按可用渲染，避免整列表闪成"目录不可用"。
+            Assert.True(viewModel.MinecraftDirectories[0].IsAvailable);
+        }
+        finally
+        {
+            probeGate.Set();
+        }
+    }
+
+    private sealed class BlockingMinecraftDirectoryFileSystem(ManualResetEventSlim gate)
+        : IMinecraftDirectoryFileSystem
+    {
+        public bool DirectoryExists(string directoryPath) => Directory.Exists(directoryPath);
+
+        public bool DirectoryIsAccessible(string directoryPath)
+        {
+            gate.Wait();
+            return Directory.Exists(directoryPath);
+        }
+
+        public string EnsureDirectoryExists(string directoryPath)
+        {
+            Directory.CreateDirectory(directoryPath);
+            return MinecraftDirectoryPath.Normalize(directoryPath);
+        }
+    }
 
     private sealed class StubMinecraftDirectoryFileSystem : IMinecraftDirectoryFileSystem
     {

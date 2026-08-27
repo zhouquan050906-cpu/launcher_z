@@ -18,22 +18,31 @@ public sealed class MinecraftDirectoryDiscoveryService(
     IMinecraftDirectoryFileSystem fileSystem)
     : IMinecraftDirectoryDiscoveryService
 {
-    public IReadOnlyList<string> DiscoverExistingDirectories()
+    public IReadOnlyList<MinecraftDirectoryDiscovery> DiscoverExistingDirectories()
     {
-        var discovered = new List<string>(2);
+        var discovered = new List<MinecraftDirectoryDiscovery>(2);
         var knownDirectories = new HashSet<string>(MinecraftDirectoryPath.Comparer);
-        AddIfExisting(pathProvider.OfficialMinecraftDirectory, discovered, knownDirectories);
-        AddIfExisting(pathProvider.DefaultMinecraftDirectory, discovered, knownDirectories);
+        AddIfExisting(
+            pathProvider.OfficialMinecraftDirectory,
+            MinecraftDirectoryKind.Official,
+            discovered,
+            knownDirectories);
+        AddIfExisting(
+            pathProvider.DefaultMinecraftDirectory,
+            MinecraftDirectoryKind.LauncherDefault,
+            discovered,
+            knownDirectories);
         return discovered;
     }
 
     private void AddIfExisting(
         string candidate,
-        ICollection<string> discovered,
+        MinecraftDirectoryKind kind,
+        ICollection<MinecraftDirectoryDiscovery> discovered,
         ISet<string> knownDirectories)
     {
         var normalizedCandidate = MinecraftDirectoryPath.Normalize(candidate);
         if (fileSystem.DirectoryExists(normalizedCandidate) && knownDirectories.Add(normalizedCandidate))
-            discovered.Add(normalizedCandidate);
+            discovered.Add(new MinecraftDirectoryDiscovery(normalizedCandidate, kind));
     }
 }

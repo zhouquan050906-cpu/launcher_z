@@ -62,7 +62,7 @@ public sealed class MinecraftDirectoryStartupRecoveryServiceTests : TestTempDire
         var discovered = Path.Combine(TempRoot, "official", ".minecraft");
         var fileSystem = new FakeMinecraftDirectoryFileSystem([discovered]);
         var settings = CreateSettings(current);
-        managementService.RegisterDiscoveredDirectories(settings, [discovered]);
+        managementService.RegisterDiscoveredDirectories(settings, [Official(discovered)]);
         var service = CreateService(fileSystem);
 
         var result = service.Recover(settings, Path.Combine(TempRoot, "launcher", ".minecraft"));
@@ -102,7 +102,7 @@ public sealed class MinecraftDirectoryStartupRecoveryServiceTests : TestTempDire
     }
 
     [Fact]
-    public void MissingCurrentLauncherDefaultIsRecreatedWhenThereIsNoFallback()
+    public void MissingCurrentLauncherDefaultIsRecreatedWithoutReportingARecovery()
     {
         var defaultDirectory = Path.Combine(TempRoot, "launcher", ".minecraft");
         var fileSystem = new FakeMinecraftDirectoryFileSystem();
@@ -111,11 +111,30 @@ public sealed class MinecraftDirectoryStartupRecoveryServiceTests : TestTempDire
 
         var result = service.Recover(settings, defaultDirectory);
 
+        // 目录只是还没建出来，补建后仍是同一个目录，不应该弹出"目录已失效"提示。
+        Assert.Null(result);
+        Assert.Equal(MinecraftDirectoryPath.Normalize(defaultDirectory), fileSystem.EnsuredDirectory);
+        Assert.Equal(MinecraftDirectoryPath.Normalize(defaultDirectory), settings.MinecraftDirectory);
+        Assert.Contains(settings.MinecraftDirectories, directory =>
+            MinecraftDirectoryPath.Equals(directory, defaultDirectory));
+    }
+
+    [Fact]
+    public void MissingCurrentDirectoryThatIsNotTheLauncherDefaultStillReportsARecovery()
+    {
+        var current = Path.Combine(TempRoot, "current");
+        var defaultDirectory = Path.Combine(TempRoot, "launcher", ".minecraft");
+        var fileSystem = new FakeMinecraftDirectoryFileSystem();
+        var settings = CreateSettings(current);
+        var service = CreateService(fileSystem);
+
+        var result = service.Recover(settings, defaultDirectory);
+
         Assert.NotNull(result);
+        Assert.Equal(MinecraftDirectoryPath.Normalize(current), result.InvalidDirectory);
+        Assert.Equal(MinecraftDirectoryPath.Normalize(defaultDirectory), result.SelectedDirectory);
         Assert.True(result.UsedDefaultDirectory);
         Assert.True(result.CreatedDefaultDirectory);
-        Assert.True(MinecraftDirectoryPath.Equals(result.InvalidDirectory, result.SelectedDirectory));
-        Assert.Equal(MinecraftDirectoryPath.Normalize(defaultDirectory), fileSystem.EnsuredDirectory);
     }
 
     [Fact]

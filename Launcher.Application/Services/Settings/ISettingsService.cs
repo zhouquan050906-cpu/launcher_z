@@ -24,6 +24,11 @@ namespace Launcher.Application.Services;
 public interface ISettingsService
 {
     Task<LauncherSettings> LoadAsync(CancellationToken cancellationToken = default);
+
+    async Task<LauncherSettingsLoadResult> LoadWithMetadataAsync(
+        CancellationToken cancellationToken = default) =>
+        new(await LoadAsync(cancellationToken).ConfigureAwait(false), WasCreated: false);
+
     Task SaveAsync(LauncherSettings settings, CancellationToken cancellationToken = default);
 
     async Task<LauncherSettings> UpdateAsync(

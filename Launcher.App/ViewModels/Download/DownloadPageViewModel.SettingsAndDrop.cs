@@ -37,6 +37,12 @@ public void PrimeFromSettings(LauncherSettings settings)
         // 下载源和限速同时影响在线安装与本地整合包依赖下载，必须传播给两个入口。
         ApplyDownloadSourcePreference(settings.DownloadSourcePreference);
         ApplyDownloadSpeedLimit(settings.DownloadSpeedLimitMbPerSecond);
+        ApplyMinecraftDirectory(settings.MinecraftDirectory);
+    }
+
+    public void ApplyMinecraftDirectory(string? minecraftDirectory)
+    {
+        InstanceOptions.ApplyMinecraftDirectory(minecraftDirectory);
     }
 
     public void ApplyDownloadSourcePreference(DownloadSourcePreference preference)

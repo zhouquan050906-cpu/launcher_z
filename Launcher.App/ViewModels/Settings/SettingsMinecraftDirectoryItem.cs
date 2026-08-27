@@ -74,4 +74,10 @@ public sealed class SettingsMinecraftDirectoryItem : ObservableObject
         IsAvailable = newIsAvailable;
         CanRemove = newCanRemove;
     }
+
+    /// <summary>可用性由后台探测单独维护，因此需要独立于名称与可移除状态更新。</summary>
+    public void SetAvailability(bool newIsAvailable)
+    {
+        IsAvailable = newIsAvailable;
+    }
 }

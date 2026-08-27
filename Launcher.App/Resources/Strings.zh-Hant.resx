@@ -2951,8 +2951,11 @@
   <data name="Settings_MinecraftDirectoryUnavailable" xml:space="preserve">
     <value>目錄無法使用</value>
   </data>
+  <data name="Settings_OfficialMinecraftDirectoryDisplayName" xml:space="preserve">
+    <value>官方啟動器目錄</value>
+  </data>
   <data name="Settings_MinecraftDirectoryChangeBlockedByActiveTasks" xml:space="preserve">
-    <value>有下載或安裝工作時不可切換目錄。</value>
+    <value>有下載、安裝或啟動工作進行中時不可切換目錄。</value>
   </data>
   <data name="Settings_OpenMinecraftDirectoryButton" xml:space="preserve">
     <value>開啟目錄</value>

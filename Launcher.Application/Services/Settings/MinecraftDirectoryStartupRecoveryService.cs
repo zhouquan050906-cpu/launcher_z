@@ -30,6 +30,9 @@ public sealed class MinecraftDirectoryStartupRecoveryService(
         managementService.EnsureCurrentDirectoryRegistered(settings);
         invalidDirectory = settings.MinecraftDirectory;
 
+        // 设计如此：首次运行由 MinecraftDirectoryStartupInitializationService 直接选定启动器默认目录，
+        // 而这里是"当前目录已失效"的恢复路径，按列表顺序依次尝试（可能落到自动发现的官方目录），
+        // 优先给用户一个立刻能用的目录。两条路径结果不同是刻意的，不要改成默认目录优先。
         foreach (var directory in settings.MinecraftDirectories)
         {
             if (MinecraftDirectoryPath.Equals(directory, invalidDirectory)
@@ -47,31 +50,18 @@ public sealed class MinecraftDirectoryStartupRecoveryService(
         }
 
         var defaultDirectoryExisted = fileSystem.DirectoryExists(normalizedDefaultDirectory);
-        string ensuredDefaultDirectory;
-        try
-        {
-            ensuredDefaultDirectory = fileSystem.EnsureDirectoryExists(normalizedDefaultDirectory);
-        }
-        catch (Exception exception) when (exception is IOException
-                                           or UnauthorizedAccessException
-                                           or ArgumentException
-                                           or NotSupportedException
-                                           or System.Security.SecurityException)
-        {
-            throw new MinecraftDirectoryStartupRecoveryException(
-                normalizedDefaultDirectory,
-                "The default Minecraft directory could not be created.",
-                exception);
-        }
-
-        if (!fileSystem.DirectoryIsAccessible(ensuredDefaultDirectory))
-        {
-            throw new MinecraftDirectoryStartupRecoveryException(
-                normalizedDefaultDirectory,
-                "The default Minecraft directory is not accessible after creation.");
-        }
+        var ensuredDefaultDirectory = MinecraftDirectoryStartupPreparation.EnsureAccessibleDirectory(
+            fileSystem,
+            normalizedDefaultDirectory,
+            "default");
 
         managementService.AddAndSelectDirectory(settings, ensuredDefaultDirectory);
+
+        // 补建出用户原本就选中的目录不算"恢复"：前后是同一个目录，提示切换只会让人困惑。
+        // 设置仍由调用方落盘，这里只是不上报需要向用户展示的恢复结果。
+        if (MinecraftDirectoryPath.Equals(invalidDirectory, settings.MinecraftDirectory))
+            return null;
+
         return new MinecraftDirectoryStartupRecoveryResult(
             invalidDirectory,
             settings.MinecraftDirectory,

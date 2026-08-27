@@ -421,6 +421,7 @@ public static class Strings
     public static string Dialog_RemoveMinecraftDirectoryTitle => Get(nameof(Dialog_RemoveMinecraftDirectoryTitle));
     public static string Dialog_RemoveMinecraftDirectoryMessageFormat => Get(nameof(Dialog_RemoveMinecraftDirectoryMessageFormat));
     public static string Settings_MinecraftDirectoryUnavailable => Get(nameof(Settings_MinecraftDirectoryUnavailable));
+    public static string Settings_OfficialMinecraftDirectoryDisplayName => Get(nameof(Settings_OfficialMinecraftDirectoryDisplayName));
     public static string Settings_MinecraftDirectoryChangeBlockedByActiveTasks => Get(nameof(Settings_MinecraftDirectoryChangeBlockedByActiveTasks));
     public static string Settings_LauncherLogDirectoryLabel => Get(nameof(Settings_LauncherLogDirectoryLabel));
     public static string Settings_LauncherLogDirectoryDescription => Get(nameof(Settings_LauncherLogDirectoryDescription));

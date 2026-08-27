@@ -138,6 +138,11 @@ public sealed partial class HomePageViewModel : ObservableObject
 
     public event EventHandler<LaunchFailureReport>? LaunchFailureReported;
 
+    /// <summary>
+    /// 启动准备阶段的开始与结束。游戏进程拉起后即视为结束，其生命周期由 GameLaunchSession 独立持有。
+    /// </summary>
+    public event EventHandler? LaunchActivityChanged;
+
     public string? HomeAvatarUrl
     {
         get

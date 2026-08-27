@@ -29,10 +29,11 @@ public sealed class MinecraftDirectoryDiscoveryServiceTests : TestTempDirectory
 
         var result = service.DiscoverExistingDirectories();
 
+        // 官方目录排在前面，且两者的来源被分别标注，登记时才能给出不同的默认显示名。
         Assert.Equal(
             [
-                MinecraftDirectoryPath.Normalize(officialMinecraftDirectory),
-                MinecraftDirectoryPath.Normalize(launcherMinecraftDirectory)
+                Official(MinecraftDirectoryPath.Normalize(officialMinecraftDirectory)),
+                LauncherDefault(MinecraftDirectoryPath.Normalize(launcherMinecraftDirectory))
             ],
             result);
     }
@@ -50,7 +51,9 @@ public sealed class MinecraftDirectoryDiscoveryServiceTests : TestTempDirectory
 
         var result = service.DiscoverExistingDirectories();
 
-        Assert.Equal(MinecraftDirectoryPath.Normalize(launcherMinecraftDirectory), Assert.Single(result));
+        Assert.Equal(
+            LauncherDefault(MinecraftDirectoryPath.Normalize(launcherMinecraftDirectory)),
+            Assert.Single(result));
     }
 
     [Fact]

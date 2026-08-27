@@ -12,17 +12,20 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Launcher.Infrastructure.Persistence;
 
 public sealed class InstanceInstallNameAvailabilityService(
-    ISettingsService settingsService,
     IGameInstallCoordinator installCoordinator,
     ILogger<InstanceInstallNameAvailabilityService>? logger = null)
     : IInstanceInstallNameAvailabilityService
 {
     private readonly ILogger logger = logger ?? NullLogger<InstanceInstallNameAvailabilityService>.Instance;
 
-    public async Task<InstanceInstallNameAvailability> CheckAsync(
+    public Task<InstanceInstallNameAvailability> CheckAsync(
+        string minecraftDirectory,
         string instanceName,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(minecraftDirectory))
+            return Task.FromResult(InstanceInstallNameAvailability.Unknown);
+
         string normalizedName;
         try
         {
@@ -30,25 +33,25 @@ public sealed class InstanceInstallNameAvailabilityService(
         }
         catch (ArgumentException)
         {
-            return InstanceInstallNameAvailability.Unknown;
+            return Task.FromResult(InstanceInstallNameAvailability.Unknown);
         }
 
         try
         {
-            var settings = await settingsService.LoadAsync(cancellationToken).ConfigureAwait(false);
-            if (installCoordinator.IsInstallingVersion(settings.MinecraftDirectory, normalizedName))
-                return InstanceInstallNameAvailability.Occupied;
+            if (installCoordinator.IsInstallingVersion(minecraftDirectory, normalizedName))
+                return Task.FromResult(InstanceInstallNameAvailability.Occupied);
 
             var versionsDirectory = Path.GetFullPath(
-                Path.Combine(settings.MinecraftDirectory, "versions"));
+                Path.Combine(minecraftDirectory, "versions"));
             var finalDirectory = Path.GetFullPath(
                 Path.Combine(versionsDirectory, normalizedName));
-            return InstanceInstallNameOccupancy.IsOccupied(
+            return Task.FromResult(
+                InstanceInstallNameOccupancy.IsOccupied(
                     versionsDirectory,
                     finalDirectory,
                     normalizedName)
-                ? InstanceInstallNameAvailability.Occupied
-                : InstanceInstallNameAvailability.Available;
+                    ? InstanceInstallNameAvailability.Occupied
+                    : InstanceInstallNameAvailability.Available);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -64,7 +67,7 @@ public sealed class InstanceInstallNameAvailabilityService(
                 exception,
                 "Failed to check Minecraft instance install name availability. InstanceName={InstanceName}",
                 normalizedName);
-            return InstanceInstallNameAvailability.Unknown;
+            return Task.FromResult(InstanceInstallNameAvailability.Unknown);
         }
     }
 }

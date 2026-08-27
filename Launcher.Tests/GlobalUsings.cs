@@ -28,3 +28,4 @@ global using Launcher.App.ViewModels.Shell;
 global using Launcher.Domain.Models;
 global using Launcher.Tests.Fakes;
 global using Launcher.Tests.Helpers;
+global using static Launcher.Tests.Helpers.TestMinecraftDirectoryDiscoveries;

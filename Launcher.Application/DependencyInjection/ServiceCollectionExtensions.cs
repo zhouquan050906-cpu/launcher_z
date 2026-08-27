@@ -31,6 +31,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IGameInstallCoordinator, GameInstallCoordinator>();
         services.AddSingleton<IGameInstanceService, GameInstanceService>();
         services.AddSingleton<MinecraftDirectoryManagementService>();
+        services.AddSingleton<MinecraftDirectoryStartupInitializationService>();
         services.AddSingleton<MinecraftDirectoryStartupRecoveryService>();
         services.AddSingleton<IInstanceDeletionCleanupService, InstanceDeletionCleanupService>();
         services.AddSingleton<IInstanceRenameRecoveryService, InstanceRenameRecoveryService>();

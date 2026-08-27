@@ -105,16 +105,24 @@ public sealed class JsonSettingsService : ISettingsService
         }
     }
 
-    public async Task<LauncherSettings> LoadAsync(CancellationToken cancellationToken = default)
+    public async Task<LauncherSettings> LoadAsync(CancellationToken cancellationToken = default) =>
+        (await LoadWithMetadataAsync(cancellationToken).ConfigureAwait(false)).Settings;
+
+    public async Task<LauncherSettingsLoadResult> LoadWithMetadataAsync(
+        CancellationToken cancellationToken = default)
     {
         await ioLock.WaitAsync(cancellationToken);
         try
         {
             await using var crossProcessLock = await AcquireCrossProcessLockAsync(cancellationToken).ConfigureAwait(false);
+            var settingsFileExisted = File.Exists(settingsPath);
             var loadedSettings = await LoadCoreAsync(cancellationToken).ConfigureAwait(false);
             TrackBaseline(loadedSettings, loadedSettings);
-            logger.LogDebug("Launcher settings loaded. SettingsPath={SettingsPath}", settingsPath);
-            return loadedSettings;
+            logger.LogDebug(
+                "Launcher settings loaded. SettingsPath={SettingsPath} WasCreated={WasCreated}",
+                settingsPath,
+                !settingsFileExisted);
+            return new LauncherSettingsLoadResult(loadedSettings, WasCreated: !settingsFileExisted);
         }
         finally
         {

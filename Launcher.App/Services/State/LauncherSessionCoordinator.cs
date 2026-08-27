@@ -444,6 +444,7 @@ public sealed class LauncherSessionCoordinator : IDisposable
         // 目录切换会同时使首页、下载页和游戏设置中的实例视图失效，因此从共享管理器统一重载。
         settings.MinecraftDirectory = e.MinecraftDirectory;
         homePage?.SetSettings(settings);
+        downloadPage.ApplyMinecraftDirectory(e.MinecraftDirectory);
         gameSettingsPage.PrimeFromSettings(settings);
         stateSyncService.AcknowledgeLocalStateChange();
         Observe(RefreshMinecraftDirectoryInstancesAsync(), "refresh instances after changing the Minecraft directory");
@@ -457,7 +458,9 @@ public sealed class LauncherSessionCoordinator : IDisposable
             await downloadPage.InstanceOptions.RefreshNameAvailabilityAsync();
             var latestSettings = await settingsService.LoadAsync();
             if (settings is not null
-                && PathsEqual(settings.MinecraftDirectory, latestSettings.MinecraftDirectory))
+                && MinecraftDirectoryPath.Equals(
+                    settings.MinecraftDirectory,
+                    latestSettings.MinecraftDirectory))
             {
                 settings.DefaultInstanceId = latestSettings.DefaultInstanceId;
             }
@@ -470,12 +473,6 @@ public sealed class LauncherSessionCoordinator : IDisposable
             statusService.Report(Strings.Status_LoadInstancesFailed);
         }
     }
-
-    private static bool PathsEqual(string first, string second) =>
-        string.Equals(
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
-            StringComparison.OrdinalIgnoreCase);
 
     private void Observe(Task task, string operation)
     {

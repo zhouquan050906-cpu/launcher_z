@@ -165,6 +165,12 @@ public Task SyncExternalInstanceCatalogAsync()
         IsJavaRequirementDialogOpen = true;
     }
 
+    private void HomePage_LaunchActivityChanged(object? sender, EventArgs e)
+    {
+        // 启动准备期间会向当前 Minecraft 目录写入文件，设置页据此暂时禁用目录切换。
+        SettingsPage.General.SetGameLaunchInProgress(HomePage.IsLaunching);
+    }
+
     private void HomePage_LaunchFailureReported(object? sender, LaunchFailureReport report)
     {
         // Shell 只承载诊断弹窗，错误分类和脱敏内容已由启动服务准备。

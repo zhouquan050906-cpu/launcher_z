@@ -2951,8 +2951,11 @@
   <data name="Settings_MinecraftDirectoryUnavailable" xml:space="preserve">
     <value>ディレクトリを利用できません</value>
   </data>
+  <data name="Settings_OfficialMinecraftDirectoryDisplayName" xml:space="preserve">
+    <value>公式ランチャーのフォルダー</value>
+  </data>
   <data name="Settings_MinecraftDirectoryChangeBlockedByActiveTasks" xml:space="preserve">
-    <value>ダウンロードまたはインストール中はディレクトリを変更できません。</value>
+    <value>ダウンロード、インストール、またはゲーム起動の処理中はディレクトリを変更できません。</value>
   </data>
   <data name="Settings_OpenMinecraftDirectoryButton" xml:space="preserve">
     <value>ディレクトリを開く</value>

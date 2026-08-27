@@ -1003,7 +1003,8 @@
   <data name="Dialog_RemoveMinecraftDirectoryTitle" xml:space="preserve"><value>移除 Minecraft 目录</value></data>
   <data name="Dialog_RemoveMinecraftDirectoryMessageFormat" xml:space="preserve"><value>确定要从列表中移除以下目录吗？&#xA;&#xA;{0}&#xA;&#xA;这只会从启动器列表中移除该目录，不会删除目录或其中的任何文件。</value></data>
   <data name="Settings_MinecraftDirectoryUnavailable" xml:space="preserve"><value>目录不可用</value></data>
-  <data name="Settings_MinecraftDirectoryChangeBlockedByActiveTasks" xml:space="preserve"><value>有下载或安装任务时不可切换目录。</value></data>
+  <data name="Settings_OfficialMinecraftDirectoryDisplayName" xml:space="preserve"><value>官方启动器目录</value></data>
+  <data name="Settings_MinecraftDirectoryChangeBlockedByActiveTasks" xml:space="preserve"><value>有下载、安装或启动任务进行中时不可切换目录。</value></data>
   <data name="Settings_OpenMinecraftDirectoryButton" xml:space="preserve"><value>打开目录</value></data>
   <data name="Settings_ChangeMinecraftDirectoryButton" xml:space="preserve"><value>更改目录</value></data>
   <data name="Status_OpenMinecraftDirectoryFailed" xml:space="preserve"><value>打开 .minecraft 目录失败，请稍后重试。</value></data>

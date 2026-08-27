@@ -9,9 +9,10 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
+using Launcher.Domain.Models;
+
 namespace Launcher.Application.Services;
 
-public interface IMinecraftDirectoryDiscoveryService
-{
-    IReadOnlyList<MinecraftDirectoryDiscovery> DiscoverExistingDirectories();
-}
+public sealed record LauncherSettingsLoadResult(
+    LauncherSettings Settings,
+    bool WasCreated);

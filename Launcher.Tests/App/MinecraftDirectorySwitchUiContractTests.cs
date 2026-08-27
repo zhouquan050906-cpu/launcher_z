@@ -58,6 +58,58 @@ public sealed class MinecraftDirectorySwitchUiContractTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ShellForwardsLaunchActivityToGeneralSettingsDirectoryGate()
+    {
+        var shellSource = ReadSource("Launcher.App", "ViewModels", "Shell", "MainViewModel.cs");
+        var shellEventsSource = ReadSource("Launcher.App", "ViewModels", "Shell", "MainViewModel.Events.cs");
+        var homeSource = ReadSource(
+            "Launcher.App",
+            "ViewModels",
+            "Home",
+            "HomePageViewModel.CommandsAndProgress.cs");
+
+        // 启动准备状态必须从首页一路传到设置页，否则启动期间目录切换的门禁会静默失效。
+        Assert.Contains("LaunchActivityChanged?.Invoke(this, EventArgs.Empty);", homeSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "HomePage.LaunchActivityChanged += HomePage_LaunchActivityChanged;",
+            shellSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SettingsPage.General.SetGameLaunchInProgress(HomePage.IsLaunching);",
+            shellEventsSource,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DownloadPageReceivesTheMinecraftDirectoryOnPrimeAndOnSwitch()
+    {
+        var downloadSource = ReadSource(
+            "Launcher.App",
+            "ViewModels",
+            "Download",
+            "DownloadPageViewModel.SettingsAndDrop.cs");
+        var coordinatorSource = ReadSource(
+            "Launcher.App",
+            "Services",
+            "State",
+            "LauncherSessionCoordinator.cs");
+
+        // 实例名可用性检查依赖被推送进来的目录；漏推会让重名校验静默失效而不是报错。
+        Assert.Contains(
+            "ApplyMinecraftDirectory(settings.MinecraftDirectory);",
+            downloadSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "InstanceOptions.ApplyMinecraftDirectory(minecraftDirectory);",
+            downloadSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "downloadPage.ApplyMinecraftDirectory(e.MinecraftDirectory);",
+            coordinatorSource,
+            StringComparison.Ordinal);
+    }
+
     private static string ReadSource(params string[] segments)
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);

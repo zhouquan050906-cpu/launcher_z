@@ -14,6 +14,31 @@ public sealed class MinecraftDirectoryManagementServiceTests : TestTempDirectory
     private readonly MinecraftDirectoryManagementService service = new();
 
     [Fact]
+    public void RemovingDirectoryClearsEveryPathEquivalentDisplayNameKey()
+    {
+        var current = Directory.CreateDirectory(Path.Combine(TempRoot, "current")).FullName;
+        var target = Directory.CreateDirectory(Path.Combine(TempRoot, "target")).FullName;
+        var normalizedTarget = MinecraftDirectoryPath.Normalize(target);
+        var settings = new LauncherSettings
+        {
+            MinecraftDirectory = current,
+            MinecraftDirectories = [current, target],
+            // LauncherSettings 默认构造的字典用序数比较器，同一目录的不同大小写写法会各自成键。
+            MinecraftDirectoryDisplayNames = new Dictionary<string, string>
+            {
+                [normalizedTarget] = "Target",
+                [normalizedTarget.ToUpperInvariant()] = "TARGET"
+            }
+        };
+
+        var removed = service.RemoveDirectoryFromList(settings, target);
+
+        Assert.True(removed);
+        Assert.DoesNotContain(settings.MinecraftDirectoryDisplayNames, pair =>
+            MinecraftDirectoryPath.Equals(pair.Key, target));
+    }
+
+    [Fact]
     public void RegisterDiscoveredDirectoriesAppendsNewPathsWithoutChangingCurrentDirectory()
     {
         var current = Path.Combine(TempRoot, "current");
@@ -26,7 +51,10 @@ public sealed class MinecraftDirectoryManagementServiceTests : TestTempDirectory
 
         var changed = service.RegisterDiscoveredDirectories(
             settings,
-            [discovered, discovered + Path.DirectorySeparatorChar]);
+            [
+                Official(discovered),
+                Official(discovered + Path.DirectorySeparatorChar)
+            ]);
 
         Assert.True(changed);
         Assert.Equal(MinecraftDirectoryPath.Normalize(current), settings.MinecraftDirectory);
@@ -80,7 +108,7 @@ public sealed class MinecraftDirectoryManagementServiceTests : TestTempDirectory
         };
 
         var removed = service.RemoveDirectoryFromList(settings, target);
-        var discoveredChanged = service.RegisterDiscoveredDirectories(settings, [target]);
+        var discoveredChanged = service.RegisterDiscoveredDirectories(settings, [Official(target)]);
 
         Assert.True(removed);
         Assert.False(discoveredChanged);

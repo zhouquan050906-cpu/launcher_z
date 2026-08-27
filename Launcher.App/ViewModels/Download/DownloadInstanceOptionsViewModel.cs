@@ -53,6 +53,8 @@ public sealed partial class DownloadInstanceOptionsViewModel : ObservableObject,
     private bool isUpdatingInstanceNameInternally;
     private bool isActive;
     private string externallyUnavailableInstanceName = string.Empty;
+    // 由 Shell 在初始化与目录切换时推送，避免逐字符校验时反复读取 settings.json。
+    private string minecraftDirectory = string.Empty;
 
     [ObservableProperty]
     private string instanceName = string.Empty;
@@ -263,6 +265,16 @@ public sealed partial class DownloadInstanceOptionsViewModel : ObservableObject,
             GetSelectedLoaderDisplayName(),
             downloadSourcePreference,
             downloadSpeedLimitMbPerSecond);
+    }
+
+    public void ApplyMinecraftDirectory(string? directory)
+    {
+        var normalized = directory?.Trim() ?? string.Empty;
+        if (string.Equals(minecraftDirectory, normalized, StringComparison.Ordinal))
+            return;
+
+        minecraftDirectory = normalized;
+        RequestInstanceNameAvailabilityCheck();
     }
 
     public void NotifyNameAvailabilityChanged()
@@ -528,6 +540,7 @@ public sealed partial class DownloadInstanceOptionsViewModel : ObservableObject,
         var normalizedName = InstanceName?.Trim() ?? string.Empty;
         if (!isActive
             || instanceInstallNameAvailabilityService is null
+            || string.IsNullOrEmpty(minecraftDirectory)
             || !VersionDirectoryName.IsSafeDirectoryName(normalizedName))
         {
             CancelNameAvailabilityRequest();
@@ -547,6 +560,7 @@ public sealed partial class DownloadInstanceOptionsViewModel : ObservableObject,
     {
         var normalizedName = instanceName?.Trim() ?? string.Empty;
         if (instanceInstallNameAvailabilityService is null
+            || string.IsNullOrEmpty(minecraftDirectory)
             || !VersionDirectoryName.IsSafeDirectoryName(normalizedName))
         {
             CancelNameAvailabilityRequest();
@@ -566,6 +580,7 @@ public sealed partial class DownloadInstanceOptionsViewModel : ObservableObject,
                 await Task.Delay(TimeSpan.FromMilliseconds(120), requestCancellation.Token);
 
             var availability = await instanceInstallNameAvailabilityService.CheckAsync(
+                minecraftDirectory,
                 normalizedName,
                 requestCancellation.Token);
             if (!IsNameAvailabilityRequestCurrent(requestCancellation, normalizedName))

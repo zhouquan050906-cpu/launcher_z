@@ -15,9 +15,14 @@ namespace Launcher.Application.Services;
 
 public sealed class MinecraftDirectoryManagementService
 {
+    /// <param name="resolveDisplayName">
+    /// 按来源解析登记时使用的显示名；返回 null 或无效名称时回退到目录名。
+    /// 本地化文案位于表现层，因此由调用方注入。
+    /// </param>
     public bool RegisterDiscoveredDirectories(
         LauncherSettings settings,
-        IEnumerable<string> discoveredDirectories)
+        IEnumerable<MinecraftDirectoryDiscovery> discoveredDirectories,
+        Func<MinecraftDirectoryKind, string?>? resolveDisplayName = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(discoveredDirectories);
@@ -27,12 +32,12 @@ public sealed class MinecraftDirectoryManagementService
         var excludedDirectories = new HashSet<string>(
             settings.ExcludedMinecraftDirectories,
             MinecraftDirectoryPath.Comparer);
-        foreach (var directory in discoveredDirectories)
+        foreach (var discovery in discoveredDirectories)
         {
             string normalizedDirectory;
             try
             {
-                normalizedDirectory = MinecraftDirectoryPath.Normalize(directory);
+                normalizedDirectory = MinecraftDirectoryPath.Normalize(discovery.DirectoryPath);
             }
             catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
             {
@@ -47,7 +52,9 @@ public sealed class MinecraftDirectoryManagementService
             SetDisplayName(
                 settings,
                 normalizedDirectory,
-                MinecraftDirectoryDisplayName.GetDefault(normalizedDirectory));
+                MinecraftDirectoryDisplayName.NormalizeOrDefault(
+                    resolveDisplayName?.Invoke(discovery.Kind),
+                    normalizedDirectory));
             changed = true;
         }
 
@@ -209,9 +216,12 @@ public sealed class MinecraftDirectoryManagementService
 
     private static void RemoveDisplayName(LauncherSettings settings, string directoryPath)
     {
-        var matchingKey = settings.MinecraftDirectoryDisplayNames.Keys.FirstOrDefault(key =>
-            MinecraftDirectoryPath.Equals(key, directoryPath));
-        if (matchingKey is not null)
+        // 字典的键相等性未必与路径语义一致（默认构造的 LauncherSettings 用的是序数比较器），
+        // 因此同一个目录可能以 C:\MC 与 C:\mc 等多种写法并存，必须全部清掉而不是只删第一个。
+        var matchingKeys = settings.MinecraftDirectoryDisplayNames.Keys
+            .Where(key => MinecraftDirectoryPath.Equals(key, directoryPath))
+            .ToList();
+        foreach (var matchingKey in matchingKeys)
             settings.MinecraftDirectoryDisplayNames.Remove(matchingKey);
     }
 }

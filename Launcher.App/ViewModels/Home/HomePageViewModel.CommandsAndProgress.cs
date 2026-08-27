@@ -99,6 +99,7 @@ public sealed partial class HomePageViewModel
         LaunchCommand.NotifyCanExecuteChanged();
         CancelLaunchCommand.NotifyCanExecuteChanged();
         OpenSelectedInstanceSettingsCommand.NotifyCanExecuteChanged();
+        LaunchActivityChanged?.Invoke(this, EventArgs.Empty);
     }
 
     partial void OnLaunchStatusMessageChanged(string value)

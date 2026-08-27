@@ -9,6 +9,27 @@ namespace Launcher.Tests.App;
 public sealed class MinecraftDirectoryStartupRecoveryContractTests
 {
     [Fact]
+    public void FirstRunInitializesLauncherDefaultBeforeDiscoveryAndRecovery()
+    {
+        var source = ReadSource("Launcher.App", "App.xaml.cs");
+        var metadataLoad = source.IndexOf(".LoadWithMetadataAsync()", StringComparison.Ordinal);
+        var initialization = source.IndexOf(
+            "await InitializeDefaultMinecraftDirectoryOnFirstRunAsync()",
+            StringComparison.Ordinal);
+        var discovery = source.IndexOf(
+            "await RegisterDiscoveredMinecraftDirectoriesOnStartupAsync(startupSettings)",
+            StringComparison.Ordinal);
+        var recovery = source.IndexOf(
+            "await RecoverInvalidMinecraftDirectoryOnStartupAsync(startupSettings)",
+            StringComparison.Ordinal);
+
+        Assert.True(metadataLoad >= 0);
+        Assert.True(initialization > metadataLoad);
+        Assert.True(discovery > initialization);
+        Assert.True(recovery > discovery);
+    }
+
+    [Fact]
     public void StartupRecoversMinecraftDirectoryBeforeInstanceRecoveryAndPrime()
     {
         var source = ReadSource("Launcher.App", "App.xaml.cs");

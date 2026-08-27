@@ -23,9 +23,9 @@ public sealed class InstanceInstallNameAvailabilityServiceTests : TestTempDirect
             Directory.CreateDirectory(target);
         else
             await File.WriteAllTextAsync(target, "occupied");
-        var service = CreateService(minecraftDirectory, new GameInstallCoordinator());
+        var service = CreateService(new GameInstallCoordinator());
 
-        var result = await service.CheckAsync("occupied");
+        var result = await service.CheckAsync(minecraftDirectory, "occupied");
 
         Assert.Equal(InstanceInstallNameAvailability.Occupied, result);
     }
@@ -41,9 +41,9 @@ public sealed class InstanceInstallNameAvailabilityServiceTests : TestTempDirect
             "instance",
             "game",
             initializeDefaultIfEmpty: false);
-        var service = CreateService(minecraftDirectory, new GameInstallCoordinator());
+        var service = CreateService(new GameInstallCoordinator());
 
-        var result = await service.CheckAsync("pending");
+        var result = await service.CheckAsync(minecraftDirectory, "pending");
 
         Assert.Equal(InstanceInstallNameAvailability.Occupied, result);
     }
@@ -57,42 +57,42 @@ public sealed class InstanceInstallNameAvailabilityServiceTests : TestTempDirect
             minecraftDirectory,
             "installing",
             progress: null);
-        var service = CreateService(minecraftDirectory, coordinator);
+        var service = CreateService(coordinator);
 
-        var result = await service.CheckAsync("installing");
+        var result = await service.CheckAsync(minecraftDirectory, "installing");
 
         Assert.Equal(InstanceInstallNameAvailability.Occupied, result);
     }
 
     [Fact]
-    public async Task CheckUsesTheLatestSelectedMinecraftDirectory()
+    public async Task CheckAnswersForWhicheverDirectoryTheCallerSupplies()
     {
         var firstDirectory = Path.Combine(TempRoot, "first", ".minecraft");
         var secondDirectory = Path.Combine(TempRoot, "second", ".minecraft");
         Directory.CreateDirectory(Path.Combine(secondDirectory, "versions", "target"));
-        var settings = new LauncherSettings { MinecraftDirectory = firstDirectory };
-        var settingsService = new TestSettingsService(settings);
-        var service = new InstanceInstallNameAvailabilityService(
-            settingsService,
-            new GameInstallCoordinator());
+        var service = CreateService(new GameInstallCoordinator());
 
+        // 目录由调用方给出，服务不再自行读取 settings.json，因此切换目录只是换一个参数。
         Assert.Equal(
             InstanceInstallNameAvailability.Available,
-            await service.CheckAsync("target"));
-
-        settings.MinecraftDirectory = secondDirectory;
-
+            await service.CheckAsync(firstDirectory, "target"));
         Assert.Equal(
             InstanceInstallNameAvailability.Occupied,
-            await service.CheckAsync("target"));
+            await service.CheckAsync(secondDirectory, "target"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task MissingDirectoryReportsUnknownInsteadOfGuessing(string minecraftDirectory)
+    {
+        var service = CreateService(new GameInstallCoordinator());
+
+        Assert.Equal(
+            InstanceInstallNameAvailability.Unknown,
+            await service.CheckAsync(minecraftDirectory, "target"));
     }
 
     private static InstanceInstallNameAvailabilityService CreateService(
-        string minecraftDirectory,
-        IGameInstallCoordinator coordinator) => new(
-        new TestSettingsService(new LauncherSettings
-        {
-            MinecraftDirectory = minecraftDirectory
-        }),
-        coordinator);
+        IGameInstallCoordinator coordinator) => new(coordinator);
 }
