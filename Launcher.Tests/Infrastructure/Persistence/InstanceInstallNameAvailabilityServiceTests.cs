@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  * SPDX-License-Identifier: GPL-3.0-only
@@ -93,6 +93,63 @@ public sealed class InstanceInstallNameAvailabilityServiceTests : TestTempDirect
             await service.CheckAsync(minecraftDirectory, "target"));
     }
 
+    /// <summary>
+    /// 占用检查会枚举整个 versions 目录并读取标记文件，调用方是逐字符校验实例名的界面代码，
+    /// 在调用线程上跑完就会阻塞 UI 线程。历史上正是因为方法体里没有任何 await
+    /// 而退化成同步执行过一次，因此这里直接钉住"不得在调用线程上做这件事"。
+    /// </summary>
+    [Fact]
+    public void ProbingDoesNotRunOnTheCallingThread()
+    {
+        var minecraftDirectory = Path.Combine(TempRoot, ".minecraft");
+        Directory.CreateDirectory(Path.Combine(minecraftDirectory, "versions"));
+        var coordinator = new ThreadRecordingInstallCoordinator();
+        var service = CreateService(coordinator);
+
+        // 从专用线程发起：专用线程不属于线程池，Task.Run 必然换到另一条线程上，
+        // 因此"线程号相同"只可能意味着探测是在调用线程上同步跑完的。
+        // 若改用线程池线程发起，Task.Run 有可能复用调用者刚释放的那条，判定会失真。
+        var callerThreadId = 0;
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            callerThreadId = Environment.CurrentManagedThreadId;
+            try
+            {
+                service.CheckAsync(minecraftDirectory, "target").GetAwaiter().GetResult();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.Start();
+
+        Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "CheckAsync did not complete in time.");
+        Assert.Null(failure);
+        Assert.NotNull(coordinator.ObservedThreadId);
+        Assert.NotEqual(callerThreadId, coordinator.ObservedThreadId);
+    }
+
     private static InstanceInstallNameAvailabilityService CreateService(
         IGameInstallCoordinator coordinator) => new(coordinator);
+
+    /// <summary>记录探测实际发生在哪个线程上。</summary>
+    private sealed class ThreadRecordingInstallCoordinator : IGameInstallCoordinator
+    {
+        internal int? ObservedThreadId { get; private set; }
+
+        public ValueTask<IAsyncDisposable> AcquireInstallAsync(
+            string minecraftDirectory,
+            string versionName,
+            IProgress<LauncherProgress>? progress,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public bool IsInstallingVersion(string minecraftDirectory, string versionName)
+        {
+            ObservedThreadId = Environment.CurrentManagedThreadId;
+            return false;
+        }
+    }
 }

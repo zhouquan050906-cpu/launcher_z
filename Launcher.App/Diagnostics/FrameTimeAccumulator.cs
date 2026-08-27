@@ -66,16 +66,17 @@ internal sealed class FrameTimeAccumulator
     /// <summary>
     /// 记录一次合成帧回调。重复或回退的渲染时间戳会被忽略，与背板刷新协调器的去重口径一致。
     /// </summary>
-    internal void AddRenderingTime(TimeSpan renderingTime)
+    /// <returns>与上一帧的间隔（毫秒）；本次调用未计入统计时返回 0。</returns>
+    internal double AddRenderingTime(TimeSpan renderingTime)
     {
         if (lastRenderingTime is not { } previousRenderingTime)
         {
             lastRenderingTime = renderingTime;
-            return;
+            return 0d;
         }
 
         if (renderingTime <= previousRenderingTime)
-            return;
+            return 0d;
 
         lastRenderingTime = renderingTime;
         var intervalMs = (renderingTime - previousRenderingTime).TotalMilliseconds;
@@ -105,6 +106,8 @@ internal sealed class FrameTimeAccumulator
         {
             consecutiveLongFrames = 0;
         }
+
+        return intervalMs;
     }
 
     /// <summary>
