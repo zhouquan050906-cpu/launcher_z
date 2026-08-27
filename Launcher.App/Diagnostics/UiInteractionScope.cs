@@ -20,6 +20,7 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Serilog;
 
 namespace Launcher.App.Diagnostics;
@@ -33,7 +34,11 @@ internal sealed class UiInteractionScope : IDisposable
     private readonly string kind;
     private readonly string detail;
     private readonly bool isSampling;
+    // 长帧才单独记录：正常帧数以千计，全记会把日志淹掉。
+    private const double LongFrameCycleFactor = 3d;
+
     private readonly FrameTimeAccumulator? accumulator;
+    private readonly DispatcherBusyProbe? busyProbe;
     private readonly FrameworkElement? layoutProbe;
     private readonly long startedAtTimestamp;
     private int layoutPassCount;
@@ -57,6 +62,8 @@ internal sealed class UiInteractionScope : IDisposable
             return;
 
         accumulator = new FrameTimeAccumulator();
+        busyProbe = DispatcherBusyProbe.TryAttach(
+            global::System.Windows.Application.Current?.Dispatcher);
         gcStart = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
         startedAtTimestamp = Stopwatch.GetTimestamp();
         CompositionTarget.Rendering += CompositionTarget_Rendering;
@@ -72,6 +79,11 @@ internal sealed class UiInteractionScope : IDisposable
     /// 交互实际使用的渲染优化路径，例如位图缓存或连续背板刷新，用于把掉帧与优化选择对应起来。
     /// </summary>
     internal string RenderPath { get; set; } = "Unknown";
+
+    /// <summary>
+    /// 动画开始前的预热耗时。预热不计入出帧统计，单独记录才能看出开销是被消除了还是只是挪了位置。
+    /// </summary>
+    internal double WarmupMs { get; set; }
 
     /// <summary>
     /// 交互期间被反复重绘的表面尺寸。若瓶颈是像素填充率而非元素处理，
@@ -125,6 +137,8 @@ internal sealed class UiInteractionScope : IDisposable
         CompositionTarget.Rendering -= CompositionTarget_Rendering;
         if (layoutProbe is not null)
             layoutProbe.LayoutUpdated -= LayoutProbe_LayoutUpdated;
+        // 先摘钩再读累计值：Dispose 只解除订阅，统计结果仍然可读。
+        busyProbe?.Dispose();
         if (accumulator is null)
             return;
 
@@ -146,7 +160,9 @@ internal sealed class UiInteractionScope : IDisposable
             + "BackdropControls={BackdropControlCount} BackdropBatches={BackdropBatches} BackdropRefreshes={BackdropRefreshes} "
             + "BackdropRefreshPerFrame={BackdropRefreshPerFrame:F2} BitmapCache={HasAncestorBitmapCache} OpacityMask={HasOpacityMask} "
             + "Cycle1={Cycle1} Cycle2={Cycle2} Cycle3={Cycle3} Cycle4Plus={Cycle4Plus} LongRun={MaxConsecutiveLongFrames} "
-            + "Gc0={Gc0} Gc1={Gc1} Gc2={Gc2} ScrollPx={ScrollPx:F0} ScrollPxPerSec={ScrollPxPerSec:F0}",
+            + "Gc0={Gc0} Gc1={Gc1} Gc2={Gc2} ScrollPx={ScrollPx:F0} ScrollPxPerSec={ScrollPxPerSec:F0} "
+            + "UiBusyMs={UiBusyMs:F1} UiBusyShare={UiBusyShare:F2} DispatcherOps={DispatcherOperationCount} "
+            + "WorstOpMs={WorstOperationMs:F1} WorstOp={WorstOperation} WarmupMs={WarmupMs:F1}",
             kind,
             detail,
             RenderPath,
@@ -180,7 +196,13 @@ internal sealed class UiInteractionScope : IDisposable
             GC.CollectionCount(1) - gcStart.Gen1,
             GC.CollectionCount(2) - gcStart.Gen2,
             scrollDistance,
-            durationMs <= 0d ? 0d : scrollDistance * 1000d / durationMs);
+            durationMs <= 0d ? 0d : scrollDistance * 1000d / durationMs,
+            busyProbe?.TotalBusyMs ?? 0d,
+            durationMs <= 0d ? 0d : (busyProbe?.TotalBusyMs ?? 0d) / durationMs,
+            busyProbe?.TotalOperationCount ?? 0,
+            busyProbe?.WorstOperationMs ?? 0d,
+            busyProbe?.WorstOperationDetail ?? DispatcherBusyProbe.NoOperationDetail,
+            WarmupMs);
     }
 
     private void LayoutProbe_LayoutUpdated(object? sender, EventArgs e)
@@ -191,10 +213,48 @@ internal sealed class UiInteractionScope : IDisposable
     private void CompositionTarget_Rendering(object? sender, EventArgs e)
     {
         if (e is RenderingEventArgs renderingEventArgs)
-            accumulator?.AddRenderingTime(renderingEventArgs.RenderingTime);
+        {
+            var intervalMs = accumulator?.AddRenderingTime(renderingEventArgs.RenderingTime) ?? 0d;
+            if (intervalMs > 0d)
+                LogLongFrame(intervalMs);
+        }
+
+        // 统计窗口以合成帧为界，因此归零必须发生在这一帧记录之后。
+        busyProbe?.ResetFrame();
 
         // 逐帧累加位移绝对值：来回滚动时首尾差接近零，只有累计值能反映真实渲染压力。
         AccumulateScrollDistance();
+    }
+
+    /// <summary>
+    /// 记录一个明显长于显示周期的帧，并给出这一帧里 UI 线程的忙碌情况。
+    /// UiBusyShare 接近 1 说明这一帧是被 UI 线程上的工作挤掉的，接近 0 说明 UI 线程空闲，
+    /// 时间花在渲染线程或 GPU 上——两者的处理方向完全不同。
+    /// </summary>
+    private void LogLongFrame(double intervalMs)
+    {
+        if (busyProbe is null)
+            return;
+
+        var displayFrameMs = DisplayFrameIntervalEstimator.CurrentIntervalMs;
+        if (intervalMs <= displayFrameMs * LongFrameCycleFactor)
+            return;
+
+        Log.Debug(
+            "UI long frame observed. Kind={InteractionKind} Detail={InteractionDetail} FrameMs={FrameMs:F1} "
+            + "DisplayFrameMs={DisplayFrameMs:F2} Cycles={FrameCycles} UiBusyMs={UiBusyMs:F1} "
+            + "UiBusyShare={UiBusyShare:F2} DispatcherOps={DispatcherOperationCount} "
+            + "LongestOpMs={LongestOperationMs:F1} LongestOp={LongestOperation}",
+            kind,
+            detail,
+            intervalMs,
+            displayFrameMs,
+            displayFrameMs <= 0d ? 0 : (int)Math.Round(intervalMs / displayFrameMs),
+            busyProbe.FrameBusyMs,
+            busyProbe.FrameBusyMs / intervalMs,
+            busyProbe.FrameOperationCount,
+            busyProbe.FrameLongestOperationMs,
+            busyProbe.FrameLongestOperationDetail);
     }
 
     private void AccumulateScrollDistance()
