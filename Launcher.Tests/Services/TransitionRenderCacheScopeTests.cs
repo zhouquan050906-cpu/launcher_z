@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  * SPDX-License-Identifier: GPL-3.0-only
@@ -337,13 +337,16 @@ public sealed class TransitionRenderCacheScopeTests
                     AcquireSupportedCache);
 
                 service.MoveTo("Settings");
-                Assert.Equal(0d, firstTarget.Opacity);
+                // 预热阶段必须严格大于 0，否则渲染层会剔除透明子树，首次栅格化就会落进动画里；
+                // 同时必须远低于一个 8 位色阶，保证肉眼不可见。
+                Assert.Equal(PageTransitionService.WarmupOpacity, firstTarget.Opacity);
+                Assert.InRange(firstTarget.Opacity, double.Epsilon, 1d / 255d);
 
                 service.MoveTo("Resources");
 
                 Assert.Equal(1d, firstTarget.Opacity);
                 Assert.Equal(0d, Assert.IsType<TranslateTransform>(firstTarget.RenderTransform).Y);
-                Assert.Equal(0d, secondTarget.Opacity);
+                Assert.Equal(PageTransitionService.WarmupOpacity, secondTarget.Opacity);
                 Assert.Null(firstTarget.CacheMode);
 
                 service.SyncTo("Resources");

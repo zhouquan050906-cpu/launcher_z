@@ -18,8 +18,10 @@
  */
 
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -184,6 +186,52 @@ public partial class MainWindow : Window
 
         foreach (var comboBox in FindVisualChildren<AnimatedComboBox>(this))
             comboBox.ApplyTemplate();
+
+        // 折叠的页面不会被测量，虚拟化面板要到第一次真正显示才初始化视口。
+        // 实测设置页的这次初始化占用 UI 线程约 130ms，整段落在第一次切页的动画里。
+        // 这里趁空闲把开销较大的页面提前实例化一次，让用户点进去时已经是热的。
+        PrewarmPageContent([SettingsPageView, DownloadPageView], 0);
+    }
+
+    /// <summary>
+    /// 逐个预热页面内容：临时显示、强制布局，再在更低优先级上收回。
+    /// 一次只热一个页面，让两次预热之间能处理输入，避免连成一段长阻塞。
+    /// </summary>
+    private void PrewarmPageContent(IReadOnlyList<FrameworkElement> pages, int index)
+    {
+        if (index >= pages.Count)
+            return;
+
+        var page = pages[index];
+        // 已经是当前页说明用户先一步点了过去，本来就热了，跳过。
+        if (page.Visibility == Visibility.Visible)
+        {
+            PrewarmPageContent(pages, index + 1);
+            return;
+        }
+
+        var startedAt = Stopwatch.GetTimestamp();
+        var visibilityBinding = PageContentPrewarm.Begin(page);
+
+        // 虚拟化面板把首次视口初始化排在 Background 优先级，所以收尾必须排在更低的
+        // ContextIdle 上，等它连同随后的布局一起跑完，页面才算真的热了。
+        _ = Dispatcher.BeginInvoke(
+            () =>
+            {
+                if (!PageContentPrewarm.End(page, visibilityBinding))
+                {
+                    logger.LogError(
+                        "Failed to restore the page visibility binding after prewarming. Page={PageName}",
+                        page.Name);
+                }
+
+                logger.LogDebug(
+                    "Page content prewarmed. Page={PageName} ElapsedMs={ElapsedMs:F1}",
+                    page.Name,
+                    Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
+                PrewarmPageContent(pages, index + 1);
+            },
+            DispatcherPriority.ContextIdle);
     }
 
     private async void MainWindow_Loaded(object? sender, RoutedEventArgs e)

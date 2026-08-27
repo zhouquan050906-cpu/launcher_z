@@ -17,6 +17,7 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -42,6 +43,20 @@ public sealed class PageTransitionService
         "Settings"
     ];
 
+    /// <summary>
+    /// 预热阶段使用的透明度。必须严格大于 0：完全透明的子树会被渲染层剔除，
+    /// 首次栅格化就会推迟到淡入动画把透明度抬离 0 的那一帧，正是要避免的情况。
+    /// 取 8 位色深下的最小一档 alpha：既不为零，合成结果也只有 1/255，肉眼不可见。
+    /// </summary>
+    internal const double WarmupOpacity = 1d / 255d;
+
+    /// <summary>
+    /// 每一段等待的合成帧数。启动动画前一共等两段：第一段让新页面完成布局与首次栅格化，
+    /// 装上位图缓存后再等第二段，让页面被画进缓存纹理。等待期间页面处于 WarmupOpacity，不可见。
+    /// 在 60Hz 显示器上两段合计约 33ms，这是动画启动延迟与首帧卡顿之间的取舍。
+    /// </summary>
+    private const int WarmupCompositionFrames = 1;
+
     private readonly Dispatcher dispatcher;
     private readonly Func<string, FrameworkElement?> resolvePageRoot;
     private readonly IReadOnlyList<string> pageOrder;
@@ -52,6 +67,8 @@ public sealed class PageTransitionService
     private TransitionRenderCacheScope? renderCacheScope;
     private UiInteractionScope? interactionScope;
     private FrameworkElement? activeTarget;
+    private EventHandler? pendingCompositionWait;
+    private long warmupStartedAtTimestamp;
 
     public PageTransitionService(
         Dispatcher dispatcher,
@@ -102,14 +119,66 @@ public sealed class PageTransitionService
         PreparePageForTransition(target, startOffset);
         activeTarget = target;
         target.Unloaded += ActiveTarget_Unloaded;
-        dispatcher.BeginInvoke(
-            () => AnimatePage(newPage, target, startOffset, token),
-            DispatcherPriority.Render);
+        warmupStartedAtTimestamp = Stopwatch.GetTimestamp();
+
+        // 新页面此前是折叠的，从未被绘制过。等一个 dispatcher 轮次并不能保证渲染线程
+        // 已经把它栅格化，动画一起步就会撞上这次整页栅格化——实测长帧正是集中在这里。
+        // 因此改为等真实的合成帧：先栅格化一次，再装缓存，再等一帧让缓存被填满，最后才开始动画。
+        WaitForCompositionFrames(
+            WarmupCompositionFrames,
+            () =>
+            {
+                if (!IsTransitionCurrent(newPage, token))
+                    return;
+
+                PrepareRenderPathForTransition(newPage, target);
+                WaitForCompositionFrames(
+                    WarmupCompositionFrames,
+                    () => AnimatePage(newPage, target, startOffset, token));
+            });
+    }
+
+    private bool IsTransitionCurrent(string page, int token) =>
+        token == transitionToken
+        && string.Equals(currentPage, page, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 等待指定数量的合成帧后执行回调。订阅期间 WPF 会保持连续渲染，
+    /// 因此只用于过渡起步这种短暂等待，并且新的过渡必须取消尚未触发的等待。
+    /// </summary>
+    private void WaitForCompositionFrames(int frameCount, Action continuation)
+    {
+        CancelPendingCompositionWait();
+        var remaining = Math.Max(frameCount, 1);
+        EventHandler? handler = null;
+        handler = (_, _) =>
+        {
+            if (--remaining > 0)
+                return;
+
+            CompositionTarget.Rendering -= handler;
+            if (ReferenceEquals(pendingCompositionWait, handler))
+                pendingCompositionWait = null;
+            continuation();
+        };
+
+        pendingCompositionWait = handler;
+        CompositionTarget.Rendering += handler;
+    }
+
+    private void CancelPendingCompositionWait()
+    {
+        if (pendingCompositionWait is null)
+            return;
+
+        CompositionTarget.Rendering -= pendingCompositionWait;
+        pendingCompositionWait = null;
     }
 
     public void SyncTo(string? page)
     {
         transitionToken++;
+        CancelPendingCompositionWait();
         CancelActiveTransition(requestFinalRefresh: true);
         currentPage = page;
     }
@@ -151,47 +220,59 @@ public sealed class PageTransitionService
     private static void PreparePageForTransition(FrameworkElement target, double startOffset)
     {
         target.BeginAnimation(UIElement.OpacityProperty, null);
-        target.Opacity = 0;
+        target.Opacity = WarmupOpacity;
 
         var transform = EnsureTranslateTransform(target);
         transform.BeginAnimation(TranslateTransform.YProperty, null);
         transform.Y = startOffset;
     }
 
+    /// <summary>
+    /// 选定渲染路径。必须在动画开始前完成，好让接下来的那一帧把页面画进位图缓存，
+    /// 而不是把整页栅格化推到动画的头几帧里。
+    /// </summary>
+    private void PrepareRenderPathForTransition(string page, FrameworkElement target)
+    {
+        if (BackdropBlurRefreshCoordinator.HasActiveImageBackdropBlur(target))
+        {
+            blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(target);
+            return;
+        }
+
+        renderCacheScope = renderCacheFactory($"Page:{page}", [target]);
+        if (TransitionRenderCacheScope.RequiresContinuousRefreshFallback(
+                renderCacheScope.FallbackReason))
+        {
+            blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(target);
+        }
+    }
+
     private void AnimatePage(string page, FrameworkElement target, double startOffset, int token)
     {
-        if (token != transitionToken || !string.Equals(currentPage, page, StringComparison.OrdinalIgnoreCase))
+        if (!IsTransitionCurrent(page, token))
             return;
 
         var transform = EnsureTranslateTransform(target);
         target.BeginAnimation(UIElement.OpacityProperty, null);
         transform.BeginAnimation(TranslateTransform.YProperty, null);
-        target.Opacity = 0;
+        target.Opacity = WarmupOpacity;
         transform.Y = startOffset;
-        if (BackdropBlurRefreshCoordinator.HasActiveImageBackdropBlur(target))
-        {
-            blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(target);
-        }
-        else
-        {
-            renderCacheScope = renderCacheFactory($"Page:{page}", [target]);
-            if (TransitionRenderCacheScope.RequiresContinuousRefreshFallback(
-                    renderCacheScope.FallbackReason))
-            {
-                blurRefreshLease = BackdropBlurRefreshCoordinator.BeginContinuousRefresh(target);
-            }
-        }
 
         // 采样必须覆盖整段动画，因此在渲染路径确定之后、动画开始之前打开。
         interactionScope = UiPerformanceLog.BeginInteraction("PageTransition", page, target);
         interactionScope.RenderPath = UiRenderPaths.Resolve(
             renderCacheScope?.IsActive is true,
             blurRefreshLease is not null);
+        // 预热被排除在出帧统计之外，单独记录，避免把开销从动画里挪走却看不出挪到了哪。
+        interactionScope.WarmupMs = warmupStartedAtTimestamp == 0L
+            ? 0d
+            : Stopwatch.GetElapsedTime(warmupStartedAtTimestamp).TotalMilliseconds;
+        warmupStartedAtTimestamp = 0L;
 
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
         var fadeAnimation = new DoubleAnimation
         {
-            From = 0,
+            From = WarmupOpacity,
             To = 1,
             Duration = TransitionDuration,
             EasingFunction = easing,
@@ -246,6 +327,7 @@ public sealed class PageTransitionService
 
     private void CancelActiveTransition(bool requestFinalRefresh)
     {
+        CancelPendingCompositionWait();
         if (activeTarget is not { } target)
         {
             ReleaseInteractionScope();
