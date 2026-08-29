@@ -36,6 +36,7 @@ internal static class UiPerformanceLog
 {
     private static readonly ConcurrentDictionary<string, byte> LoggedFallbacks = new(StringComparer.Ordinal);
     private static readonly HashSet<ScrollViewer> LoggedScrollSurfaces = [];
+    private static readonly HashSet<FrameworkElement> LoggedPageSurfaces = [];
     private static int hasLoggedRenderEnvironment;
 
     /// <summary>
@@ -109,6 +110,36 @@ internal static class UiPerformanceLog
             treeSize.CardShadowCount,
             treeSize.EffectBreakdown,
             treeSize.VisibleEffectHosts);
+    }
+
+    /// <summary>
+    /// 记录一个页面的视觉树规模。用于把"某些页面就是更容易顿"和具体的结构成本对应上：
+    /// 元素数决定遍历与布局成本，Effect 数量决定每帧的中间渲染层数，表面积决定填充率。
+    /// 每个页面只记一次。
+    /// </summary>
+    internal static void LogPageSurface(FrameworkElement page, string detail)
+    {
+        if (!IsEnabled || !LoggedPageSurfaces.Add(page))
+            return;
+
+        var size = VisualTreeStats.Measure(page);
+        Log.Debug(
+            "Page surface inspected. Page={PageDetail} Width={SurfaceWidth:F0} Height={SurfaceHeight:F0} "
+            + "Megapixels={SurfaceMegapixels:F3} VisualElements={VisualElementCount} VisualDepth={VisualDepth} "
+            + "TreeTruncated={TreeTruncated} Effects={EffectCount} VisibleEffects={VisibleEffectCount} "
+            + "DropShadows={DropShadowCount} CardShadows={CardShadowCount} EffectBreakdown={EffectBreakdown}",
+            detail,
+            page.ActualWidth,
+            page.ActualHeight,
+            page.ActualWidth * page.ActualHeight / 1_000_000d,
+            size.ElementCount,
+            size.MaxDepth,
+            size.IsTruncated,
+            size.EffectCount,
+            size.VisibleEffectCount,
+            size.DropShadowCount,
+            size.CardShadowCount,
+            size.EffectBreakdown);
     }
 
     /// <summary>

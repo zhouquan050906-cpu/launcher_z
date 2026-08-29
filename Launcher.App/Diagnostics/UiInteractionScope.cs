@@ -86,6 +86,16 @@ internal sealed class UiInteractionScope : IDisposable
     internal double WarmupMs { get; set; }
 
     /// <summary>
+    /// 预热窗口内 UI 线程执行 Dispatcher 操作的累计时长，以及其中最长的那个操作。
+    /// 用来区分预热到底是在等渲染线程，还是 UI 线程自己在忙——两者的修法完全不同。
+    /// </summary>
+    internal double WarmupBusyMs { get; set; }
+
+    internal double WarmupWorstOperationMs { get; set; }
+
+    internal string WarmupWorstOperation { get; set; } = DispatcherBusyProbe.NoOperationDetail;
+
+    /// <summary>
     /// 交互期间被反复重绘的表面尺寸。若瓶颈是像素填充率而非元素处理，
     /// 帧时间应当随这块面积变化，而与元素数量无关。
     /// </summary>
@@ -162,7 +172,9 @@ internal sealed class UiInteractionScope : IDisposable
             + "Cycle1={Cycle1} Cycle2={Cycle2} Cycle3={Cycle3} Cycle4Plus={Cycle4Plus} LongRun={MaxConsecutiveLongFrames} "
             + "Gc0={Gc0} Gc1={Gc1} Gc2={Gc2} ScrollPx={ScrollPx:F0} ScrollPxPerSec={ScrollPxPerSec:F0} "
             + "UiBusyMs={UiBusyMs:F1} UiBusyShare={UiBusyShare:F2} DispatcherOps={DispatcherOperationCount} "
-            + "WorstOpMs={WorstOperationMs:F1} WorstOp={WorstOperation} WarmupMs={WarmupMs:F1}",
+            + "WorstOpMs={WorstOperationMs:F1} WorstOp={WorstOperation} WarmupMs={WarmupMs:F1} "
+            + "WarmupBusyMs={WarmupBusyMs:F1} WarmupWorstOpMs={WarmupWorstOperationMs:F1} "
+            + "WarmupWorstOp={WarmupWorstOperation}",
             kind,
             detail,
             RenderPath,
@@ -202,7 +214,10 @@ internal sealed class UiInteractionScope : IDisposable
             busyProbe?.TotalOperationCount ?? 0,
             busyProbe?.WorstOperationMs ?? 0d,
             busyProbe?.WorstOperationDetail ?? DispatcherBusyProbe.NoOperationDetail,
-            WarmupMs);
+            WarmupMs,
+            WarmupBusyMs,
+            WarmupWorstOperationMs,
+            WarmupWorstOperation);
     }
 
     private void LayoutProbe_LayoutUpdated(object? sender, EventArgs e)
