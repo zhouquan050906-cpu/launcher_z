@@ -26,6 +26,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Launcher.App.Controls;
+using Launcher.App.Diagnostics;
 using Launcher.App.Models;
 using Launcher.App.Services;
 using Launcher.App.Views.Account.Dialogs;
@@ -188,10 +189,21 @@ public partial class MainWindow : Window
             comboBox.ApplyTemplate();
 
         // 折叠的页面不会被测量，虚拟化面板要到第一次真正显示才初始化视口。
-        // 实测设置页的这次初始化占用 UI 线程约 130ms，整段落在第一次切页的动画里。
-        // 这里趁空闲把开销较大的页面提前实例化一次，让用户点进去时已经是热的。
-        PrewarmPageContent([SettingsPageView, DownloadPageView], 0);
+        // 实测该初始化占用 UI 线程数十到上百毫秒，整段落在第一次切页的动画里。
+        // 这里趁空闲把页面提前实例化一次，让用户点进去时已经是热的。
+        PrewarmPageContent(GetPrewarmPages(), 0);
     }
+
+    private FrameworkElement[] GetPrewarmPages() =>
+    [
+        SettingsPageView,
+        DownloadPageView,
+        GameSettingsPageView,
+        ResourcesPageView,
+        AccountPageView,
+        MultiplayerPageView,
+        InstallPageView
+    ];
 
     /// <summary>
     /// 逐个预热页面内容：临时显示、强制布局，再在更低优先级上收回。
@@ -199,6 +211,9 @@ public partial class MainWindow : Window
     /// </summary>
     private void PrewarmPageContent(IReadOnlyList<FrameworkElement> pages, int index)
     {
+        // 只扫一轮。曾经按"内容异步到达、单轮盖不住"的假设扫过四轮，
+        // 但实测第二轮起每轮只有 10ms 且一无所获：需要预热的列表是用户导航时
+        // 才触发加载的，不是启动后自动到达，多扫几轮永远扫不到。
         if (index >= pages.Count)
             return;
 
@@ -210,6 +225,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 预热本身是一次强制布局，撞进动画就是几十毫秒的掉帧——实测出现过 37.7ms。
+        if (UiTransitionGate.IsTransitionActive)
+        {
+            UiTransitionGate.RunWhenIdle(() => PrewarmPageContent(pages, index));
+            return;
+        }
+
         var startedAt = Stopwatch.GetTimestamp();
         var visibilityBinding = PageContentPrewarm.Begin(page);
 
@@ -218,6 +240,9 @@ public partial class MainWindow : Window
         _ = Dispatcher.BeginInvoke(
             () =>
             {
+                // 必须在 End 之前量：End 会把页面恢复成折叠，那时 ActualWidth 归零、
+                // 所有 Effect 都算"不可见"，量到的尺寸和可见性全是废数据。
+                UiPerformanceLog.LogPageSurface(page, page.Name);
                 if (!PageContentPrewarm.End(page, visibilityBinding))
                 {
                     logger.LogError(
