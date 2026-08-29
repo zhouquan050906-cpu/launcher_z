@@ -23,7 +23,13 @@ namespace Launcher.Application.Services;
 
 public interface IGameLanguageService
 {
-    Task ApplyLauncherLanguageAsync(
+    /// <summary>
+    /// 把启动器语言同步到实例的游戏设置里，返回实际写入的 Minecraft 语言代码。
+    /// </summary>
+    /// <remarks>
+    /// 语言代码的写法随游戏版本变化，返回值便于调用方记录实际生效的值。
+    /// </remarks>
+    Task<string> ApplyLauncherLanguageAsync(
         GameInstance instance,
         string launcherLanguage,
         CancellationToken cancellationToken = default);

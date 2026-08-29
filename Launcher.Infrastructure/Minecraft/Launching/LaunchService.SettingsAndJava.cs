@@ -42,14 +42,16 @@ private async Task ApplyGameLanguageAsync(
 
         try
         {
-            await gameLanguageService.ApplyLauncherLanguageAsync(
+            var gameLanguage = await gameLanguageService.ApplyLauncherLanguageAsync(
                 instance,
                 settings.LauncherLanguage,
                 cancellationToken);
             logger.LogInformation(
-                "Game language synchronized with launcher language. InstanceId={InstanceId} LauncherLanguage={LauncherLanguage}",
+                "Game language synchronized with launcher language. InstanceId={InstanceId} MinecraftVersion={MinecraftVersion} LauncherLanguage={LauncherLanguage} GameLanguage={GameLanguage}",
                 instance.Id,
-                LauncherLanguages.Normalize(settings.LauncherLanguage));
+                instance.MinecraftVersion,
+                LauncherLanguages.Normalize(settings.LauncherLanguage),
+                gameLanguage);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
