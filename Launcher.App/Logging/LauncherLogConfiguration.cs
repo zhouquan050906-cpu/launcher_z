@@ -108,7 +108,34 @@ internal static class LauncherLogConfiguration
             .Skip(maxLauncherLogFiles)
             .ToArray();
         foreach (var file in launcherLogs)
-            DeleteIfPresent(file.FullName);
+            TryDeleteFile(file.FullName);
+    }
+
+    /// <summary>
+    /// Deletes every launcher and updater log file in the directory. The log file the current
+    /// process is writing to is held with an exclusive handle, so its delete fails and it is
+    /// reported as retained instead of surfacing an error.
+    /// </summary>
+    public static LauncherLogCleanupResult ClearLogFiles(string logDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(logDirectory);
+        if (!Directory.Exists(logDirectory))
+            return LauncherLogCleanupResult.Empty;
+
+        var deletedFileCount = 0;
+        var retainedFileCount = 0;
+        foreach (var searchPattern in LogFileSearchPatterns)
+        {
+            foreach (var path in Directory.EnumerateFiles(logDirectory, searchPattern, SearchOption.TopDirectoryOnly))
+            {
+                if (TryDeleteFile(path))
+                    deletedFileCount++;
+                else
+                    retainedFileCount++;
+            }
+        }
+
+        return new LauncherLogCleanupResult(deletedFileCount, retainedFileCount);
     }
 
     private static void DeleteIfExpired(string path, DateTime cutoff)
@@ -127,17 +154,20 @@ internal static class LauncherLogConfiguration
         }
     }
 
-    private static void DeleteIfPresent(string path)
+    private static bool TryDeleteFile(string path)
     {
         try
         {
             File.Delete(path);
+            return true;
         }
         catch (IOException)
         {
+            return false;
         }
         catch (UnauthorizedAccessException)
         {
+            return false;
         }
     }
 

@@ -982,6 +982,42 @@
                 </Grid>
             </controls:DialogHost>
 
+            <controls:DialogHost x:Name="ClearLauncherLogsDialogHost"
+                                 Grid.ColumnSpan="2"
+                                 Grid.RowSpan="2"
+                                 DialogWidth="460"
+                                 UseIntegratedOverlay="True"
+                                 IsOpen="{Binding DataContext.SettingsPage.General.IsClearLauncherLogsDialogOpen, ElementName=RootWindow}"
+                                 DataContext="{Binding DataContext.SettingsPage.General, ElementName=RootWindow}">
+                <Grid Style="{StaticResource DialogContentGridStyle}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="{x:Static res:Strings.Dialog_ClearLauncherLogsTitle}"
+                               Style="{StaticResource DialogTitleTextStyle}" />
+
+                    <TextBlock Grid.Row="1"
+                               Margin="0,16,0,24"
+                               Text="{x:Static res:Strings.Dialog_ClearLauncherLogsMessage}"
+                               Style="{StaticResource DialogBodyTextStyle}"
+                               TextWrapping="Wrap" />
+
+                    <StackPanel Grid.Row="2"
+                                Style="{StaticResource DialogFooterStyle}">
+                        <Button Style="{StaticResource LauncherDialogButtonStyle}"
+                                Content="{x:Static res:Strings.Cancel_Button}"
+                                Command="{Binding CancelClearLauncherLogsCommand}" />
+                        <Button Style="{StaticResource LauncherDangerDialogButtonStyle}"
+                                Margin="{StaticResource DialogTrailingButtonMargin}"
+                                Content="{x:Static res:Strings.Settings_ClearLauncherLogsConfirmButton}"
+                                Command="{Binding ConfirmClearLauncherLogsCommand}" />
+                    </StackPanel>
+                </Grid>
+            </controls:DialogHost>
+
             <controls:DialogHost x:Name="MinecraftDirectoryNameDialogHost"
                                  Grid.ColumnSpan="2"
                                  Grid.RowSpan="2"

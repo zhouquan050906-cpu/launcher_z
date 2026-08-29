@@ -2242,6 +2242,15 @@ Longer content wraps automatically.</value>
   <data name="Status_OpenLaunchLogFolderFailed" xml:space="preserve">
     <value>Failed to open the launch log folder.</value>
   </data>
+  <data name="Status_LauncherLogsClearedFormat" xml:space="preserve">
+    <value>Cleared {0} launcher log file(s).</value>
+  </data>
+  <data name="Status_NoLauncherLogsToClear" xml:space="preserve">
+    <value>There are no launcher log files to clear.</value>
+  </data>
+  <data name="Status_ClearLauncherLogsFailed" xml:space="preserve">
+    <value>Failed to clear the launcher logs. Please try again later.</value>
+  </data>
   <data name="Status_OpenLaunchReportFailed" xml:space="preserve">
     <value>Could not open a report for this game session.</value>
   </data>
@@ -2945,6 +2954,12 @@ The current game folder will be backed up first.</value>
   <data name="Dialog_RemoveMinecraftDirectoryTitle" xml:space="preserve">
     <value>Remove Minecraft Folder</value>
   </data>
+  <data name="Dialog_ClearLauncherLogsTitle" xml:space="preserve">
+    <value>Clear Launcher Logs</value>
+  </data>
+  <data name="Dialog_ClearLauncherLogsMessage" xml:space="preserve">
+    <value>Delete all launcher logs? The log currently in use is not deleted.</value>
+  </data>
   <data name="Dialog_RemoveMinecraftDirectoryMessageFormat" xml:space="preserve">
     <value>Remove this folder from the list?&#xA;&#xA;{0}&#xA;&#xA;This only removes the folder from the launcher list. It does not delete the folder or any files inside it.</value>
   </data>
@@ -3055,6 +3070,12 @@ The current game folder will be backed up first.</value>
   </data>
   <data name="Settings_OpenLauncherLogDirectoryButton" xml:space="preserve">
     <value>Open Folder</value>
+  </data>
+  <data name="Settings_ClearLauncherLogsButton" xml:space="preserve">
+    <value>Clear Logs</value>
+  </data>
+  <data name="Settings_ClearLauncherLogsConfirmButton" xml:space="preserve">
+    <value>Clear</value>
   </data>
   <data name="Settings_DownloadSection" xml:space="preserve">
     <value>Downloads</value>

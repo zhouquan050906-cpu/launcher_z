@@ -173,6 +173,9 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
     private bool isRemoveMinecraftDirectoryDialogOpen;
 
     [ObservableProperty]
+    private bool isClearLauncherLogsDialogOpen;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MinecraftDirectoryNameDialogTitle))]
     [NotifyPropertyChangedFor(nameof(MinecraftDirectoryNameDialogConfirmButtonText))]
     [NotifyPropertyChangedFor(nameof(CanConfirmMinecraftDirectoryName))]
@@ -454,6 +457,52 @@ public sealed partial class GeneralSettingsViewModel : SettingsSectionViewModelB
         var directory = LauncherLogConfiguration.ResolveLogDirectory();
         if (TryPrepareAndOpenDirectory(directory, Strings.Status_OpenLaunchLogFolderFailed))
             LauncherLogDirectory = directory;
+    }
+
+    [RelayCommand]
+    private void RequestClearLauncherLogs()
+    {
+        IsClearLauncherLogsDialogOpen = true;
+    }
+
+    [RelayCommand]
+    private void CancelClearLauncherLogs()
+    {
+        IsClearLauncherLogsDialogOpen = false;
+    }
+
+    /// <summary>
+    /// 手动清空日志目录。删除可能涉及大量文件且目录可能位于慢速磁盘，因此放到后台线程；
+    /// 当前进程正在写入的日志被独占占用，删不掉属于预期，只在日志中记录保留数量。
+    /// </summary>
+    [RelayCommand]
+    private async Task ConfirmClearLauncherLogsAsync()
+    {
+        IsClearLauncherLogsDialogOpen = false;
+        var directory = LauncherLogConfiguration.ResolveLogDirectory();
+        LauncherLogCleanupResult result;
+        try
+        {
+            result = await Task.Run(() => LauncherLogConfiguration.ClearLogFiles(directory)).ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Failed to clear launcher log files. LogDirectory={LogDirectory}",
+                directory);
+            statusService.Report(Strings.Status_ClearLauncherLogsFailed);
+            return;
+        }
+
+        logger.LogInformation(
+            "Launcher log files cleared. LogDirectory={LogDirectory} Deleted={Deleted} Retained={Retained}",
+            directory,
+            result.DeletedFileCount,
+            result.RetainedFileCount);
+        statusService.Report(result.DeletedFileCount == 0
+            ? Strings.Status_NoLauncherLogsToClear
+            : string.Format(Strings.Status_LauncherLogsClearedFormat, result.DeletedFileCount));
     }
 
     [RelayCommand(CanExecute = nameof(CanAddMinecraftDirectory))]

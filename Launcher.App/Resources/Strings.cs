@@ -420,6 +420,8 @@ public static class Strings
     public static string Dialog_MinecraftDirectoryStartupRecoveryFailedMessageFormat => Get(nameof(Dialog_MinecraftDirectoryStartupRecoveryFailedMessageFormat));
     public static string Dialog_RemoveMinecraftDirectoryTitle => Get(nameof(Dialog_RemoveMinecraftDirectoryTitle));
     public static string Dialog_RemoveMinecraftDirectoryMessageFormat => Get(nameof(Dialog_RemoveMinecraftDirectoryMessageFormat));
+    public static string Dialog_ClearLauncherLogsTitle => Get(nameof(Dialog_ClearLauncherLogsTitle));
+    public static string Dialog_ClearLauncherLogsMessage => Get(nameof(Dialog_ClearLauncherLogsMessage));
     public static string Settings_MinecraftDirectoryUnavailable => Get(nameof(Settings_MinecraftDirectoryUnavailable));
     public static string Settings_OfficialMinecraftDirectoryDisplayName => Get(nameof(Settings_OfficialMinecraftDirectoryDisplayName));
     public static string Settings_MinecraftDirectoryChangeBlockedByActiveTasks => Get(nameof(Settings_MinecraftDirectoryChangeBlockedByActiveTasks));
@@ -430,6 +432,8 @@ public static class Strings
     public static string Settings_OpenMinecraftDirectoryButton => Get(nameof(Settings_OpenMinecraftDirectoryButton));
     public static string Settings_ChangeMinecraftDirectoryButton => Get(nameof(Settings_ChangeMinecraftDirectoryButton));
     public static string Settings_OpenLauncherLogDirectoryButton => Get(nameof(Settings_OpenLauncherLogDirectoryButton));
+    public static string Settings_ClearLauncherLogsButton => Get(nameof(Settings_ClearLauncherLogsButton));
+    public static string Settings_ClearLauncherLogsConfirmButton => Get(nameof(Settings_ClearLauncherLogsConfirmButton));
     public static string Settings_LaunchDefaultsSection => Get(nameof(Settings_LaunchDefaultsSection));
     public static string Settings_MemorySection => Get(nameof(Settings_MemorySection));
     public static string Settings_DefaultMemoryLabel => Get(nameof(Settings_DefaultMemoryLabel));
@@ -1134,6 +1138,9 @@ public static class Strings
     public static string Status_LaunchReportExportNoReadableFiles => Get(nameof(Status_LaunchReportExportNoReadableFiles));
     public static string Status_LaunchReportExportFailed => Get(nameof(Status_LaunchReportExportFailed));
     public static string Status_OpenLaunchLogFolderFailed => Get(nameof(Status_OpenLaunchLogFolderFailed));
+    public static string Status_LauncherLogsClearedFormat => Get(nameof(Status_LauncherLogsClearedFormat));
+    public static string Status_NoLauncherLogsToClear => Get(nameof(Status_NoLauncherLogsToClear));
+    public static string Status_ClearLauncherLogsFailed => Get(nameof(Status_ClearLauncherLogsFailed));
     public static string Status_OpenLaunchReportFailed => Get(nameof(Status_OpenLaunchReportFailed));
     public static string Status_OpenGithubRepositoryFailed => Get(nameof(Status_OpenGithubRepositoryFailed));
     public static string Status_OpenFeedbackPageFailed => Get(nameof(Status_OpenFeedbackPageFailed));

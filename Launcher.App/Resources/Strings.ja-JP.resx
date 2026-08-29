@@ -2242,6 +2242,15 @@
   <data name="Status_OpenLaunchLogFolderFailed" xml:space="preserve">
     <value>起動診断ログディレクトリを開けませんでした。しばらくしてから再試行してください。</value>
   </data>
+  <data name="Status_LauncherLogsClearedFormat" xml:space="preserve">
+    <value>ランチャーログファイルを {0} 件削除しました。</value>
+  </data>
+  <data name="Status_NoLauncherLogsToClear" xml:space="preserve">
+    <value>削除できるランチャーログファイルはありません。</value>
+  </data>
+  <data name="Status_ClearLauncherLogsFailed" xml:space="preserve">
+    <value>ランチャーログの削除に失敗しました。しばらくしてから再試行してください。</value>
+  </data>
   <data name="Status_OpenLaunchReportFailed" xml:space="preserve">
     <value>今回のゲームレポートを開けませんでした。しばらくしてから再試行してください。</value>
   </data>
@@ -2945,6 +2954,12 @@
   <data name="Dialog_RemoveMinecraftDirectoryTitle" xml:space="preserve">
     <value>Minecraft ディレクトリをリストから除外</value>
   </data>
+  <data name="Dialog_ClearLauncherLogsTitle" xml:space="preserve">
+    <value>ランチャーログを削除</value>
+  </data>
+  <data name="Dialog_ClearLauncherLogsMessage" xml:space="preserve">
+    <value>すべてのランチャーログを削除しますか。書き込み中のログは削除されません。</value>
+  </data>
   <data name="Dialog_RemoveMinecraftDirectoryMessageFormat" xml:space="preserve">
     <value>次のディレクトリをリストから除外しますか？&#xA;&#xA;{0}&#xA;&#xA;ランチャーのリストから除外するだけで、ディレクトリやその中のファイルは削除されません。</value>
   </data>
@@ -3055,6 +3070,12 @@
   </data>
   <data name="Settings_OpenLauncherLogDirectoryButton" xml:space="preserve">
     <value>ディレクトリを開く</value>
+  </data>
+  <data name="Settings_ClearLauncherLogsButton" xml:space="preserve">
+    <value>ログを削除</value>
+  </data>
+  <data name="Settings_ClearLauncherLogsConfirmButton" xml:space="preserve">
+    <value>削除</value>
   </data>
   <data name="Settings_DownloadSection" xml:space="preserve">
     <value>ダウンロード設定</value>

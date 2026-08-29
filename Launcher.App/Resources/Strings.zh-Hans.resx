@@ -764,6 +764,9 @@
   <data name="Status_LaunchReportExportNoReadableFiles" xml:space="preserve"><value>没有可导出的报告文件。</value></data>
   <data name="Status_LaunchReportExportFailed" xml:space="preserve"><value>导出报告失败，请稍后重试。</value></data>
   <data name="Status_OpenLaunchLogFolderFailed" xml:space="preserve"><value>打开启动诊断日志目录失败，请稍后重试。</value></data>
+  <data name="Status_LauncherLogsClearedFormat" xml:space="preserve"><value>已清理 {0} 个启动器日志文件。</value></data>
+  <data name="Status_NoLauncherLogsToClear" xml:space="preserve"><value>没有可清理的启动器日志文件。</value></data>
+  <data name="Status_ClearLauncherLogsFailed" xml:space="preserve"><value>清理启动器日志失败，请稍后重试。</value></data>
   <data name="Status_OpenLaunchReportFailed" xml:space="preserve"><value>无法打开本次游戏报告，请稍后重试。</value></data>
   <data name="Status_OpenGithubRepositoryFailed" xml:space="preserve"><value>打开 GitHub 仓库失败</value></data>
   <data name="Status_OpenFeedbackPageFailed" xml:space="preserve"><value>打开反馈页面失败，请稍后重试。</value></data>
@@ -1001,6 +1004,8 @@
   <data name="Settings_RemoveMinecraftDirectoryFromListButton" xml:space="preserve"><value>从列表中移除</value></data>
   <data name="Settings_RemoveMinecraftDirectoryConfirmButton" xml:space="preserve"><value>移除</value></data>
   <data name="Dialog_RemoveMinecraftDirectoryTitle" xml:space="preserve"><value>移除 Minecraft 目录</value></data>
+  <data name="Dialog_ClearLauncherLogsTitle" xml:space="preserve"><value>清理启动器日志</value></data>
+  <data name="Dialog_ClearLauncherLogsMessage" xml:space="preserve"><value>是否确定要删除全部启动器日志。不会删除正在写入的日志</value></data>
   <data name="Dialog_RemoveMinecraftDirectoryMessageFormat" xml:space="preserve"><value>确定要从列表中移除以下目录吗？&#xA;&#xA;{0}&#xA;&#xA;这只会从启动器列表中移除该目录，不会删除目录或其中的任何文件。</value></data>
   <data name="Settings_MinecraftDirectoryUnavailable" xml:space="preserve"><value>目录不可用</value></data>
   <data name="Settings_OfficialMinecraftDirectoryDisplayName" xml:space="preserve"><value>官方启动器目录</value></data>
@@ -1038,6 +1043,8 @@
   <data name="Settings_DiagnosticLoggingLabel" xml:space="preserve"><value>诊断日志</value></data>
   <data name="Settings_DiagnosticLoggingDescription" xml:space="preserve"><value>记录逐文件、逐请求和性能细节。仅在排查问题时启用。</value></data>
   <data name="Settings_OpenLauncherLogDirectoryButton" xml:space="preserve"><value>打开目录</value></data>
+  <data name="Settings_ClearLauncherLogsButton" xml:space="preserve"><value>清理日志</value></data>
+  <data name="Settings_ClearLauncherLogsConfirmButton" xml:space="preserve"><value>清理</value></data>
   <data name="Settings_DownloadSection" xml:space="preserve"><value>下载设置</value></data>
   <data name="Settings_DownloadSourceLabel" xml:space="preserve"><value>游戏下载源</value></data>
   <data name="Settings_MaximumDownloadThreadsLabel" xml:space="preserve"><value>最大下载线程</value></data>

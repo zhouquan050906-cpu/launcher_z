@@ -90,6 +90,10 @@
                                 Content="{x:Static res:Strings.Settings_OpenLauncherLogDirectoryButton}"
                                 Command="{Binding OpenLauncherLogDirectoryCommand}"
                                 Style="{StaticResource LauncherDialogButtonStyle}" />
+                        <Button Margin="0,0,10,10"
+                                Content="{x:Static res:Strings.Settings_ClearLauncherLogsButton}"
+                                Command="{Binding RequestClearLauncherLogsCommand}"
+                                Style="{StaticResource LauncherDialogButtonStyle}" />
                     </WrapPanel>
 
                     <Grid Margin="0,6,0,0">

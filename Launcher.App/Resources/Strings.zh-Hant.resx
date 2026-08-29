@@ -2242,6 +2242,15 @@
   <data name="Status_OpenLaunchLogFolderFailed" xml:space="preserve">
     <value>開啟啟動診斷日誌目錄失敗，請稍後再試。</value>
   </data>
+  <data name="Status_LauncherLogsClearedFormat" xml:space="preserve">
+    <value>已清理 {0} 個啟動器日誌檔案。</value>
+  </data>
+  <data name="Status_NoLauncherLogsToClear" xml:space="preserve">
+    <value>沒有可清理的啟動器日誌檔案。</value>
+  </data>
+  <data name="Status_ClearLauncherLogsFailed" xml:space="preserve">
+    <value>清理啟動器日誌失敗，請稍後再試。</value>
+  </data>
   <data name="Status_OpenLaunchReportFailed" xml:space="preserve">
     <value>無法開啟本次遊戲報告，請稍後再試。</value>
   </data>
@@ -2945,6 +2954,12 @@
   <data name="Dialog_RemoveMinecraftDirectoryTitle" xml:space="preserve">
     <value>移除 Minecraft 目錄</value>
   </data>
+  <data name="Dialog_ClearLauncherLogsTitle" xml:space="preserve">
+    <value>清理啟動器日誌</value>
+  </data>
+  <data name="Dialog_ClearLauncherLogsMessage" xml:space="preserve">
+    <value>是否確定要刪除全部啟動器日誌。不會刪除正在寫入的日誌</value>
+  </data>
   <data name="Dialog_RemoveMinecraftDirectoryMessageFormat" xml:space="preserve">
     <value>確定要從清單中移除以下目錄嗎？&#xA;&#xA;{0}&#xA;&#xA;這只會從啟動器清單中移除該目錄，不會刪除目錄或其中的任何檔案。</value>
   </data>
@@ -3055,6 +3070,12 @@
   </data>
   <data name="Settings_OpenLauncherLogDirectoryButton" xml:space="preserve">
     <value>開啟目錄</value>
+  </data>
+  <data name="Settings_ClearLauncherLogsButton" xml:space="preserve">
+    <value>清理日誌</value>
+  </data>
+  <data name="Settings_ClearLauncherLogsConfirmButton" xml:space="preserve">
+    <value>清理</value>
   </data>
   <data name="Settings_DownloadSection" xml:space="preserve">
     <value>下載設定</value>
