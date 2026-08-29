@@ -160,8 +160,11 @@ public sealed class JavaRuntimeSelectionService : IJavaRuntimeSelectionService
 
     internal static int? GuessRequiredMajorVersion(string? minecraftVersion)
     {
-        if (!TryParseMinecraftVersion(minecraftVersion, out var major, out var minor, out var patch))
+        // 解析失败时不武断限制 Java。
+        if (!MinecraftVersionNumber.TryParse(minecraftVersion, out var version))
             return null;
+
+        var (major, minor, patch) = version;
 
         if (major >= 26)
             return 25;
@@ -389,35 +392,6 @@ public sealed class JavaRuntimeSelectionService : IJavaRuntimeSelectionService
         {
             return string.Empty;
         }
-    }
-
-    private static bool TryParseMinecraftVersion(
-        string? version,
-        out int major,
-        out int minor,
-        out int patch)
-    {
-        // 快照和预发布后缀不影响主次版本基线，解析失败时不武断限制 Java。
-        major = 0;
-        minor = 0;
-        patch = 0;
-
-        if (string.IsNullOrWhiteSpace(version))
-            return false;
-
-        var numericPart = version.Split(['-', ' '], StringSplitOptions.RemoveEmptyEntries)[0];
-        var parts = numericPart.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2
-            || !int.TryParse(parts[0], out major)
-            || !int.TryParse(parts[1], out minor))
-        {
-            return false;
-        }
-
-        if (parts.Length >= 3)
-            _ = int.TryParse(parts[2], out patch);
-
-        return true;
     }
 
     private static int GetCompatibilityTier(int? runtimeMajorVersion, int? recommendedMajorVersion)

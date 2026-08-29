@@ -17,7 +17,6 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-using System.Globalization;
 using System.IO;
 using Launcher.Application.Services;
 using Launcher.Domain.Models;
@@ -29,10 +28,8 @@ public sealed class GameLanguageService : IGameLanguageService
     private const string LanguageKeyPrefix = "lang:";
 
     // 1.11（16w32a）把语言代码整体改成了全小写，同时重命名了语言文件。
-    private const int LowercaseLanguageCodeMajor = 1;
-    private const int LowercaseLanguageCodeMinor = 11;
-    private const int LowercaseLanguageCodeSnapshotYear = 16;
-    private const int LowercaseLanguageCodeSnapshotWeek = 32;
+    private static readonly MinecraftVersionNumber LowercaseLanguageCodeVersion = new(1, 11);
+    private static readonly MinecraftSnapshotNumber LowercaseLanguageCodeSnapshot = new(16, 32);
 
     public async Task<string> ApplyLauncherLanguageAsync(
         GameInstance instance,
@@ -111,59 +108,12 @@ public sealed class GameLanguageService : IGameLanguageService
     /// </summary>
     private static bool UsesLowercaseLanguageCodes(string? minecraftVersion)
     {
-        if (TryParseSnapshotVersion(minecraftVersion, out var year, out var week))
-        {
-            return year > LowercaseLanguageCodeSnapshotYear
-                || (year == LowercaseLanguageCodeSnapshotYear && week >= LowercaseLanguageCodeSnapshotWeek);
-        }
+        if (MinecraftSnapshotNumber.TryParse(minecraftVersion, out var snapshot))
+            return snapshot >= LowercaseLanguageCodeSnapshot;
 
-        if (!TryParseReleaseVersion(minecraftVersion, out var major, out var minor))
-            return true;
-
-        return major > LowercaseLanguageCodeMajor
-            || (major == LowercaseLanguageCodeMajor && minor >= LowercaseLanguageCodeMinor);
+        return !MinecraftVersionNumber.TryParse(minecraftVersion, out var version)
+            || version >= LowercaseLanguageCodeVersion;
     }
-
-    /// <summary>
-    /// 快照版本号形如 <c>16w32a</c>：两位年份、<c>w</c>、两位周数、一位修订字母。
-    /// </summary>
-    private static bool TryParseSnapshotVersion(string? version, out int year, out int week)
-    {
-        year = 0;
-        week = 0;
-
-        var value = version?.Trim();
-        if (value is not { Length: 6 }
-            || (value[2] is not 'w' and not 'W')
-            || !char.IsAsciiLetter(value[5]))
-        {
-            return false;
-        }
-
-        return TryParseNumber(value.AsSpan(0, 2), out year)
-            && TryParseNumber(value.AsSpan(3, 2), out week);
-    }
-
-    /// <summary>
-    /// 正式版取主次版本；预发布和候选版形如 <c>1.11-pre1</c>，版本号在第一段里。
-    /// </summary>
-    private static bool TryParseReleaseVersion(string? version, out int major, out int minor)
-    {
-        major = 0;
-        minor = 0;
-
-        if (string.IsNullOrWhiteSpace(version))
-            return false;
-
-        var numericPart = version.Split(['-', ' '], StringSplitOptions.RemoveEmptyEntries)[0];
-        var parts = numericPart.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2
-            && TryParseNumber(parts[0], out major)
-            && TryParseNumber(parts[1], out minor);
-    }
-
-    private static bool TryParseNumber(ReadOnlySpan<char> value, out int number) =>
-        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out number);
 
     /// <summary>
     /// 优先用实例记录的游戏版本；缺失时退回版本名，它通常以游戏版本开头，例如

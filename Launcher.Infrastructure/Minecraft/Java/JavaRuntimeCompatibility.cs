@@ -285,6 +285,9 @@ internal sealed record JavaRuntimeCompatibilityRequirement(
 
 internal static class JavaRuntimeCompatibilityResolver
 {
+    private static readonly MinecraftVersionNumber LegacyForgeMinimum = new(1, 6, 1);
+    private static readonly MinecraftVersionNumber LegacyForgeMaximum = new(1, 7, 2);
+
     public static JavaRuntimeCompatibilityRequirement Resolve(
         string? minecraftVersion,
         LoaderKind loader,
@@ -296,7 +299,7 @@ internal static class JavaRuntimeCompatibilityResolver
 
         if (metadataMajorVersion is null
             && loader is LoaderKind.Forge
-            && IsMinecraftBetween(minecraftVersion, (1, 6, 1), (1, 7, 2)))
+            && IsMinecraftBetween(minecraftVersion, LegacyForgeMinimum, LegacyForgeMaximum))
         {
             recommendedMajorVersion = 7;
         }
@@ -321,10 +324,10 @@ internal static class JavaRuntimeCompatibilityResolver
         string? minecraftVersion,
         string? forgeVersion)
     {
-        if (IsMinecraftBetween(minecraftVersion, (1, 6, 1), (1, 7, 2)))
+        if (IsMinecraftBetween(minecraftVersion, LegacyForgeMinimum, LegacyForgeMaximum))
             return requirement.IntersectMaximum(new JavaVersionNumber(8), inclusive: false);
 
-        if (TryParseMinecraftVersion(minecraftVersion, out var gameVersion))
+        if (MinecraftVersionNumber.TryParse(minecraftVersion, out var gameVersion))
         {
             if (gameVersion.Major == 1 && gameVersion.Minor <= 12)
                 return requirement.IntersectMaximum(new JavaVersionNumber(9), inclusive: false);
@@ -362,8 +365,8 @@ internal static class JavaRuntimeCompatibilityResolver
         string? minecraftVersion,
         string? neoForgeVersion)
     {
-        if (TryParseMinecraftVersion(minecraftVersion, out var gameVersion)
-            && gameVersion == (1, 20, 1))
+        if (MinecraftVersionNumber.TryParse(minecraftVersion, out var gameVersion)
+            && gameVersion == new MinecraftVersionNumber(1, 20, 1))
         {
             return requirement.IntersectMaximum(new JavaVersionNumber(22), inclusive: false);
         }
@@ -381,36 +384,10 @@ internal static class JavaRuntimeCompatibilityResolver
 
     private static bool IsMinecraftBetween(
         string? minecraftVersion,
-        (int Major, int Minor, int Patch) minimum,
-        (int Major, int Minor, int Patch) maximum) =>
-        TryParseMinecraftVersion(minecraftVersion, out var parsed)
-        && parsed.CompareTo(minimum) >= 0
-        && parsed.CompareTo(maximum) <= 0;
-
-    private static bool TryParseMinecraftVersion(
-        string? value,
-        out (int Major, int Minor, int Patch) version)
-    {
-        version = default;
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-
-        var numericPart = value.Split(['-', ' '], StringSplitOptions.RemoveEmptyEntries)[0];
-        var parts = numericPart.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2
-            || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var major)
-            || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var minor))
-        {
-            return false;
-        }
-
-        var patch = 0;
-        if (parts.Length >= 3)
-            _ = int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out patch);
-
-        version = (major, minor, patch);
-        return true;
-    }
+        MinecraftVersionNumber minimum,
+        MinecraftVersionNumber maximum) =>
+        MinecraftVersionNumber.TryParse(minecraftVersion, out var parsed)
+        && parsed.IsBetweenInclusive(minimum, maximum);
 
     private readonly record struct LoaderVersionNumber(int Major, int Minor, int Patch, string? Qualifier)
         : IComparable<LoaderVersionNumber>
