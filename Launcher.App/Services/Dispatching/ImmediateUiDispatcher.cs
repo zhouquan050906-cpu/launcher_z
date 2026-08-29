@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  *
@@ -30,6 +30,11 @@ public sealed class ImmediateUiDispatcher : IUiDispatcher
     public bool HasAccess => true;
 
     public void Post(Action action)
+    {
+        action();
+    }
+
+    public void PostAfterTransition(Action action)
     {
         action();
     }

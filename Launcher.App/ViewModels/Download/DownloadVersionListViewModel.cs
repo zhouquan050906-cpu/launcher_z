@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  *
@@ -250,6 +250,14 @@ public sealed partial class DownloadVersionListViewModel : ObservableObject, IDi
                 downloadSourcePreference,
                 cancellation.Token,
                 downloadSpeedLimitMbPerSecond);
+            if (!ReferenceEquals(loadCancellation, cancellation))
+                return;
+
+            // 填充集合会触发虚拟化面板初始化视口，实测占用 UI 线程 92ms；
+            // 若正好落在切页动画里，整段动画会掉到 40fps 以下。等动画结束再落地。
+            // 这里用 await 而不是丢给闸门异步执行，是为了保持
+            // EnsureVersionsLoadedAsync 的契约：任务完成即代表列表已就绪。
+            await UiTransitionGate.WaitForIdleAsync(cancellation.Token);
             if (!ReferenceEquals(loadCancellation, cancellation))
                 return;
 

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  *
@@ -35,6 +35,11 @@ public sealed class WpfUiDispatcher : IUiDispatcher
         }
 
         dispatcher.BeginInvoke(action, DispatcherPriority.Background);
+    }
+
+    public void PostAfterTransition(Action action)
+    {
+        UiTransitionGate.RunWhenIdle(action);
     }
 
     public void Invoke(Action action)

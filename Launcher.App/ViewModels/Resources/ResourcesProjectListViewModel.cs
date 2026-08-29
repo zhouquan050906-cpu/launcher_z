@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  *
@@ -409,7 +409,11 @@ public sealed partial class ResourcesProjectListViewModel : ObservableObject, ID
 
             // 进入 UI 线程前最后检查一次，避免排队发布已经被新筛选条件替代的结果。
             cancellationToken.ThrowIfCancellationRequested();
-            uiDispatcher.Invoke(() => ApplyResult(result, items, request.Offset, append, cancellationToken));
+            // 列表物化是过渡期间最贵的一件事（实测一次 258ms）。从工作线程调 Invoke 是
+            // Send 优先级，比渲染还高，会直接抢占动画帧，因此显式让位给过渡动画。
+            // ApplyResult 内部已有取消检查，推迟期间请求作废时会自行放弃。
+            uiDispatcher.PostAfterTransition(
+                () => ApplyResult(result, items, request.Offset, append, cancellationToken));
             if (thumbnailService is not null)
                 Observe(RefreshThumbnailSourcesAsync(items, cancellationToken), "refresh resource project thumbnails");
         }
@@ -466,7 +470,10 @@ public sealed partial class ResourcesProjectListViewModel : ObservableObject, ID
                 if (string.IsNullOrWhiteSpace(source) || cancellationToken.IsCancellationRequested)
                     return;
 
-                uiDispatcher.Invoke(() =>
+                // 每张缩略图一次回填，几十张就是几十次调度。从工作线程调 Invoke 是
+                // Send 优先级，比渲染还高，密集插进动画就会连续抢占出帧。
+                // 缩略图晚几十毫秒出现无所谓，因此让位给正在播的过渡动画。
+                uiDispatcher.PostAfterTransition(() =>
                 {
                     if (!cancellationToken.IsCancellationRequested && VisibleProjects.Contains(item))
                         item.SetManagedIconSource(source);
@@ -534,7 +541,7 @@ public sealed partial class ResourcesProjectListViewModel : ObservableObject, ID
             await Task.Yield();
             cancellationToken.ThrowIfCancellationRequested();
             var batchStart = index;
-            uiDispatcher.Invoke(() =>
+            uiDispatcher.PostAfterTransition(() =>
             {
                 if (!cancellationToken.IsCancellationRequested)
                     AddBatch(items, batchStart, AppendProjectBatchSize);

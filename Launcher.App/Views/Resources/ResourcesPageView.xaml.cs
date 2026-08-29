@@ -130,7 +130,8 @@ public partial class ResourcesPageView : UserControl
         }
 
         isEnsureCurrentSectionLoadedQueued = true;
-        Dispatcher.BeginInvoke(
+        // 这里会做一次强制布局并触发分区加载，实测撞进动画时占用 21ms，必须让位给过渡。
+        UiTransitionGate.RunWhenIdle(
             () =>
             {
                 isEnsureCurrentSectionLoadedQueued = false;
@@ -140,8 +141,7 @@ public partial class ResourcesPageView : UserControl
                 UpdateLayout();
                 ResetCurrentSectionScrollPosition();
                 viewModel.BeginEnsureCurrentSectionLoaded();
-            },
-            DispatcherPriority.ContextIdle);
+            });
     }
 
     private void ResetSectionPresentation()

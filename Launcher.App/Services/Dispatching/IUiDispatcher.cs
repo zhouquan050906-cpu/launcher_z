@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  *
@@ -24,6 +24,13 @@ public interface IUiDispatcher
     bool HasAccess { get; }
 
     void Post(Action action);
+
+    /// <summary>
+    /// 回到 UI 线程执行，但先让位给正在播放的页面切换动画。
+    /// 只用于"晚几十毫秒无所谓、却足以压掉整段动画"的批量界面更新，
+    /// 例如把一批列表项装进虚拟化列表。需要立即生效的更新应当使用 <see cref="Post"/>。
+    /// </summary>
+    void PostAfterTransition(Action action);
 
     void Invoke(Action action);
 

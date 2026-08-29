@@ -69,6 +69,8 @@ public sealed class PageTransitionService
     private FrameworkElement? activeTarget;
     private EventHandler? pendingCompositionWait;
     private long warmupStartedAtTimestamp;
+    private DispatcherBusyProbe? warmupBusyProbe;
+    private bool hasEnteredTransitionGate;
 
     public PageTransitionService(
         Dispatcher dispatcher,
@@ -95,6 +97,7 @@ public sealed class PageTransitionService
         TransitionRenderCacheFactory renderCacheFactory)
     {
         this.dispatcher = dispatcher;
+        UiTransitionGate.AttachDispatcher(dispatcher);
         this.resolvePageRoot = resolvePageRoot;
         this.pageOrder = pageOrder is { Count: > 0 } ? pageOrder : DefaultPageOrder;
         this.renderCacheFactory = renderCacheFactory;
@@ -116,10 +119,16 @@ public sealed class PageTransitionService
             return;
 
         var token = ++transitionToken;
+        EnterTransitionGate();
         PreparePageForTransition(target, startOffset);
         activeTarget = target;
         target.Unloaded += ActiveTarget_Unloaded;
         warmupStartedAtTimestamp = Stopwatch.GetTimestamp();
+        // 预热窗口发生在交互采样开启之前，其中的 UI 线程占用不会被 UiInteractionScope 统计到。
+        // 单独挂一个探针把这段补上，否则无法判断预热是在等渲染线程还是 UI 线程自己在忙。
+        ReleaseWarmupBusyProbe();
+        if (UiPerformanceLog.IsEnabled)
+            warmupBusyProbe = DispatcherBusyProbe.TryAttach(dispatcher);
 
         // 新页面此前是折叠的，从未被绘制过。等一个 dispatcher 轮次并不能保证渲染线程
         // 已经把它栅格化，动画一起步就会撞上这次整页栅格化——实测长帧正是集中在这里。
@@ -166,6 +175,12 @@ public sealed class PageTransitionService
         CompositionTarget.Rendering += handler;
     }
 
+    private void ReleaseWarmupBusyProbe()
+    {
+        warmupBusyProbe?.Dispose();
+        warmupBusyProbe = null;
+    }
+
     private void CancelPendingCompositionWait()
     {
         if (pendingCompositionWait is null)
@@ -178,6 +193,7 @@ public sealed class PageTransitionService
     public void SyncTo(string? page)
     {
         transitionToken++;
+        ExitTransitionGate();
         CancelPendingCompositionWait();
         CancelActiveTransition(requestFinalRefresh: true);
         currentPage = page;
@@ -263,11 +279,22 @@ public sealed class PageTransitionService
         interactionScope.RenderPath = UiRenderPaths.Resolve(
             renderCacheScope?.IsActive is true,
             blurRefreshLease is not null);
+        // 过渡期间被反复合成的就是整个页面，因此表面积直接对应每帧的填充率成本。
+        interactionScope.SurfaceWidth = target.ActualWidth;
+        interactionScope.SurfaceHeight = target.ActualHeight;
+        interactionScope.HasAncestorBitmapCache = renderCacheScope?.IsActive is true;
         // 预热被排除在出帧统计之外，单独记录，避免把开销从动画里挪走却看不出挪到了哪。
         interactionScope.WarmupMs = warmupStartedAtTimestamp == 0L
             ? 0d
             : Stopwatch.GetElapsedTime(warmupStartedAtTimestamp).TotalMilliseconds;
         warmupStartedAtTimestamp = 0L;
+        if (warmupBusyProbe is not null)
+        {
+            interactionScope.WarmupBusyMs = warmupBusyProbe.TotalBusyMs;
+            interactionScope.WarmupWorstOperationMs = warmupBusyProbe.WorstOperationMs;
+            interactionScope.WarmupWorstOperation = warmupBusyProbe.WorstOperationDetail;
+            ReleaseWarmupBusyProbe();
+        }
 
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
         var fadeAnimation = new DoubleAnimation
@@ -325,11 +352,32 @@ public sealed class PageTransitionService
         ReleaseTransitionResources(target, requestFinalRefresh: true);
     }
 
+    private void EnterTransitionGate()
+    {
+        if (hasEnteredTransitionGate)
+            return;
+
+        hasEnteredTransitionGate = true;
+        UiTransitionGate.Enter();
+    }
+
+    /// <summary>闸门必须与 Enter 严格配对，否则被推迟的工作会永远排不出去。</summary>
+    private void ExitTransitionGate()
+    {
+        if (!hasEnteredTransitionGate)
+            return;
+
+        hasEnteredTransitionGate = false;
+        UiTransitionGate.Exit();
+    }
+
     private void CancelActiveTransition(bool requestFinalRefresh)
     {
         CancelPendingCompositionWait();
+        ReleaseWarmupBusyProbe();
         if (activeTarget is not { } target)
         {
+            ExitTransitionGate();
             ReleaseInteractionScope();
             ReleaseBlurRefreshLease();
             renderCacheScope?.Dispose();
@@ -347,6 +395,7 @@ public sealed class PageTransitionService
 
     private void ReleaseTransitionResources(FrameworkElement target, bool requestFinalRefresh)
     {
+        ExitTransitionGate();
         target.Unloaded -= ActiveTarget_Unloaded;
         ReleaseInteractionScope();
         ReleaseBlurRefreshLease();

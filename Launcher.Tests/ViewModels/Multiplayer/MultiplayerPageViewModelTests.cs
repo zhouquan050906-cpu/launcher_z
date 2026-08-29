@@ -225,6 +225,8 @@ public sealed class MultiplayerPageViewModelTests
 
         public void Post(Action action) => action();
 
+        public void PostAfterTransition(Action action) => action();
+
         public void Invoke(Action action) => action();
 
         public Task InvokeAsync(Func<Task> action) => action();
