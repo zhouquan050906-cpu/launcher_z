@@ -58,7 +58,7 @@
                         <Grid>
                             <Border x:Name="HoverBackground"
                                     Background="{DynamicResource Brush.Button.Secondary.Hover}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <TextBlock x:Name="PlaceholderText"
                                        Margin="9,0,0,0"
@@ -153,7 +153,7 @@
                         <Grid>
                             <Border x:Name="HoverBackground"
                                     Background="{DynamicResource Brush.Button.Secondary.Hover}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <Grid Margin="{TemplateBinding Padding}">
                                 <ScrollViewer x:Name="PART_ContentHost"
@@ -253,7 +253,7 @@
                         <Grid>
                             <Border x:Name="HoverBackground"
                                     Background="{DynamicResource Brush.Button.Secondary.Hover}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <ContentPresenter Margin="{Binding Padding, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                               HorizontalAlignment="Stretch"
@@ -497,13 +497,13 @@
                                                           ShadowDepth="0" />
                                     </Border.Effect>
                                 </Border>
+                                <!-- 这层没有子元素，Border 自己画的圆角已经是抗锯齿的；
+                                     再加一层硬边的 RoundedClip 只会啃掉圆角的抗锯齿像素。 -->
                                 <Border x:Name="PopupBlurSurface"
                                         Background="{DynamicResource Brush.Surface.Flyout}"
                                         BorderBrush="{DynamicResource Brush.14FFFFFF}"
                                         BorderThickness="1"
-                                        CornerRadius="9"
-                                        ClipToBounds="True"
-                                        behaviors:RoundedClip.Radius="9" />
+                                        CornerRadius="9" />
                                 <ListBox x:Name="PART_DropDownList"
                                          Margin="5"
                                          Style="{StaticResource LauncherComboBoxDropDownListStyle}"

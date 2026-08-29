@@ -9,12 +9,14 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using Launcher.App.Controls;
+using Launcher.App.Converters;
 using Serilog;
 
 namespace Launcher.App.Behaviors;
@@ -187,14 +189,19 @@ public static class BackdropBlurHost
             FrameworkElement.StyleProperty,
             "SurfaceBackdropBlurStyle");
         BindBlurEnabled(backdrop, border);
+        // backdrop 是 border 的孩子，盒子已经内缩了 BorderThickness，半径必须跟着内缩到
+        // 边框内沿，否则圆角处会比边框内弧再缩进去一点，露出一条亚像素的缝。
         BindingOperations.SetBinding(
             backdrop,
             BackdropBlurBorder.CornerRadiusProperty,
-            new Binding(nameof(Border.CornerRadius)) { Source = border });
+            CreateInnerRadiusBinding(border));
+        // RoundedClip 走的是 UIElement.Clip，硬边、不做抗锯齿，会把圆角的抗锯齿像素啃掉。
+        // 它唯一的作用是把模糊层溢出的部分收回圆角内，而模糊层只在图片模糊背景下可见，
+        // 所以只在开了模糊时才裁；其余情况下各层自己的 CornerRadius 已经是抗锯齿的圆角了。
         BindingOperations.SetBinding(
             backdrop,
             RoundedClip.RadiusProperty,
-            new Binding("CornerRadius.TopLeft") { Source = border });
+            CreateBlurClipRadiusBinding(backdrop, border));
 
         var layers = new Grid();
         layers.Children.Add(backdrop);
@@ -266,10 +273,11 @@ public static class BackdropBlurHost
                     Source = border,
                     Path = new PropertyPath("(0)", LightweightShadowEffectProperty)
                 });
+            // chrome 的负 Margin 让它铺满 border 的外框，所以它要的是边框外沿的半径。
             BindingOperations.SetBinding(
                 chrome,
                 CardShadowChrome.CornerRadiusProperty,
-                new Binding(nameof(Border.CornerRadius)) { Source = border });
+                CreateOuterRadiusBinding(border));
             BindingOperations.SetBinding(
                 chrome,
                 CardShadowChrome.SurfaceBrushProperty,
@@ -304,6 +312,68 @@ public static class BackdropBlurHost
             Log.Warning(exception, "Failed to initialize the lightweight card shadow. The card shadow will remain disabled.");
             border.ClearValue(UIElement.EffectProperty);
         }
+    }
+
+    /// <summary>
+    /// 绑定到边框内沿的圆角半径。目标属性是 <see cref="double"/> 时转换器会回落到左上角的值。
+    /// </summary>
+    private static MultiBinding CreateInnerRadiusBinding(Border border)
+    {
+        return CreateRadiusBinding(border, parameter: null);
+    }
+
+    /// <summary>
+    /// 绑定到边框外沿的圆角半径，供铺满 Border 外框的层使用。
+    /// </summary>
+    private static MultiBinding CreateOuterRadiusBinding(Border border)
+    {
+        return CreateRadiusBinding(border, parameter: "Outer");
+    }
+
+    /// <summary>
+    /// 开了模糊才给出裁剪半径，关掉时返回 0，<see cref="RoundedClip"/> 会据此清掉 Clip。
+    /// </summary>
+    private static MultiBinding CreateBlurClipRadiusBinding(
+        BackdropBlurBorder backdrop,
+        Border border)
+    {
+        var binding = new MultiBinding { Converter = BlurClipRadiusConverter.Instance };
+        binding.Bindings.Add(new Binding(nameof(Border.CornerRadius)) { Source = border });
+        binding.Bindings.Add(new Binding(nameof(Border.BorderThickness)) { Source = border });
+        binding.Bindings.Add(new Binding(nameof(BackdropBlurBorder.IsBlurEnabled)) { Source = backdrop });
+        return binding;
+    }
+
+    private sealed class BlurClipRadiusConverter : IMultiValueConverter
+    {
+        internal static BlurClipRadiusConverter Instance { get; } = new();
+
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values is not [CornerRadius radius, Thickness border, bool isBlurEnabled])
+                return 0d;
+
+            return isBlurEnabled
+                ? InnerCornerRadiusConverter.Deflate(radius, border).TopLeft
+                : 0d;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    private static MultiBinding CreateRadiusBinding(Border border, string? parameter)
+    {
+        var binding = new MultiBinding
+        {
+            Converter = InnerCornerRadiusConverter.Instance,
+            ConverterParameter = parameter
+        };
+        binding.Bindings.Add(new Binding(nameof(Border.CornerRadius)) { Source = border });
+        binding.Bindings.Add(new Binding(nameof(Border.BorderThickness)) { Source = border });
+        return binding;
     }
 
     private static void BindBlurEnabled(

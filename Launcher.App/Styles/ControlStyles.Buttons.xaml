@@ -277,14 +277,14 @@
                         <Grid>
                             <Border x:Name="BaseBackground"
                                     Background="{TemplateBinding Background}"
-                                    CornerRadius="17" />
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}" />
                             <Border x:Name="HoverBackground"
                                     Background="{DynamicResource Brush.D04A4A4A}"
-                                    CornerRadius="17"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <Border x:Name="PressedBackground"
                                     Background="{DynamicResource Brush.E05A5A5A}"
-                                    CornerRadius="17"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />

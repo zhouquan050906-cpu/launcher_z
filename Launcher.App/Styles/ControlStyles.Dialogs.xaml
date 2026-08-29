@@ -1,4 +1,4 @@
-<!--
+﻿<!--
   BlockHelm Launcher
   Copyright (C) 2026 Quan Zhou
 
@@ -325,19 +325,19 @@
                                     behaviors:BackdropBlurHost.IsBlurEnabled="{DynamicResource Is.Surface.BackdropBlur.Enabled}"
                                     behaviors:BackdropBlurHost.FallbackBrush="{TemplateBinding Background}"
                                     behaviors:BackdropBlurHost.LightweightShadowEffect="{Binding Path=(behaviors:BackdropBlurHost.LightweightShadowEffect), RelativeSource={RelativeSource TemplatedParent}}"
-                                    CornerRadius="8" />
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}" />
                             <Border x:Name="SurfaceContrastLayer"
                                     Background="{DynamicResource Brush.Button.Secondary.Background}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     IsHitTestVisible="False"
                                     Opacity="0" />
                             <Border x:Name="HoverBackground"
                                     Background="{DynamicResource Brush.Button.Secondary.Hover}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <Border x:Name="PressedBackground"
                                     Background="{DynamicResource Brush.Button.Secondary.Pressed}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <ContentPresenter Margin="{TemplateBinding Padding}"
                                               HorizontalAlignment="Center"
@@ -416,22 +416,22 @@
                                     behaviors:BackdropBlurHost.IsApplied="True"
                                     behaviors:BackdropBlurHost.FallbackBrush="{TemplateBinding Background}"
                                     behaviors:BackdropBlurHost.LightweightShadowEffect="{Binding Path=(behaviors:BackdropBlurHost.LightweightShadowEffect), RelativeSource={RelativeSource TemplatedParent}}"
-                                    CornerRadius="8" />
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}" />
                             <Border x:Name="SurfaceContrastLayer"
                                     Background="{DynamicResource Brush.Button.Secondary.Background}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     IsHitTestVisible="False"
                                     Opacity="0" />
                             <Border x:Name="SemanticBackground"
                                     Background="{TemplateBinding Background}"
-                                    CornerRadius="8" />
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}" />
                             <Border x:Name="HoverBackground"
                                     Background="{DynamicResource Brush.047EDC}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <Border x:Name="PressedBackground"
                                     Background="{DynamicResource Brush.036FC2}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <ContentPresenter Margin="{TemplateBinding Padding}"
                                               HorizontalAlignment="Center"
@@ -507,22 +507,22 @@
                                     behaviors:BackdropBlurHost.IsApplied="True"
                                     behaviors:BackdropBlurHost.FallbackBrush="{TemplateBinding Background}"
                                     behaviors:BackdropBlurHost.LightweightShadowEffect="{Binding Path=(behaviors:BackdropBlurHost.LightweightShadowEffect), RelativeSource={RelativeSource TemplatedParent}}"
-                                    CornerRadius="8" />
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}" />
                             <Border x:Name="SurfaceContrastLayer"
                                     Background="{DynamicResource Brush.Button.Secondary.Background}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     IsHitTestVisible="False"
                                     Opacity="0" />
                             <Border x:Name="SemanticBackground"
                                     Background="{TemplateBinding Background}"
-                                    CornerRadius="8" />
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}" />
                             <Border x:Name="HoverBackground"
                                     Background="{DynamicResource Brush.B83232}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <Border x:Name="PressedBackground"
                                     Background="{DynamicResource Brush.982828}"
-                                    CornerRadius="8"
+                                    behaviors:InnerCornerRadius.Source="{Binding ElementName=Root}"
                                     Opacity="0" />
                             <ContentPresenter Margin="{TemplateBinding Padding}"
                                               HorizontalAlignment="Center"
