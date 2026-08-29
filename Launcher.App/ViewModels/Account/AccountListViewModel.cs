@@ -22,39 +22,59 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Launcher.Application.Accounts;
 using Launcher.Domain.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Launcher.App.ViewModels.Account;
 
 public sealed partial class AccountListViewModel : ObservableObject
 {
     private readonly IAccountStore accountStore;
+    private readonly ILogger<AccountListViewModel> logger;
     private string? selectedAccountId;
 
     [ObservableProperty]
     private AccountItemViewModel? selectedItem;
 
-    public AccountListViewModel(IAccountStore accountStore)
+    public AccountListViewModel(
+        IAccountStore accountStore,
+        ILogger<AccountListViewModel>? logger = null)
     {
         this.accountStore = accountStore;
+        this.logger = logger ?? NullLogger<AccountListViewModel>.Instance;
     }
 
     public ObservableCollection<AccountItemViewModel> Accounts { get; } = [];
 
     public LauncherAccount? SelectedAccount => SelectedItem?.Account;
 
-    public async Task InitializeAsync(LauncherSettings launcherSettings)
+    public async Task InitializeAsync()
     {
         var snapshot = await accountStore.LoadAsync();
         selectedAccountId = snapshot.SelectedAccountId;
         ApplyAccounts(snapshot.Accounts);
     }
 
-    public void PrimeFromSettings(LauncherSettings launcherSettings)
+    public async Task PrimeAsync()
     {
-        if (launcherSettings.Accounts.Count == 0 && string.IsNullOrWhiteSpace(launcherSettings.SelectedAccountId))
+        // 账户记录存在 account-state.json 里，首屏直接用它建立列表；
+        // 显示名、头像和上次的皮肤立刻可见，在线资料由随后的完整加载和后台刷新补齐。
+        AccountStoreSnapshot snapshot;
+        try
+        {
+            snapshot = await accountStore.LoadCachedAsync();
+        }
+        catch (Exception exception)
+        {
+            // 预热在窗口显示之前运行，读不出记录也只能让首屏空着，绝不能连累启动。
+            logger.LogWarning(exception, "Priming accounts from the local account state failed.");
             return;
-        selectedAccountId = launcherSettings.SelectedAccountId;
-        ApplyAccounts(launcherSettings.Accounts.Select(AccountMapper.FromRecord));
+        }
+
+        if (snapshot.Accounts.Count == 0 && string.IsNullOrWhiteSpace(snapshot.SelectedAccountId))
+            return;
+        selectedAccountId = snapshot.SelectedAccountId;
+        ApplyAccounts(snapshot.Accounts);
     }
 
     [RelayCommand]

@@ -27,7 +27,7 @@ public sealed class MicrosoftReauthenticationPromptTests
         };
         var accountList = new AccountListViewModel(
             new FakeAccountStore(new AccountStoreSnapshot([account], account.Id)));
-        await accountList.InitializeAsync(new LauncherSettings());
+        await accountList.InitializeAsync();
         var viewModel = new AccountDialogViewModel(
             accountList,
             Stub<IMicrosoftAccountService>(),
@@ -69,7 +69,7 @@ public sealed class MicrosoftReauthenticationPromptTests
         };
         var accountList = new AccountListViewModel(
             new FakeAccountStore(new AccountStoreSnapshot([account], account.Id)));
-        await accountList.InitializeAsync(new LauncherSettings());
+        await accountList.InitializeAsync();
         var microsoftService = DispatchProxy.Create<
             IMicrosoftAccountService,
             CancellableMicrosoftAccountServiceProxy>();
@@ -108,7 +108,7 @@ public sealed class MicrosoftReauthenticationPromptTests
         };
         var accountList = new AccountListViewModel(
             new FakeAccountStore(new AccountStoreSnapshot([account], account.Id)));
-        await accountList.InitializeAsync(new LauncherSettings());
+        await accountList.InitializeAsync();
         var viewModel = new AccountDialogViewModel(
             accountList,
             Stub<IMicrosoftAccountService>(),
@@ -189,6 +189,9 @@ public sealed class MicrosoftReauthenticationPromptTests
     private sealed class FakeAccountStore(AccountStoreSnapshot snapshot) : IAccountStore
     {
         public Task<AccountStoreSnapshot> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(snapshot);
+
+        public Task<AccountStoreSnapshot> LoadCachedAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(snapshot);
 
         public Task SaveOrderAsync(

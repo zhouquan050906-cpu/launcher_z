@@ -97,7 +97,7 @@ public sealed class MicrosoftAccountOperationRetryHandlerTests
     {
         var accountList = new AccountListViewModel(
             new FakeAccountStore(new AccountStoreSnapshot([account], account.Id)));
-        await accountList.InitializeAsync(new LauncherSettings());
+        await accountList.InitializeAsync();
         return accountList;
     }
 
@@ -116,6 +116,9 @@ public sealed class MicrosoftAccountOperationRetryHandlerTests
     private sealed class FakeAccountStore(AccountStoreSnapshot snapshot) : IAccountStore
     {
         public Task<AccountStoreSnapshot> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(snapshot);
+
+        public Task<AccountStoreSnapshot> LoadCachedAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(snapshot);
 
         public Task SaveOrderAsync(

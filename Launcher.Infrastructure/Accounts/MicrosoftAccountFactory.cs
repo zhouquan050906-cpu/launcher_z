@@ -44,6 +44,28 @@ internal sealed class MicrosoftAccountFactory
         this.logger = logger ?? NullLogger.Instance;
     }
 
+    public async Task<LauncherAccount> CreateCachedAccountFromProfileAsync(
+        JEProfile profile,
+        CancellationToken cancellationToken)
+    {
+        // 启动枚举只用本地缓存建账户：皮肤材质在 textures 服务器上，直连时可能长时间不返回，
+        // 首屏账户列表不能等它。远端外观由后台的资料刷新补齐，本地皮肤记录由账户存储合并回来。
+        var uuid = MinecraftAccountHelpers.NormalizeUuid(profile.UUID);
+        var avatarSource = await avatarService.GetOrCreateAvatarSourceAsync(
+            uuid,
+            MinecraftAccountHelpers.GetActiveSkinUrl(profile),
+            forceRefresh: false,
+            cancellationToken);
+        return new LauncherAccount
+        {
+            Id = $"microsoft-{uuid}",
+            DisplayName = profile.Username ?? string.Empty,
+            Uuid = uuid,
+            AvatarSource = avatarSource,
+            Kind = LauncherAccountKind.Microsoft
+        };
+    }
+
     public async Task<LauncherAccount> CreateAccountFromProfileAsync(
         JEProfile profile,
         bool forceRefreshAvatar,

@@ -12,6 +12,55 @@ namespace Launcher.Tests.Accounts;
 public sealed class AccountStoreTests
 {
     [Fact]
+    public async Task LoadCachedReturnsStoredRecordsWithoutCredentialLookupOrPersistence()
+    {
+        // 首屏预热必须完全离线：读凭据库和写回都可能让窗口显示前多等一次 IO 或网络。
+        var storedSkin = new LauncherSkinRecord
+        {
+            Id = "shared",
+            Source = "file:///microsoft/_shared-library/v1-shared-classic.png",
+            SkinModel = MinecraftSkinModel.Classic,
+            ContentHash = "shared-hash"
+        };
+        var state = new FakeStateService(new LauncherAccountState
+        {
+            MicrosoftAccountsImported = true,
+            SharedSkinLibraryMigrationVersion = LauncherAccountState.CurrentSharedSkinLibraryMigrationVersion,
+            SelectedAccountId = "microsoft-uuid",
+            Accounts =
+            [
+                new LauncherAccountRecord
+                {
+                    Id = "microsoft-uuid",
+                    DisplayName = "Stored Microsoft",
+                    Kind = LauncherAccountKind.Microsoft,
+                    Uuid = "uuid",
+                    SkinSource = storedSkin.Source,
+                    SkinModel = storedSkin.SkinModel,
+                    ActiveSkinId = storedSkin.Id,
+                    Skins = [storedSkin]
+                }
+            ]
+        });
+        var microsoftService = new FakeMicrosoftService();
+        var store = new AccountStore(
+            state,
+            microsoftService,
+            new FakeOfflineAccountUuidService(),
+            new FakeSkinLibraryService());
+
+        var snapshot = await store.LoadCachedAsync();
+
+        var account = Assert.Single(snapshot.Accounts);
+        Assert.Equal("microsoft-uuid", snapshot.SelectedAccountId);
+        Assert.Equal("Stored Microsoft", account.DisplayName);
+        Assert.Equal(storedSkin.Source, account.SkinSource);
+        Assert.Equal(storedSkin.Id, account.ActiveSkinId);
+        Assert.Equal(0, microsoftService.SavedAccountQueryCount);
+        Assert.Equal(0, state.SaveCount);
+    }
+
+    [Fact]
     public async Task LoadPreservesOrderAndImportsMicrosoftAccountsOnce()
     {
         var state = new FakeStateService(new LauncherAccountState
@@ -203,8 +252,14 @@ public sealed class AccountStoreTests
 
     private sealed class FakeMicrosoftService(params LauncherAccount[] accounts) : IMicrosoftAccountService
     {
-        public Task<IReadOnlyList<LauncherAccount>> GetSavedAccountsAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<LauncherAccount>>(accounts);
+        public int SavedAccountQueryCount { get; private set; }
+
+        public Task<IReadOnlyList<LauncherAccount>> GetSavedAccountsAsync(CancellationToken cancellationToken = default)
+        {
+            SavedAccountQueryCount++;
+            return Task.FromResult<IReadOnlyList<LauncherAccount>>(accounts);
+        }
+
         public Task<LauncherAccount> LoginInteractivelyAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<LauncherAccount> ReauthenticateInteractivelyAsync(LauncherAccount account, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task DeleteAccountAsync(LauncherAccount account, CancellationToken cancellationToken = default) => throw new NotSupportedException();

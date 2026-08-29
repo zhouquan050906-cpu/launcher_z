@@ -24,6 +24,11 @@ public interface IAccountStore
 {
     Task<AccountStoreSnapshot> LoadAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 只读取本地账户记录用于首屏，不访问凭据库、不做迁移也不写回。
+    /// </summary>
+    Task<AccountStoreSnapshot> LoadCachedAsync(CancellationToken cancellationToken = default);
+
     Task SaveOrderAsync(
         string? selectedAccountId,
         IEnumerable<LauncherAccount> accounts,

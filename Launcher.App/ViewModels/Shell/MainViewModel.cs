@@ -200,7 +200,7 @@ public sealed partial class MainViewModel : ObservableObject
         LauncherBackground.ApplyEffect(Settings.LauncherBackgroundEffect, reportFailure: false);
         UserAgreementDialog.Prime(Settings);
         IsMenuExpanded = Settings.IsMenuExpanded;
-        AccountPage.PrimeFromSettings(Settings);
+        await AccountPage.PrimeAsync();
         await sessionCoordinator.PrimeAsync(Settings);
         UpdateNavigationSelection();
         UpdateAccountNavigationAvatar();
@@ -215,7 +215,7 @@ public sealed partial class MainViewModel : ObservableObject
         // SessionCoordinator 统一初始化共享状态，Shell 不自行重复加载实例或版本目录。
         await PrimeAsync();
         MinecraftDirectoryStartupRecoveryDialog.ShowPending();
-        await AccountPage.InitializeAsync(Settings);
+        await AccountPage.InitializeAsync();
         await sessionCoordinator.InitializeAsync();
         UpdateSecondaryItems();
         UpdateNavigationSelection();

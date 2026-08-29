@@ -33,7 +33,8 @@ namespace Launcher.Infrastructure.Accounts;
 public sealed class MicrosoftAccountService : IMicrosoftAccountService
 {
     // 认证 token 只交给底层客户端和缓存，不写入普通日志或暴露给 ViewModel。
-    private static readonly HttpClient HttpClient = new();
+    // 头像、皮肤、披风和资料请求都很小，超时必须有界；默认的 100 秒会让直连不通的网络长时间挂起。
+    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     private readonly MicrosoftAuthProvider authProvider;
     private readonly AccountAvatarService avatarService;
@@ -77,7 +78,7 @@ public sealed class MicrosoftAccountService : IMicrosoftAccountService
 
     public async Task<IReadOnlyList<LauncherAccount>> GetSavedAccountsAsync(CancellationToken cancellationToken = default)
     {
-        // 缓存枚举逐账户刷新，单个失效账户不会阻止其余可用账户进入列表。
+        // 缓存枚举全程只读本地：凭据、资料和头像都来自磁盘，单个失效账户不会阻止其余可用账户进入列表。
         var accounts = new List<LauncherAccount>();
         IReadOnlyList<CmlLib.Core.Auth.Microsoft.Sessions.JEGameAccount> savedAccounts;
         try
@@ -100,9 +101,8 @@ public sealed class MicrosoftAccountService : IMicrosoftAccountService
                 continue;
             }
 
-            var cachedAccount = await accountFactory.CreateAccountFromProfileAsync(
+            var cachedAccount = await accountFactory.CreateCachedAccountFromProfileAsync(
                 profile,
-                forceRefreshAvatar: false,
                 cancellationToken);
             accounts.Add(cachedAccount);
         }

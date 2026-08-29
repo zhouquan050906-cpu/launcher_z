@@ -47,6 +47,18 @@ public sealed class AccountStore : IAccountStore
         this.logger = logger ?? NullLogger<AccountStore>.Instance;
     }
 
+    public async Task<AccountStoreSnapshot> LoadCachedAsync(CancellationToken cancellationToken = default)
+    {
+        // 首屏预热只读 account-state.json：不枚举加密凭据、不跑迁移、不写回，
+        // 完整加载随后用同一份记录做在线对账，两次结果的账户身份保持一致。
+        var state = await accountStateService.LoadAsync(cancellationToken);
+        var accounts = state.Accounts
+            .Select(AccountMapper.FromRecord)
+            .ToList();
+        logger.LogDebug("Cached accounts loaded for priming. AccountCount={AccountCount}", accounts.Count);
+        return new AccountStoreSnapshot(accounts, state.SelectedAccountId);
+    }
+
     public async Task<AccountStoreSnapshot> LoadAsync(CancellationToken cancellationToken = default)
     {
         var state = await accountStateService.LoadAsync(cancellationToken);

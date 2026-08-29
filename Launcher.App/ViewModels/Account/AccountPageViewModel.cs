@@ -76,15 +76,15 @@ public sealed partial class AccountPageViewModel : ObservableObject
         }
     }
 
-    public async Task InitializeAsync(LauncherSettings launcherSettings)
+    public async Task InitializeAsync()
     {
-        await AccountList.InitializeAsync(launcherSettings);
+        await AccountList.InitializeAsync();
         _ = Appearance.RefreshAccountsSilentlyAsync();
     }
 
-    public void PrimeFromSettings(LauncherSettings launcherSettings)
+    public Task PrimeAsync()
     {
-        AccountList.PrimeFromSettings(launcherSettings);
+        return AccountList.PrimeAsync();
     }
 
     public void SelectAccount(LauncherAccount account)
