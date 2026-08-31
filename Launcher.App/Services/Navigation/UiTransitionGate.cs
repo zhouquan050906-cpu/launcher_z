@@ -34,6 +34,8 @@ internal static class UiTransitionGate
     // 显式持有 UI 线程 Dispatcher：闸门可能被工作线程调用，而 Application.Current
     // 在单元测试里不存在，依赖它会让闸门在测试中静默退化成"立即执行"。
     private static Dispatcher? uiDispatcher;
+    // 兜底看门狗，只在队列非空时运行。
+    private static DispatcherTimer? deadlineWatchdog;
 
     /// <summary>由过渡服务在构造时登记 UI 线程 Dispatcher。</summary>
     internal static void AttachDispatcher(Dispatcher dispatcher)
@@ -49,6 +51,11 @@ internal static class UiTransitionGate
     /// 闸门若因异常路径没能配对 Exit、或用户连续切页不停，工作都不能永远排不出去。
     /// </summary>
     internal static readonly TimeSpan MaximumDeferral = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// 看门狗的巡检间隔。截止时间只是"不早于"，到点后最多再多等这么久，因此不必精细。
+    /// </summary>
+    private static readonly TimeSpan DeadlineCheckInterval = TimeSpan.FromMilliseconds(250);
 
     /// <summary>是否有过渡正在进行。主页面切换与页内分区切换可能重叠，因此按计数判断。</summary>
     internal static bool IsTransitionActive => activeTransitionCount > 0;
@@ -103,7 +110,7 @@ internal static class UiTransitionGate
                 () =>
                 {
                     if (IsTransitionActive && DateTime.UtcNow < deferred.Deadline)
-                        DeferredActions.Add(deferred);
+                        Defer(deferred);
                     else
                         deferred.Action();
                 },
@@ -111,7 +118,7 @@ internal static class UiTransitionGate
             return;
         }
 
-        DeferredActions.Add(deferred);
+        Defer(deferred);
     }
 
     /// <summary>
@@ -148,7 +155,68 @@ internal static class UiTransitionGate
     {
         activeTransitionCount = 0;
         DeferredActions.Clear();
+        StopDeadlineWatchdog();
         uiDispatcher = dispatcher;
+    }
+
+    /// <summary>
+    /// 把工作挂进队列，并确保看门狗在跑。
+    /// </summary>
+    /// <remarks>
+    /// 队列里的工作原本只有 <see cref="Exit"/> 会去唤醒。一旦某次过渡因为异常路径没能配对
+    /// Exit——例如窗口被最小化后停止出帧，动画永远走不完——队列里的东西就再也没人管，
+    /// 截止时间也就形同虚设。被推迟的里面有启动失败上报、保存完成通知这类不能丢的工作，
+    /// 因此只要队列非空就挂一个定时器，到点无条件放行过期的部分。
+    /// </remarks>
+    private static void Defer(DeferredAction deferred)
+    {
+        DeferredActions.Add(deferred);
+        EnsureDeadlineWatchdog();
+    }
+
+    private static void EnsureDeadlineWatchdog()
+    {
+        if (deadlineWatchdog is not null || DeferredActions.Count == 0)
+            return;
+
+        var dispatcher = ResolveDispatcher();
+        if (dispatcher is null)
+            return;
+
+        var watchdog = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        {
+            Interval = DeadlineCheckInterval
+        };
+        watchdog.Tick += (_, _) => ReleaseExpiredActions();
+        deadlineWatchdog = watchdog;
+        watchdog.Start();
+    }
+
+    private static void StopDeadlineWatchdog()
+    {
+        deadlineWatchdog?.Stop();
+        deadlineWatchdog = null;
+    }
+
+    /// <summary>把已经过了截止时间的工作放出去，不管过渡是否还在进行。</summary>
+    private static void ReleaseExpiredActions()
+    {
+        var now = DateTime.UtcNow;
+        var expired = DeferredActions.Where(deferred => now >= deferred.Deadline).ToArray();
+        DeferredActions.RemoveAll(deferred => now >= deferred.Deadline);
+        if (DeferredActions.Count == 0)
+            StopDeadlineWatchdog();
+
+        var dispatcher = ResolveDispatcher();
+        foreach (var deferred in expired)
+        {
+            // 逐个排队而不是就地循环调用：一件工作抛异常不该连累后面的，
+            // 这与 DrainDeferredActions 的行为保持一致。
+            if (dispatcher is null)
+                deferred.Action();
+            else
+                dispatcher.BeginInvoke(deferred.Action, DispatcherPriority.Background);
+        }
     }
 
     private static void DrainDeferredActions()
@@ -158,6 +226,8 @@ internal static class UiTransitionGate
 
         var pending = DeferredActions.ToArray();
         DeferredActions.Clear();
+        // 清空后看门狗暂时没有看守对象；下面若有工作被重新推迟，Defer 会把它重新挂起来。
+        StopDeadlineWatchdog();
         var dispatcher = ResolveDispatcher();
         foreach (var deferred in pending)
         {
@@ -175,7 +245,7 @@ internal static class UiTransitionGate
                 () =>
                 {
                     if (IsTransitionActive && DateTime.UtcNow < deferred.Deadline)
-                        DeferredActions.Add(deferred);
+                        Defer(deferred);
                     else
                         deferred.Action();
                 },

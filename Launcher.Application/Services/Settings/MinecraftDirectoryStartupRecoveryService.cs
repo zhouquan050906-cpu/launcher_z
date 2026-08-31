@@ -17,11 +17,20 @@ public sealed class MinecraftDirectoryStartupRecoveryService(
     IMinecraftDirectoryFileSystem fileSystem,
     MinecraftDirectoryManagementService managementService)
 {
+    private readonly IMinecraftDirectoryFileSystem liveFileSystem = fileSystem;
+
+    /// <param name="probedFileSystem">
+    /// 调用方预先探好的可用性快照（见 <see cref="MinecraftDirectoryStartupProbe"/>）。
+    /// 本方法是同步的，会把已登记的目录逐个探一遍；直接用真实文件系统时，一个断连的
+    /// 网络路径就能让调用挂住几十秒。启动路径必须传快照，其余场景传 null 走实时探测。
+    /// </param>
     public MinecraftDirectoryStartupRecoveryResult? Recover(
         LauncherSettings settings,
-        string defaultDirectory)
+        string defaultDirectory,
+        IMinecraftDirectoryFileSystem? probedFileSystem = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        var fileSystem = probedFileSystem ?? liveFileSystem;
         var normalizedDefaultDirectory = MinecraftDirectoryPath.Normalize(defaultDirectory);
         var invalidDirectory = MinecraftDirectoryPath.Normalize(settings.MinecraftDirectory);
         if (fileSystem.DirectoryIsAccessible(invalidDirectory))

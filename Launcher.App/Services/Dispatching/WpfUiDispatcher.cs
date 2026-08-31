@@ -42,6 +42,28 @@ public sealed class WpfUiDispatcher : IUiDispatcher
         UiTransitionGate.RunWhenIdle(action);
     }
 
+    public Task PostAfterTransitionAsync(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        // 仍然走闸门的 Background 排队，不改变让位给动画的行为；
+        // 只是额外把"执行完了"这件事告诉调用方。
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        UiTransitionGate.RunWhenIdle(() =>
+        {
+            try
+            {
+                action();
+                completed.TrySetResult();
+            }
+            catch (Exception exception)
+            {
+                completed.TrySetException(exception);
+            }
+        });
+        return completed.Task;
+    }
+
     public void Invoke(Action action)
     {
         var dispatcher = global::System.Windows.Application.Current?.Dispatcher;

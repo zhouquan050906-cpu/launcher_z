@@ -27,6 +27,27 @@ using Launcher.App.Diagnostics;
 
 namespace Launcher.App.Services;
 
+/// <summary>
+/// 合成帧来源。抽成接缝只为一件事：让测试能复现"窗口不出帧"。
+/// 那正是预热兜底存在的理由，而单元测试环境里 <see cref="CompositionTarget.Rendering"/>
+/// 照常触发，无法自然复现，兜底逻辑会一直处于没人验证的状态。
+/// </summary>
+internal interface ICompositionFrameSource
+{
+    void Subscribe(EventHandler handler);
+
+    void Unsubscribe(EventHandler handler);
+}
+
+internal sealed class CompositionTargetFrameSource : ICompositionFrameSource
+{
+    internal static CompositionTargetFrameSource Instance { get; } = new();
+
+    public void Subscribe(EventHandler handler) => CompositionTarget.Rendering += handler;
+
+    public void Unsubscribe(EventHandler handler) => CompositionTarget.Rendering -= handler;
+}
+
 public sealed class PageTransitionService
 {
     internal const double TransitionOffset = 22;
@@ -57,10 +78,26 @@ public sealed class PageTransitionService
     /// </summary>
     private const int WarmupCompositionFrames = 1;
 
+    /// <summary>
+    /// 单段预热等待合成帧的上限。窗口被最小化或完全遮挡时 WPF 会停止出帧，
+    /// <see cref="CompositionTarget.Rendering"/> 也就不再触发，预热会永远等不到回调。
+    /// 到点直接放行：此时预热已经没有意义，但动画必须照常起步。
+    /// </summary>
+    private static readonly TimeSpan CompositionWaitTimeout = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// 一次过渡从发起到收尾的上限。不出帧时动画时钟也可能不推进，Completed 就永远不来，
+    /// 页面会停在几乎透明的 <see cref="WarmupOpacity"/>，闸门也一直不 Exit——
+    /// 后者会让所有可延后的工作都多等一个 <see cref="UiTransitionGate.MaximumDeferral"/>。
+    /// 预热两段兜底加动画时长约 740ms，取 2 秒留足余量。
+    /// </summary>
+    private static readonly TimeSpan TransitionWatchdogTimeout = TimeSpan.FromSeconds(2);
+
     private readonly Dispatcher dispatcher;
     private readonly Func<string, FrameworkElement?> resolvePageRoot;
     private readonly IReadOnlyList<string> pageOrder;
     private readonly TransitionRenderCacheFactory renderCacheFactory;
+    private readonly ICompositionFrameSource compositionFrames;
     private string? currentPage;
     private int transitionToken;
     private IDisposable? blurRefreshLease;
@@ -68,6 +105,8 @@ public sealed class PageTransitionService
     private UiInteractionScope? interactionScope;
     private FrameworkElement? activeTarget;
     private EventHandler? pendingCompositionWait;
+    private DispatcherTimer? compositionWaitTimeout;
+    private DispatcherTimer? transitionWatchdog;
     private long warmupStartedAtTimestamp;
     private DispatcherBusyProbe? warmupBusyProbe;
     private bool hasEnteredTransitionGate;
@@ -94,13 +133,15 @@ public sealed class PageTransitionService
         Func<string, FrameworkElement?> resolvePageRoot,
         string? initialPage,
         IReadOnlyList<string>? pageOrder,
-        TransitionRenderCacheFactory renderCacheFactory)
+        TransitionRenderCacheFactory renderCacheFactory,
+        ICompositionFrameSource? compositionFrames = null)
     {
         this.dispatcher = dispatcher;
         UiTransitionGate.AttachDispatcher(dispatcher);
         this.resolvePageRoot = resolvePageRoot;
         this.pageOrder = pageOrder is { Count: > 0 } ? pageOrder : DefaultPageOrder;
         this.renderCacheFactory = renderCacheFactory;
+        this.compositionFrames = compositionFrames ?? CompositionTargetFrameSource.Instance;
         currentPage = initialPage;
     }
 
@@ -120,6 +161,7 @@ public sealed class PageTransitionService
 
         var token = ++transitionToken;
         EnterTransitionGate();
+        StartTransitionWatchdog();
         PreparePageForTransition(target, startOffset);
         activeTarget = target;
         target.Unloaded += ActiveTarget_Unloaded;
@@ -154,6 +196,7 @@ public sealed class PageTransitionService
     /// <summary>
     /// 等待指定数量的合成帧后执行回调。订阅期间 WPF 会保持连续渲染，
     /// 因此只用于过渡起步这种短暂等待，并且新的过渡必须取消尚未触发的等待。
+    /// 合成帧迟迟不来时由 <see cref="CompositionWaitTimeout"/> 兜底放行。
     /// </summary>
     private void WaitForCompositionFrames(int frameCount, Action continuation)
     {
@@ -165,14 +208,84 @@ public sealed class PageTransitionService
             if (--remaining > 0)
                 return;
 
-            CompositionTarget.Rendering -= handler;
-            if (ReferenceEquals(pendingCompositionWait, handler))
-                pendingCompositionWait = null;
-            continuation();
+            if (TryCompleteCompositionWait(handler!))
+                continuation();
         };
 
         pendingCompositionWait = handler;
-        CompositionTarget.Rendering += handler;
+        compositionFrames.Subscribe(handler);
+
+        var timeout = new DispatcherTimer(DispatcherPriority.Normal, dispatcher)
+        {
+            Interval = CompositionWaitTimeout
+        };
+        timeout.Tick += (_, _) =>
+        {
+            if (!TryCompleteCompositionWait(handler))
+                return;
+
+            // 走到这里说明窗口大概率不在出帧。预热已经没有意义，但动画必须照常起步，
+            // 否则页面会停在几乎不可见的预热状态，闸门也不会 Exit。
+            Serilog.Log.Debug(
+                "Page transition warm-up timed out waiting for a composition frame. TimeoutMs={TimeoutMs}",
+                CompositionWaitTimeout.TotalMilliseconds);
+            continuation();
+        };
+        compositionWaitTimeout = timeout;
+        timeout.Start();
+    }
+
+    /// <summary>
+    /// 认领本次等待并拆掉两路触发源。合成帧与兜底定时器只能有一方跑赢，
+    /// 因此以 <see cref="pendingCompositionWait"/> 作为唯一裁决。
+    /// </summary>
+    /// <returns>调用方是否该继续执行续体；等待已被新的过渡取代时返回 false。</returns>
+    private bool TryCompleteCompositionWait(EventHandler handler)
+    {
+        compositionFrames.Unsubscribe(handler);
+        if (!ReferenceEquals(pendingCompositionWait, handler))
+            return false;
+
+        pendingCompositionWait = null;
+        StopCompositionWaitTimeout();
+        return true;
+    }
+
+    private void StopCompositionWaitTimeout()
+    {
+        compositionWaitTimeout?.Stop();
+        compositionWaitTimeout = null;
+    }
+
+    /// <summary>
+    /// 过渡收尾的兜底。不出帧时动画的 Completed 可能永远不来，收尾里的
+    /// 恢复透明度、释放渲染缓存和 Exit 闸门就都不会发生。
+    /// </summary>
+    private void StartTransitionWatchdog()
+    {
+        StopTransitionWatchdog();
+        var watchdog = new DispatcherTimer(DispatcherPriority.Normal, dispatcher)
+        {
+            Interval = TransitionWatchdogTimeout
+        };
+        watchdog.Tick += (_, _) =>
+        {
+            Serilog.Log.Debug(
+                "Page transition did not finish in time and was force-completed. Page={Page} TimeoutMs={TimeoutMs}",
+                currentPage,
+                TransitionWatchdogTimeout.TotalMilliseconds);
+            // 与正常收尾同一条路径：恢复透明度与位移，释放渲染资源，并配对 Exit 闸门。
+            transitionToken++;
+            CancelActiveTransition(requestFinalRefresh: true);
+        };
+        transitionWatchdog = watchdog;
+        watchdog.Start();
+    }
+
+    private void StopTransitionWatchdog()
+    {
+        transitionWatchdog?.Stop();
+        transitionWatchdog = null;
     }
 
     private void ReleaseWarmupBusyProbe()
@@ -183,10 +296,11 @@ public sealed class PageTransitionService
 
     private void CancelPendingCompositionWait()
     {
+        StopCompositionWaitTimeout();
         if (pendingCompositionWait is null)
             return;
 
-        CompositionTarget.Rendering -= pendingCompositionWait;
+        compositionFrames.Unsubscribe(pendingCompositionWait);
         pendingCompositionWait = null;
     }
 
@@ -373,6 +487,7 @@ public sealed class PageTransitionService
 
     private void CancelActiveTransition(bool requestFinalRefresh)
     {
+        StopTransitionWatchdog();
         CancelPendingCompositionWait();
         ReleaseWarmupBusyProbe();
         if (activeTarget is not { } target)
@@ -395,6 +510,7 @@ public sealed class PageTransitionService
 
     private void ReleaseTransitionResources(FrameworkElement target, bool requestFinalRefresh)
     {
+        StopTransitionWatchdog();
         ExitTransitionGate();
         target.Unloaded -= ActiveTarget_Unloaded;
         ReleaseInteractionScope();

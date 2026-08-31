@@ -39,6 +39,12 @@ public sealed class ImmediateUiDispatcher : IUiDispatcher
         action();
     }
 
+    public Task PostAfterTransitionAsync(Action action)
+    {
+        action();
+        return Task.CompletedTask;
+    }
+
     public void Invoke(Action action)
     {
         action();

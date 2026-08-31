@@ -412,8 +412,13 @@ public sealed partial class ResourcesProjectListViewModel : ObservableObject, ID
             // 列表物化是过渡期间最贵的一件事（实测一次 258ms）。从工作线程调 Invoke 是
             // Send 优先级，比渲染还高，会直接抢占动画帧，因此显式让位给过渡动画。
             // ApplyResult 内部已有取消检查，推迟期间请求作废时会自行放弃。
-            uiDispatcher.PostAfterTransition(
-                () => ApplyResult(result, items, request.Offset, append, cancellationToken));
+            //
+            // 用可等待的版本，保持 RefreshAsync/LoadMoreAsync 的契约：任务完成即代表列表已更新。
+            // 只排队不等待会让 await 提前返回，此时 VisibleProjects 和 IsLoading 都还是旧的。
+            await uiDispatcher
+                .PostAfterTransitionAsync(
+                    () => ApplyResult(result, items, request.Offset, append, cancellationToken))
+                .ConfigureAwait(false);
             if (thumbnailService is not null)
                 Observe(RefreshThumbnailSourcesAsync(items, cancellationToken), "refresh resource project thumbnails");
         }
@@ -473,9 +478,14 @@ public sealed partial class ResourcesProjectListViewModel : ObservableObject, ID
                 // 每张缩略图一次回填，几十张就是几十次调度。从工作线程调 Invoke 是
                 // Send 优先级，比渲染还高，密集插进动画就会连续抢占出帧。
                 // 缩略图晚几十毫秒出现无所谓，因此让位给正在播的过渡动画。
+                //
+                // 只按取消状态判断，不再要求项目已经在 VisibleProjects 里。结果落地和
+                // 缩略图回填都是排队执行的，谁先轮到并不确定；而且大结果集是分批加入集合的，
+                // 后面几批在缩略图返回时本来就还没进去。要求"已在集合中"会让这些图标被静默丢弃，
+                // 直到下次重新加载才出现。图标先写进项目、项目随后入列同样能正常显示。
                 uiDispatcher.PostAfterTransition(() =>
                 {
-                    if (!cancellationToken.IsCancellationRequested && VisibleProjects.Contains(item))
+                    if (!cancellationToken.IsCancellationRequested)
                         item.SetManagedIconSource(source);
                 });
             });

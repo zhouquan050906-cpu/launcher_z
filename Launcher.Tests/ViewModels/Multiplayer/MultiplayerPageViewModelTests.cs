@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  * SPDX-License-Identifier: GPL-3.0-only
@@ -226,6 +226,12 @@ public sealed class MultiplayerPageViewModelTests
         public void Post(Action action) => action();
 
         public void PostAfterTransition(Action action) => action();
+
+        public Task PostAfterTransitionAsync(Action action)
+        {
+            action();
+            return Task.CompletedTask;
+        }
 
         public void Invoke(Action action) => action();
 

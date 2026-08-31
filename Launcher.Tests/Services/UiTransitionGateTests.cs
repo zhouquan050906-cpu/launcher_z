@@ -10,6 +10,9 @@ using Launcher.App.Services;
 
 namespace Launcher.Tests.Services;
 
+// 闸门是进程级静态状态，而过渡相关的测试会通过 PageTransitionService 一起碰它，
+// 因此必须和它们串行跑，否则彼此的 Enter/Exit 会互相干扰。
+[Collection(TransitionRenderingTestCollection.Name)]
 public sealed class UiTransitionGateTests
 {
     /// <summary>过渡进行中，可延后的工作必须一件都不执行——那正是掉帧的来源。</summary>
@@ -216,6 +219,35 @@ public sealed class UiTransitionGateTests
             }
 
             Assert.Equal(1, ran);
+        });
+    }
+
+    /// <summary>
+    /// 排队的工作原本只有 Exit 会去唤醒。窗口最小化后 WPF 停止出帧，动画走不完，
+    /// Exit 就永远不来——此时截止时间必须仍然生效，否则队列里的工作会被永久丢弃。
+    /// </summary>
+    [Fact]
+    public void WorkIsReleasedOnceItsDeadlinePassesEvenIfTheTransitionNeverEnds()
+    {
+        RunOnStaThread(() =>
+        {
+            UiTransitionGate.ResetForTesting(Dispatcher.CurrentDispatcher);
+            var ran = 0;
+            UiTransitionGate.Enter();
+            UiTransitionGate.RunWhenIdle(() => ran++);
+            Pump();
+            Assert.Equal(0, ran);
+
+            // 刻意一次 Exit 都不调用。
+            var deadline = DateTime.UtcNow + UiTransitionGate.MaximumDeferral + TimeSpan.FromSeconds(3);
+            while (ran == 0 && DateTime.UtcNow < deadline)
+                Pump();
+
+            Assert.Equal(1, ran);
+            Assert.Equal(0, UiTransitionGate.PendingCount);
+            Assert.True(UiTransitionGate.IsTransitionActive);
+
+            UiTransitionGate.ResetForTesting();
         });
     }
 

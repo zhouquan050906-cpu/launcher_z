@@ -32,6 +32,15 @@ public interface IUiDispatcher
     /// </summary>
     void PostAfterTransition(Action action);
 
+    /// <summary>
+    /// 与 <see cref="PostAfterTransition"/> 相同，但返回的任务在 action 真正执行完成后才结束。
+    /// </summary>
+    /// <remarks>
+    /// 供有 await 契约的加载路径使用：调用方 await 它之后，界面状态才算真的落地了。
+    /// 只排队不等待会让 <c>await LoadAsync()</c> 提前返回，任务完成不再代表列表已更新。
+    /// </remarks>
+    Task PostAfterTransitionAsync(Action action);
+
     void Invoke(Action action);
 
     Task InvokeAsync(Func<Task> action);

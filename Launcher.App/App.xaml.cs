@@ -281,7 +281,11 @@ public partial class App : System.Windows.Application
         {
             var discoveryService = serviceProvider.GetRequiredService<IMinecraftDirectoryDiscoveryService>();
             var managementService = serviceProvider.GetRequiredService<MinecraftDirectoryManagementService>();
-            var discoveredDirectories = discoveryService.DiscoverExistingDirectories();
+            // 官方目录在 %APPDATA% 下，漫游配置文件会把它重定向到网络路径。断连时
+            // 这次探测既不能占着 UI 线程，也不能无限期等下去——主窗口要等它返回才显示。
+            // 上限由 MinecraftDirectoryStartupProbe 负责，超时按"目录不存在"处理：
+            // 大不了这一轮不自动登记，用户仍可在设置里手动添加。
+            var discoveredDirectories = await discoveryService.DiscoverExistingDirectoriesAsync();
             if (!discoveredDirectories.Any(discovery =>
                     !startupSettings.MinecraftDirectories.Contains(
                         discovery.DirectoryPath,
@@ -337,10 +341,12 @@ public partial class App : System.Windows.Application
         try
         {
             var initializedDirectory = string.Empty;
-            var updatedSettings = await serviceProvider.GetRequiredService<ISettingsService>().UpdateAsync(
+            var settingsService = serviceProvider.GetRequiredService<ISettingsService>();
+            // 回调会建目录并确认它真能用，同样是阻塞调用，不能占着还没出窗口的 UI 线程。
+            var updatedSettings = await Task.Run(() => settingsService.UpdateAsync(
                 settings => initializedDirectory = initializationService.InitializeDefaultDirectory(
                     settings,
-                    pathProvider.DefaultMinecraftDirectory));
+                    pathProvider.DefaultMinecraftDirectory)));
             Log.Information(
                 "Default Minecraft directory initialized for the first launcher run. MinecraftDirectory={MinecraftDirectory}",
                 initializedDirectory);
@@ -365,20 +371,38 @@ public partial class App : System.Windows.Application
         if (serviceProvider is null)
             return (startupSettings, null);
 
+        // 目录探测是阻塞的文件系统调用，断连的网络路径可能几十秒才返回，而这一步发生在
+        // 主窗口出现之前。先异步、带上限地把当前目录和所有已登记目录并行探一遍，
+        // 后面的同步恢复逻辑直接读这份快照，既不占 UI 线程，也不会被单个失效目录拖住。
         var fileSystem = serviceProvider.GetRequiredService<IMinecraftDirectoryFileSystem>();
-        if (fileSystem.DirectoryIsAccessible(startupSettings.MinecraftDirectory))
+        // 探测超时说明某个目录已经不可达，是排查启动切目录的第一手线索，必须留下日志。
+        var probeLogger = serviceProvider.GetRequiredService<ILoggerFactory>()
+            .CreateLogger(nameof(MinecraftDirectoryStartupProbe));
+        var availability = await MinecraftDirectoryStartupProbe.ProbeAsync(
+            fileSystem,
+            [startupSettings.MinecraftDirectory, .. startupSettings.MinecraftDirectories],
+            logger: probeLogger);
+        if (availability.DirectoryIsAccessible(startupSettings.MinecraftDirectory))
             return (startupSettings, null);
 
         var pathProvider = serviceProvider.GetRequiredService<Launcher.Infrastructure.LauncherPathProvider>();
         var recoveryService = serviceProvider.GetRequiredService<MinecraftDirectoryStartupRecoveryService>();
+        var settingsService = serviceProvider.GetRequiredService<ISettingsService>();
         MinecraftDirectoryStartupRecoveryResult? recovery = null;
         try
         {
-            var updatedSettings = await serviceProvider.GetRequiredService<ISettingsService>().UpdateAsync(
+            // UpdateAsync 的回调在调用方线程上同步执行，其中还要补建默认目录并写盘，
+            // 因此整段放到线程池，不让它落在 UI 线程上。
+            var updatedSettings = await Task.Run(() => settingsService.UpdateAsync(
                 settings => recovery = recoveryService.Recover(
                     settings,
-                    pathProvider.DefaultMinecraftDirectory));
-            if (!fileSystem.DirectoryIsAccessible(updatedSettings.MinecraftDirectory))
+                    pathProvider.DefaultMinecraftDirectory,
+                    availability)));
+            // 恢复目标可能是刚补建出来的，必须重新实测，不能复用上面的快照。
+            if (!await MinecraftDirectoryStartupProbe.IsAccessibleAsync(
+                    fileSystem,
+                    updatedSettings.MinecraftDirectory,
+                    logger: probeLogger))
             {
                 throw new MinecraftDirectoryStartupRecoveryException(
                     pathProvider.DefaultMinecraftDirectory,

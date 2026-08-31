@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  * SPDX-License-Identifier: GPL-3.0-only
@@ -141,7 +141,7 @@ public sealed class MinecraftDirectoryStartupSequenceTests : TestTempDirectory
         }
 
         // ③ 发现已存在的目录并登记（不改变当前选中目录）。
-        var discovered = environment.DiscoveryService.DiscoverExistingDirectories();
+        var discovered = await environment.DiscoveryService.DiscoverExistingDirectoriesAsync();
         if (discovered.Any(discovery =>
                 !settings.MinecraftDirectories.Contains(
                     discovery.DirectoryPath,
