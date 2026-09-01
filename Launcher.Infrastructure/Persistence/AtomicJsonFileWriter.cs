@@ -24,6 +24,11 @@ namespace Launcher.Infrastructure.Persistence;
 
 internal static class AtomicJsonFileWriter
 {
+    // 网络盘、杀毒软件与索引器可能短暂持有目标文件句柄，使替换式重命名返回 ACCESS_DENIED。
+    // 这类占用是瞬时的，沿用 VersionRenameTransaction 的重试节奏把它挡在调用方之外。
+    private const int MaxMoveAttempts = 5;
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(150);
+
     public static async Task WriteAsync<T>(
         string destinationPath,
         T value,
@@ -59,11 +64,34 @@ internal static class AtomicJsonFileWriter
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            File.Move(temporaryPath, fullDestinationPath, overwrite: true);
+            await MoveWithRetryAsync(temporaryPath, fullDestinationPath, cancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
             TryDeleteTemporaryFile(temporaryPath);
+        }
+    }
+
+    private static async Task MoveWithRetryAsync(
+        string source,
+        string destination,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                File.Move(source, destination, overwrite: true);
+                return;
+            }
+            catch (Exception exception) when (
+                attempt < MaxMoveAttempts
+                && exception is IOException or UnauthorizedAccessException)
+            {
+                await Task.Delay(RetryDelay, cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 

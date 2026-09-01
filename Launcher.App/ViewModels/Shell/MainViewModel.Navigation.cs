@@ -71,9 +71,27 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private async Task ToggleMenuAsync()
     {
-        IsMenuExpanded = !IsMenuExpanded;
-        Settings.IsMenuExpanded = IsMenuExpanded;
-        await settingsService.UpdateAsync(latest => latest.IsMenuExpanded = IsMenuExpanded);
+        // 折叠状态只是 UI 偏好，先乐观翻转，保存失败再回滚，
+        // 写盘异常绝不能顺着 AsyncRelayCommand 冒泡到 Dispatcher 终止进程。
+        var previousValue = IsMenuExpanded;
+        var nextValue = !previousValue;
+        IsMenuExpanded = nextValue;
+        Settings.IsMenuExpanded = nextValue;
+
+        try
+        {
+            await settingsService.UpdateAsync(latest => latest.IsMenuExpanded = nextValue);
+        }
+        catch (Exception exception)
+        {
+            IsMenuExpanded = previousValue;
+            Settings.IsMenuExpanded = previousValue;
+            logger.LogWarning(
+                exception,
+                "Failed to save menu expansion preference. IsExpanded={IsExpanded}",
+                nextValue);
+            statusService.Report(Strings.Status_SettingsSaveFailed);
+        }
     }
 
     [RelayCommand]
