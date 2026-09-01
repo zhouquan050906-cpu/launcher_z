@@ -55,6 +55,22 @@ public sealed class ThemeResourceContractTests
         Assert.Equal("0", shadow.Attribute("ShadowDepth")?.Value);
     }
 
+    [Theory]
+    [InlineData("Dark.xaml")]
+    [InlineData("Light.xaml")]
+    public void ThemeDefinesSecondaryMenuShadowPalette(string fileName)
+    {
+        var keys = LoadKeys(fileName);
+
+        Assert.Contains("Color.SecondaryMenu.Shadow.Transparent", keys);
+        Assert.Contains("Color.SecondaryMenu.Shadow.Faint", keys);
+        Assert.Contains("Color.SecondaryMenu.Shadow.Interior", keys);
+        Assert.Contains("Color.SecondaryMenu.Shadow.Soft", keys);
+        Assert.Contains("Color.SecondaryMenu.Shadow.Medium", keys);
+        Assert.Contains("Color.SecondaryMenu.Shadow.Strong", keys);
+        Assert.Contains("Brush.SecondaryMenu.Shadow.Interior", keys);
+    }
+
     private static HashSet<string> LoadKeys(string fileName)
     {
         var document = Load(fileName);

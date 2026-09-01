@@ -27,6 +27,95 @@
              x:Name="Root"
              Focusable="False">
     <UserControl.Resources>
+        <!-- 渐变九宫格投影用的画笔。各档按高斯边缘衰减取样，颜色来自主题字典，
+             保证深浅主题热切换时阴影与面板资源保持一致。 -->
+        <LinearGradientBrush x:Key="HomeLaunchMenuShadowTopBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Offset="0.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.2" Color="{DynamicResource Color.SecondaryMenu.Shadow.Faint}" />
+            <GradientStop Offset="0.4" Color="{DynamicResource Color.SecondaryMenu.Shadow.Soft}" />
+            <GradientStop Offset="0.6" Color="{DynamicResource Color.SecondaryMenu.Shadow.Medium}" />
+            <GradientStop Offset="0.8" Color="{DynamicResource Color.SecondaryMenu.Shadow.Strong}" />
+            <GradientStop Offset="1.0" Color="{DynamicResource Color.SecondaryMenu.Shadow}" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="HomeLaunchMenuShadowBottomBrush" StartPoint="0,1" EndPoint="0,0">
+            <GradientStop Offset="0.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.2" Color="{DynamicResource Color.SecondaryMenu.Shadow.Faint}" />
+            <GradientStop Offset="0.4" Color="{DynamicResource Color.SecondaryMenu.Shadow.Soft}" />
+            <GradientStop Offset="0.6" Color="{DynamicResource Color.SecondaryMenu.Shadow.Medium}" />
+            <GradientStop Offset="0.8" Color="{DynamicResource Color.SecondaryMenu.Shadow.Strong}" />
+            <GradientStop Offset="1.0" Color="{DynamicResource Color.SecondaryMenu.Shadow}" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="HomeLaunchMenuShadowLeftBrush" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Offset="0.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.2" Color="{DynamicResource Color.SecondaryMenu.Shadow.Faint}" />
+            <GradientStop Offset="0.4" Color="{DynamicResource Color.SecondaryMenu.Shadow.Soft}" />
+            <GradientStop Offset="0.6" Color="{DynamicResource Color.SecondaryMenu.Shadow.Medium}" />
+            <GradientStop Offset="0.8" Color="{DynamicResource Color.SecondaryMenu.Shadow.Strong}" />
+            <GradientStop Offset="1.0" Color="{DynamicResource Color.SecondaryMenu.Shadow}" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="HomeLaunchMenuShadowRightBrush" StartPoint="1,0" EndPoint="0,0">
+            <GradientStop Offset="0.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.2" Color="{DynamicResource Color.SecondaryMenu.Shadow.Faint}" />
+            <GradientStop Offset="0.4" Color="{DynamicResource Color.SecondaryMenu.Shadow.Soft}" />
+            <GradientStop Offset="0.6" Color="{DynamicResource Color.SecondaryMenu.Shadow.Medium}" />
+            <GradientStop Offset="0.8" Color="{DynamicResource Color.SecondaryMenu.Shadow.Strong}" />
+            <GradientStop Offset="1.0" Color="{DynamicResource Color.SecondaryMenu.Shadow}" />
+        </LinearGradientBrush>
+
+        <!-- 角落：渐变中心落在圆角的圆心上。半径 14 以内（即面板圆角内部）留空，由面板内部那层
+             均匀阴影负责，两者在半径 14 处接上；14 到 31 之间向外衰减。
+             若这里也画满，就会和内部那层叠加，四个角会比其余部分深一块。 -->
+        <RadialGradientBrush x:Key="HomeLaunchMenuShadowCornerTopLeftBrush"
+                             Center="1,1" GradientOrigin="1,1" RadiusX="1" RadiusY="1">
+            <GradientStop Offset="0.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.4515" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.4516" Color="{DynamicResource Color.SecondaryMenu.Shadow}" />
+            <GradientStop Offset="0.5613" Color="{DynamicResource Color.SecondaryMenu.Shadow.Strong}" />
+            <GradientStop Offset="0.6710" Color="{DynamicResource Color.SecondaryMenu.Shadow.Medium}" />
+            <GradientStop Offset="0.7806" Color="{DynamicResource Color.SecondaryMenu.Shadow.Soft}" />
+            <GradientStop Offset="0.8903" Color="{DynamicResource Color.SecondaryMenu.Shadow.Faint}" />
+            <GradientStop Offset="1.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+        </RadialGradientBrush>
+
+        <RadialGradientBrush x:Key="HomeLaunchMenuShadowCornerTopRightBrush"
+                             Center="0,1" GradientOrigin="0,1" RadiusX="1" RadiusY="1">
+            <GradientStop Offset="0.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.4515" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.4516" Color="{DynamicResource Color.SecondaryMenu.Shadow}" />
+            <GradientStop Offset="0.5613" Color="{DynamicResource Color.SecondaryMenu.Shadow.Strong}" />
+            <GradientStop Offset="0.6710" Color="{DynamicResource Color.SecondaryMenu.Shadow.Medium}" />
+            <GradientStop Offset="0.7806" Color="{DynamicResource Color.SecondaryMenu.Shadow.Soft}" />
+            <GradientStop Offset="0.8903" Color="{DynamicResource Color.SecondaryMenu.Shadow.Faint}" />
+            <GradientStop Offset="1.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+        </RadialGradientBrush>
+
+        <RadialGradientBrush x:Key="HomeLaunchMenuShadowCornerBottomLeftBrush"
+                             Center="1,0" GradientOrigin="1,0" RadiusX="1" RadiusY="1">
+            <GradientStop Offset="0.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.4515" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.4516" Color="{DynamicResource Color.SecondaryMenu.Shadow}" />
+            <GradientStop Offset="0.5613" Color="{DynamicResource Color.SecondaryMenu.Shadow.Strong}" />
+            <GradientStop Offset="0.6710" Color="{DynamicResource Color.SecondaryMenu.Shadow.Medium}" />
+            <GradientStop Offset="0.7806" Color="{DynamicResource Color.SecondaryMenu.Shadow.Soft}" />
+            <GradientStop Offset="0.8903" Color="{DynamicResource Color.SecondaryMenu.Shadow.Faint}" />
+            <GradientStop Offset="1.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+        </RadialGradientBrush>
+
+        <RadialGradientBrush x:Key="HomeLaunchMenuShadowCornerBottomRightBrush"
+                             Center="0,0" GradientOrigin="0,0" RadiusX="1" RadiusY="1">
+            <GradientStop Offset="0.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.4515" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+            <GradientStop Offset="0.4516" Color="{DynamicResource Color.SecondaryMenu.Shadow}" />
+            <GradientStop Offset="0.5613" Color="{DynamicResource Color.SecondaryMenu.Shadow.Strong}" />
+            <GradientStop Offset="0.6710" Color="{DynamicResource Color.SecondaryMenu.Shadow.Medium}" />
+            <GradientStop Offset="0.7806" Color="{DynamicResource Color.SecondaryMenu.Shadow.Soft}" />
+            <GradientStop Offset="0.8903" Color="{DynamicResource Color.SecondaryMenu.Shadow.Faint}" />
+            <GradientStop Offset="1.0" Color="{DynamicResource Color.SecondaryMenu.Shadow.Transparent}" />
+        </RadialGradientBrush>
+
         <DataTemplate x:Key="HomeLaunchInstanceMenuItemContentTemplate">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -59,158 +148,251 @@
     </UserControl.Resources>
 
     <Grid x:Name="HomeLaunchFloatingLayer">
-        <Grid x:Name="HomeLaunchMenuPanelShadow"
+        <!-- 渐变九宫格投影，不用 DropShadowEffect，避免移动表面逐帧重新运行阴影着色器。
+             这里三组元件各自对应动画中不变的量：顶端帽跟着面板平移，侧边条按可见高度纵向缩放
+             （横向渐变、纵向均匀，缩放视觉上精确），底端帽固定在永不移动的底边。
+             全部是渐变填充，每帧零着色器成本。 -->
+        <Grid x:Name="HomeLaunchMenuShadowHost"
+              Width="{StaticResource HomeLaunchMenuPanelWidth}"
+              Height="{StaticResource HomeLaunchMenuCollapsedHeight}"
+              Margin="{StaticResource HomeLaunchMenuPanelMargin}"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Bottom"
+              Opacity="0.1"
+              IsHitTestVisible="False">
+            <!-- 侧边条：从圆角结束处到底边圆角起点，锚在底部按可见高度缩放。 -->
+            <Border Width="17"
+                    HorizontalAlignment="Left"
+                    Margin="-17,14,0,14"
+                    Background="{StaticResource HomeLaunchMenuShadowLeftBrush}"
+                    RenderTransformOrigin="0,1">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="HomeLaunchMenuShadowLeftScale" ScaleY="1" />
+                </Border.RenderTransform>
+            </Border>
+
+            <Border Width="17"
+                    HorizontalAlignment="Right"
+                    Margin="0,14,-17,14"
+                    Background="{StaticResource HomeLaunchMenuShadowRightBrush}"
+                    RenderTransformOrigin="1,1">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="HomeLaunchMenuShadowRightScale" ScaleY="1" />
+                </Border.RenderTransform>
+            </Border>
+
+            <!-- 底端帽：底边永不移动，因此完全静态。 -->
+            <Border Width="31" Height="31"
+                    HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                    Margin="-17,0,0,-17"
+                    Background="{StaticResource HomeLaunchMenuShadowCornerBottomLeftBrush}" />
+            <Border Height="17"
+                    VerticalAlignment="Bottom"
+                    Margin="14,0,14,-17"
+                    Background="{StaticResource HomeLaunchMenuShadowBottomBrush}" />
+            <Border Width="31" Height="31"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="0,0,-17,-17"
+                    Background="{StaticResource HomeLaunchMenuShadowCornerBottomRightBrush}" />
+
+            <!-- 顶端帽：跟随面板平移，动画参数与面板完全一致，因此逐帧对齐。 -->
+            <Grid x:Name="HomeLaunchMenuShadowTopGroup">
+                <Grid.RenderTransform>
+                    <TranslateTransform x:Name="HomeLaunchMenuShadowTopTranslate" />
+                </Grid.RenderTransform>
+
+                <Border Width="31" Height="31"
+                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Margin="-17,-17,0,0"
+                        Background="{StaticResource HomeLaunchMenuShadowCornerTopLeftBrush}" />
+                <Border Height="17"
+                        VerticalAlignment="Top"
+                        Margin="14,-17,14,0"
+                        Background="{StaticResource HomeLaunchMenuShadowTopBrush}" />
+                <Border Width="31" Height="31"
+                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="0,-17,-17,0"
+                        Background="{StaticResource HomeLaunchMenuShadowCornerTopRightBrush}" />
+            </Grid>
+        </Grid>
+
+        <!-- 裁剪宿主固定在展开尺寸上，只有窗口大小变化时才重算；面板本身也固定为展开高度。
+             展开/收起只改平移量，露出多少由这层静态裁剪决定 —— 两者都是渲染级属性，
+             整段动画因此不再产生布局，与页面切换走同一条路径。 -->
+        <Grid x:Name="HomeLaunchMenuClipHost"
               Width="{StaticResource HomeLaunchMenuPanelWidth}"
               Height="{StaticResource HomeLaunchMenuCollapsedHeight}"
               Margin="{StaticResource HomeLaunchMenuPanelMargin}"
               HorizontalAlignment="Left"
               VerticalAlignment="Bottom">
-            <Border x:Name="HomeLaunchMenuShadowLayer"
-                    Background="{DynamicResource Brush.SecondaryMenu.Panel}"
-                    CornerRadius="14"
-                    Opacity="0.1"
-                    IsHitTestVisible="False"
-                    CacheMode="BitmapCache">
-                <Border.Effect>
-                    <DropShadowEffect BlurRadius="34"
-                                      Color="{DynamicResource Color.SecondaryMenu.Shadow}"
-                                      Opacity="1"
-                                      ShadowDepth="0" />
-                </Border.Effect>
-            </Border>
+            <!-- 面板比裁剪宿主高一点（见 MenuPanelBottomOverhang），它自带的底边和底部圆角描边
+                 因此在任何状态下都落在裁剪线之下、始终被裁掉。底边统一由下面那条静态端帽绘制，
+                 避免展开态出现两条半透明描边叠加成双倍浓度。 -->
+            <Grid x:Name="HomeLaunchMenuPanelShadow" VerticalAlignment="Top">
+                <Grid.RenderTransform>
+                    <TranslateTransform x:Name="HomeLaunchMenuPanelTranslate" />
+                </Grid.RenderTransform>
 
-            <controls:BackdropBlurBorder x:Name="HomeLaunchMenuPanel"
-                                         Style="{StaticResource SecondaryMenuBackdropStyle}">
-                <Grid x:Name="HomeLaunchMenuViewport"
-                      VerticalAlignment="Top"
-                      ClipToBounds="True">
-                    <TextBlock x:Name="HomeLaunchEmptyStateText"
-                               Text="{x:Static res:Strings.Home_NoLaunchInstances}"
-                               TextWrapping="Wrap"
-                               VerticalAlignment="Top">
-                        <TextBlock.RenderTransform>
-                            <TranslateTransform x:Name="HomeLaunchEmptyStateTranslate" />
-                        </TextBlock.RenderTransform>
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource HomeLaunchInstanceEmptyTextStyle}">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding HasNoLaunchInstances}" Value="True">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                <!-- 面板内部的均匀阴影。DropShadowEffect 在轮廓内部是一整片满值，面板底色只有 50%
+                     不透明度，这一片会透出来；九宫格只画外圈，因此必须补上，否则内部只有四角有阴影。
+                     阴影色来自主题资源，随面板平移并被裁剪，可见范围始终与面板一致。 -->
+                <Border Background="{DynamicResource Brush.SecondaryMenu.Shadow.Interior}"
+                        CornerRadius="14"
+                        IsHitTestVisible="False" />
 
-                    <Grid x:Name="HomeLaunchProgressiveBlurLayer"
-                          Background="Transparent"
-                          behaviors:VerticalEdgeOpacityMask.IsEnabled="False"
-                          behaviors:VerticalEdgeOpacityMask.TopFadeLength="70"
-                          behaviors:VerticalEdgeOpacityMask.TopIntermediateLength="30"
-                          behaviors:VerticalEdgeOpacityMask.TopIntermediateOpacity="0.1"
-                          behaviors:VerticalEdgeOpacityMask.MinimumOpacity="0">
-                        <Grid x:Name="HomeLaunchProgressiveBlurDirectHost"
-                              SnapsToDevicePixels="True">
-                            <Grid x:Name="HomeLaunchProgressiveBlurVisualSource"
-                                  Background="Transparent">
-                                <ListBox x:Name="HomeLaunchInstanceListBox"
-                                         Tag="HomeLaunchInstanceList"
-                                         ItemsSource="{Binding LaunchInstances}"
-                                         Style="{StaticResource HomeLaunchInstanceListBoxStyle}"
-                                         ItemContainerStyle="{StaticResource ListPageVirtualizedListBoxItemStyle}"
-                                         VirtualizingPanel.IsVirtualizing="True"
-                                         VirtualizingPanel.VirtualizationMode="Recycling"
-                                         VirtualizingPanel.ScrollUnit="Pixel">
-                                    <ListBox.RenderTransform>
-                                        <TranslateTransform x:Name="HomeLaunchListTranslate" />
-                                    </ListBox.RenderTransform>
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Height="{StaticResource HomeLaunchMenuItemHeight}"
-                                                    Style="{StaticResource SecondaryMenuButtonStyle}"
-                                                    behaviors:SecondaryMenuButtonBehavior.IsSelected="{Binding IsSelected}"
-                                                    behaviors:SecondaryMenuButtonBehavior.SuppressSelectedBackground="{Binding SuppressSelectedItemBackground, ElementName=Root}"
-                                                    Command="{Binding DataContext.SelectLaunchInstanceCommand, RelativeSource={RelativeSource AncestorType={x:Type views:HomeLaunchGameListView}}}"
-                                                    CommandParameter="{Binding}">
-                                                <ContentPresenter Content="{Binding}"
-                                                                  ContentTemplate="{StaticResource HomeLaunchInstanceMenuItemContentTemplate}" />
-                                            </Button>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
+                <Border x:Name="HomeLaunchMenuShadowLayer"
+                        Background="{DynamicResource Brush.SecondaryMenu.Panel}"
+                        CornerRadius="14"
+                        Opacity="0.1"
+                        IsHitTestVisible="False" />
+
+                <controls:BackdropBlurBorder x:Name="HomeLaunchMenuPanel"
+                                             Style="{StaticResource SecondaryMenuBackdropStyle}">
+                    <Grid x:Name="HomeLaunchMenuViewport"
+                          VerticalAlignment="Top"
+                          ClipToBounds="True">
+                        <TextBlock x:Name="HomeLaunchEmptyStateText"
+                                   Text="{x:Static res:Strings.Home_NoLaunchInstances}"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Top">
+                            <TextBlock.RenderTransform>
+                                <TranslateTransform x:Name="HomeLaunchEmptyStateTranslate" />
+                            </TextBlock.RenderTransform>
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource HomeLaunchInstanceEmptyTextStyle}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasNoLaunchInstances}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <Grid x:Name="HomeLaunchProgressiveBlurLayer"
+                              Background="Transparent"
+                              behaviors:VerticalEdgeOpacityMask.IsEnabled="False"
+                              behaviors:VerticalEdgeOpacityMask.TopFadeLength="70"
+                              behaviors:VerticalEdgeOpacityMask.TopIntermediateLength="30"
+                              behaviors:VerticalEdgeOpacityMask.TopIntermediateOpacity="0.1"
+                              behaviors:VerticalEdgeOpacityMask.MinimumOpacity="0">
+                            <Grid x:Name="HomeLaunchProgressiveBlurDirectHost"
+                                  SnapsToDevicePixels="True">
+                                <Grid x:Name="HomeLaunchProgressiveBlurVisualSource"
+                                      Background="Transparent">
+                                    <ListBox x:Name="HomeLaunchInstanceListBox"
+                                             Tag="HomeLaunchInstanceList"
+                                             ItemsSource="{Binding LaunchInstances}"
+                                             Style="{StaticResource HomeLaunchInstanceListBoxStyle}"
+                                             ItemContainerStyle="{StaticResource ListPageVirtualizedListBoxItemStyle}"
+                                             VirtualizingPanel.IsVirtualizing="True"
+                                             VirtualizingPanel.VirtualizationMode="Recycling"
+                                             VirtualizingPanel.ScrollUnit="Pixel">
+                                        <ListBox.RenderTransform>
+                                            <TranslateTransform x:Name="HomeLaunchListTranslate" />
+                                        </ListBox.RenderTransform>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Height="{StaticResource HomeLaunchMenuItemHeight}"
+                                                        Style="{StaticResource SecondaryMenuButtonStyle}"
+                                                        behaviors:SecondaryMenuButtonBehavior.IsSelected="{Binding IsSelected}"
+                                                        behaviors:SecondaryMenuButtonBehavior.SuppressSelectedBackground="{Binding SuppressSelectedItemBackground, ElementName=Root}"
+                                                        Command="{Binding DataContext.SelectLaunchInstanceCommand, RelativeSource={RelativeSource AncestorType={x:Type views:HomeLaunchGameListView}}}"
+                                                        CommandParameter="{Binding}">
+                                                    <ContentPresenter Content="{Binding}"
+                                                                      ContentTemplate="{StaticResource HomeLaunchInstanceMenuItemContentTemplate}" />
+                                                </Button>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
                             </Grid>
-                        </Grid>
 
-                        <Grid x:Name="HomeLaunchProgressiveBlurViewport"
-                              HorizontalAlignment="Stretch"
-                              VerticalAlignment="Top"
-                              ClipToBounds="True"
-                              IsHitTestVisible="False"
-                              SnapsToDevicePixels="True"
-                              Visibility="Collapsed">
-                            <Grid x:Name="HomeLaunchProgressiveBlurUpscaleHost"
-                                  HorizontalAlignment="Left"
+                            <Grid x:Name="HomeLaunchProgressiveBlurViewport"
+                                  HorizontalAlignment="Stretch"
                                   VerticalAlignment="Top"
-                                  RenderOptions.BitmapScalingMode="Linear">
-                                <Grid.RenderTransform>
-                                    <ScaleTransform x:Name="HomeLaunchProgressiveBlurUpscaleTransform"
-                                                    ScaleX="1"
-                                                    ScaleY="1" />
-                                </Grid.RenderTransform>
-
-                                <Grid x:Name="HomeLaunchProgressiveBlurVerticalHost"
+                                  ClipToBounds="True"
+                                  IsHitTestVisible="False"
+                                  SnapsToDevicePixels="True"
+                                  Visibility="Collapsed">
+                                <Grid x:Name="HomeLaunchProgressiveBlurUpscaleHost"
                                       HorizontalAlignment="Left"
-                                      VerticalAlignment="Top">
-                                    <Border x:Name="HomeLaunchProgressiveBlurHorizontalHost"
-                                            HorizontalAlignment="Left"
-                                            VerticalAlignment="Top">
-                                        <Border.Background>
-                                            <VisualBrush x:Name="HomeLaunchProgressiveBlurBrush"
-                                                         Viewbox="0,0,1,1"
-                                                         ViewboxUnits="Absolute"
-                                                         Viewport="0,0,1,1"
-                                                         ViewportUnits="RelativeToBoundingBox"
-                                                         Stretch="Fill"
-                                                         TileMode="None" />
-                                        </Border.Background>
-                                    </Border>
+                                      VerticalAlignment="Top"
+                                      RenderOptions.BitmapScalingMode="Linear">
+                                    <Grid.RenderTransform>
+                                        <ScaleTransform x:Name="HomeLaunchProgressiveBlurUpscaleTransform"
+                                                        ScaleX="1"
+                                                        ScaleY="1" />
+                                    </Grid.RenderTransform>
+
+                                    <Grid x:Name="HomeLaunchProgressiveBlurVerticalHost"
+                                          HorizontalAlignment="Left"
+                                          VerticalAlignment="Top">
+                                        <Border x:Name="HomeLaunchProgressiveBlurHorizontalHost"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Top">
+                                            <Border.Background>
+                                                <VisualBrush x:Name="HomeLaunchProgressiveBlurBrush"
+                                                             Viewbox="0,0,1,1"
+                                                             ViewboxUnits="Absolute"
+                                                             Viewport="0,0,1,1"
+                                                             ViewportUnits="RelativeToBoundingBox"
+                                                             Stretch="Fill"
+                                                             TileMode="None" />
+                                            </Border.Background>
+                                        </Border>
+                                    </Grid>
                                 </Grid>
                             </Grid>
                         </Grid>
+
+                        <Border x:Name="HomeLaunchHeaderOverlay"
+                                Style="{StaticResource SecondaryMenuHeaderOverlayStyle}">
+                            <Grid Margin="22,14,14,8"
+                                  VerticalAlignment="Top">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Margin="0,4,8,0"
+                                           Text="{x:Static res:Strings.Home_LaunchInstanceMenuTitle}"
+                                           Style="{StaticResource SecondaryMenuHeaderTextStyle}" />
+
+                                <ToggleButton x:Name="HomeLaunchMenuPinButton"
+                                              Grid.Column="1"
+                                              Style="{StaticResource HomeLaunchMenuPinButtonStyle}"
+                                              IsChecked="{Binding IsLaunchMenuPinned, Mode=OneWay}"
+                                              Command="{Binding ToggleLaunchMenuPinnedCommand}"
+                                              ToolTip="{Binding LaunchMenuPinTooltip}">
+                                    <controls:SvgIcon Width="17"
+                                                      Height="17"
+                                                      IconKey="general/general_pin"
+                                                      ForceFill="{Binding IsLaunchMenuPinned}"
+                                                      Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type ToggleButton}}}"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type ToggleButton}}}"
+                                                      IsHitTestVisible="False" />
+                                </ToggleButton>
+                            </Grid>
+                        </Border>
                     </Grid>
+                </controls:BackdropBlurBorder>
+            </Grid>
 
-                    <Border x:Name="HomeLaunchHeaderOverlay"
-                            Style="{StaticResource SecondaryMenuHeaderOverlayStyle}">
-                        <Grid Margin="22,14,14,8"
-                              VerticalAlignment="Top">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Margin="0,4,8,0"
-                                       Text="{x:Static res:Strings.Home_LaunchInstanceMenuTitle}"
-                                       Style="{StaticResource SecondaryMenuHeaderTextStyle}" />
-
-                            <ToggleButton x:Name="HomeLaunchMenuPinButton"
-                                          Grid.Column="1"
-                                          Style="{StaticResource HomeLaunchMenuPinButtonStyle}"
-                                          IsChecked="{Binding IsLaunchMenuPinned, Mode=OneWay}"
-                                          Command="{Binding ToggleLaunchMenuPinnedCommand}"
-                                          ToolTip="{Binding LaunchMenuPinTooltip}">
-                                <controls:SvgIcon Width="17"
-                                                  Height="17"
-                                                  IconKey="general/general_pin"
-                                                  ForceFill="{Binding IsLaunchMenuPinned}"
-                                                  Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type ToggleButton}}}"
-                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type ToggleButton}}}"
-                                                  IsHitTestVisible="False" />
-                            </ToggleButton>
-                        </Grid>
-                    </Border>
-                </Grid>
-            </controls:BackdropBlurBorder>
         </Grid>
+
+        <!-- 底边端帽：菜单底边从头到尾没有移动过，所以这条描边完全静态 —— 收起态、展开态
+             和动画中途都在同一个位置，不参与任何动画。高度等于圆角半径，两段圆弧刚好接上。 -->
+        <Border x:Name="HomeLaunchMenuBottomEdge"
+                Width="{StaticResource HomeLaunchMenuPanelWidth}"
+                Height="14"
+                Margin="{StaticResource HomeLaunchMenuPanelMargin}"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                BorderBrush="{DynamicResource Brush.SecondaryMenu.Border}"
+                BorderThickness="1,0,1,1"
+                CornerRadius="0,0,14,14"
+                IsHitTestVisible="False" />
     </Grid>
 </UserControl>

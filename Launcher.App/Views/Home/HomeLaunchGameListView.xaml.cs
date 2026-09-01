@@ -22,6 +22,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
@@ -54,10 +55,17 @@ public partial class HomeLaunchGameListView : UserControl
             new PropertyMetadata(false, OnProgressiveBlurEnabledChanged));
 
     private const double FallbackPanelWidth = 224;
+    // 折叠态下面板底边被裁掉，可见底边的圆角由裁剪几何提供，半径必须与面板一致。
+    private const double MenuPanelCornerRadius = 14;
+    // 侧边条上下各让开一个圆角，剩下的才是可缩放的均匀段。
+    private const double MenuShadowSideInset = MenuPanelCornerRadius * 2;
+    // 面板向下多出这么多，保证它自带的底边描边在任何状态下都在裁剪线之下。
+    private const double MenuPanelBottomOverhang = 2;
     private const double FallbackCollapsedHeight = 72;
     private const double FallbackItemHeight = 54;
-    private const double FallbackAnimationDurationMilliseconds = 320;
-    private const double FallbackAnimationEasePower = 2.4;
+    private const double FallbackAnimationDurationMilliseconds = 380;
+    private const double FallbackAnimationEasePower = 3.2;
+    private const double FallbackCollapseDelayMilliseconds = 110;
     private static readonly Thickness FallbackPanelMargin = new(24, 24, 0, 24);
 
     private HomeLaunchGameListViewModel? attachedViewModel;
@@ -69,6 +77,7 @@ public partial class HomeLaunchGameListView : UserControl
     private bool? appliedExpandedState;
     private bool isProgressiveBlurActive;
     private readonly ProgressiveBlurBandController? progressiveBlurController;
+    private DispatcherTimer? collapseDelayTimer;
 
     public HomeLaunchGameListView()
     {
@@ -95,8 +104,7 @@ public partial class HomeLaunchGameListView : UserControl
         Unloaded += OnUnloaded;
         DataContextChanged += OnDataContextChanged;
         SizeChanged += (_, _) => QueueApplyMenuState(animate: IsLoaded);
-        HomeLaunchMenuPanelShadow.MouseEnter += (_, _) => SetPointerExpanded(true);
-        HomeLaunchMenuPanelShadow.MouseLeave += (_, _) => SetPointerExpanded(false);
+        AttachHoverInput();
     }
 
     internal FrameworkElement FloatingLayerElement => HomeLaunchFloatingLayer;
@@ -137,16 +145,85 @@ public partial class HomeLaunchGameListView : UserControl
 
     internal void SetPointerExpandedForTest(bool value)
     {
-        SetPointerExpanded(value);
+        // 测试要的是状态本身，不走收起延迟，否则断言得等定时器。
+        collapseDelayTimer?.Stop();
+        if (isPointerExpanded == value)
+            return;
+
+        isPointerExpanded = value;
+        QueueApplyMenuState(animate: IsLoaded);
+    }
+
+    private TimeSpan GetCollapseDelay()
+    {
+        return TimeSpan.FromMilliseconds(Math.Max(0d, GetResourceDouble(
+            "HomeLaunchMenuCollapseDelayMilliseconds",
+            FallbackCollapseDelayMilliseconds)));
+    }
+
+    private void ScheduleDelayedCollapse()
+    {
+        collapseDelayTimer ??= new DispatcherTimer(DispatcherPriority.Input, Dispatcher);
+        collapseDelayTimer.Interval = GetCollapseDelay();
+        collapseDelayTimer.Tick -= CollapseDelayTimer_Tick;
+        collapseDelayTimer.Tick += CollapseDelayTimer_Tick;
+        collapseDelayTimer.Start();
+    }
+
+    private void CollapseDelayTimer_Tick(object? sender, EventArgs e)
+    {
+        collapseDelayTimer?.Stop();
+        if (!isPointerExpanded)
+            return;
+
+        if (IsPointerOverMenu())
+        {
+            // 指针又回来了，或者停在被标题栏拖拽区盖住的顶部那一段。后者收不到新的 MouseLeave，
+            // 所以这里继续观察而不是直接作废；指针真正离开菜单范围后，下一拍就会收起。
+            collapseDelayTimer?.Start();
+            return;
+        }
+
+        isPointerExpanded = false;
+        QueueApplyMenuState(animate: IsLoaded);
+    }
+
+    /// <summary>
+    /// 除了命中测试，再按几何范围复核一次。展开态菜单的顶边在内容区 y=24，而窗口标题栏的
+    /// 拖拽区覆盖 y=0~48 且渲染在页面之上，两者重叠 24px：指针停在那一段时命中的是拖拽区，
+    /// WPF 会发出 MouseLeave，但视觉上指针仍在菜单里。只靠 IsMouseOver 会导致还没离开就收起。
+    /// </summary>
+    private bool IsPointerOverMenu()
+    {
+        if (HomeLaunchMenuPanelShadow.IsMouseOver)
+            return true;
+
+        // 指针已经离开窗口时不再做几何判断：那种情况下取到的位置是最后一次的残留值，
+        // 会把菜单永久留在展开态。
+        if (!IsLoaded
+            || HomeLaunchMenuClipHost.ActualWidth <= 0
+            || Window.GetWindow(this)?.IsMouseOver != true)
+        {
+            return false;
+        }
+
+        var position = Mouse.GetPosition(HomeLaunchMenuClipHost);
+        // 裁剪宿主固定在展开尺寸上，可见区域的顶边由当前平移量决定。
+        return position.X >= 0
+            && position.X <= HomeLaunchMenuClipHost.ActualWidth
+            && position.Y >= HomeLaunchMenuPanelTranslate.Y
+            && position.Y <= HomeLaunchMenuClipHost.ActualHeight;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         // 进入视觉树后容器和资源尺寸才可用，此时附加集合监听并同步无动画初始状态。
         AttachViewModel(DataContext as HomeLaunchGameListViewModel);
-        HomeLaunchMenuPanelShadow.Width = GetResourceDouble("HomeLaunchMenuPanelWidth", FallbackPanelWidth);
-        HomeLaunchMenuPanelShadow.Height = GetCollapsedHeight();
-        HomeLaunchMenuPanelShadow.Margin = GetPanelMargin();
+        HomeLaunchMenuClipHost.Width = GetResourceDouble("HomeLaunchMenuPanelWidth", FallbackPanelWidth);
+        HomeLaunchMenuShadowHost.Width = HomeLaunchMenuClipHost.Width;
+        HomeLaunchMenuShadowHost.Margin = GetPanelMargin();
+        HomeLaunchMenuClipHost.Height = GetCollapsedHeight();
+        HomeLaunchMenuClipHost.Margin = GetPanelMargin();
         progressiveBlurController?.OnLoaded();
         QueueApplyMenuState(animate: false, DispatcherPriority.Loaded);
     }
@@ -157,6 +234,7 @@ public partial class HomeLaunchGameListView : UserControl
         VerticalEdgeOpacityMask.SetIsEnabled(HomeLaunchProgressiveBlurLayer, false);
         progressiveBlurController?.OnUnloaded();
         DetachViewModel(attachedViewModel);
+        collapseDelayTimer?.Stop();
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -206,16 +284,43 @@ public partial class HomeLaunchGameListView : UserControl
         QueueApplyMenuState(animate: IsLoaded);
     }
 
+    /// <summary>
+    /// 指针离开后不立即收起，既避免短暂划出边界时误收，也让动画提交避开当前 MouseLeave 输入阶段。
+    /// </summary>
     private void SetPointerExpanded(bool expanded)
     {
+        collapseDelayTimer?.Stop();
         if (isPointerExpanded == expanded)
             return;
+
+        if (!expanded && IsLoaded && GetCollapseDelay() > TimeSpan.Zero)
+        {
+            ScheduleDelayedCollapse();
+            return;
+        }
 
         isPointerExpanded = expanded;
         QueueApplyMenuState(animate: IsLoaded);
     }
 
-    private void QueueApplyMenuState(bool animate, DispatcherPriority priority = DispatcherPriority.Background)
+    private void AttachHoverInput()
+    {
+        HomeLaunchMenuPanelShadow.MouseEnter += HoverInputElement_OnMouseEnter;
+        HomeLaunchMenuPanelShadow.MouseLeave += HoverInputElement_OnMouseLeave;
+    }
+
+    private void HoverInputElement_OnMouseEnter(object sender, MouseEventArgs e) =>
+        SetPointerExpanded(true);
+
+    private void HoverInputElement_OnMouseLeave(object sender, MouseEventArgs e) =>
+        SetPointerExpanded(false);
+
+    /// <summary>
+    /// 默认用 <see cref="DispatcherPriority.Loaded"/> 而不是 Background：Background 低于 Input，
+    /// 指针还在移动时输入消息不断，这个任务会被饿上几十毫秒，动画迟迟不开始。
+    /// Loaded 高于 Input 且排在本轮布局之后，既不会被饿死，读到的 ActualHeight 也仍然是最新的。
+    /// </summary>
+    private void QueueApplyMenuState(bool animate, DispatcherPriority priority = DispatcherPriority.Loaded)
     {
         // 多个属性和集合事件常在同一轮触发，合并成一次布局读取，避免重复 Measure。
         pendingAnimate |= animate;
@@ -246,15 +351,23 @@ public partial class HomeLaunchGameListView : UserControl
         // 先计算目标高度和列表偏移，再同时启动动画，确保选中项在折叠态仍保持可见。
         var expandedHeight = GetExpandedHeight();
         HomeLaunchMenuViewport.Height = expandedHeight;
+        UpdateMenuClipHost(expandedHeight);
 
         var shouldExpand = ShouldUseExpandedState();
         var selectedItemWasVisible = false;
         SuppressSelectedItemBackground = !shouldExpand;
         HomeLaunchHeaderOverlay.IsHitTestVisible = shouldExpand;
-        UpdateProgressiveBlurState(shouldExpand);
-        if (!shouldExpand
-            && attachedViewModel?.SelectedLaunchInstanceItem is not null
-            && !PrepareSelectedItemForMeasurement(out selectedItemWasVisible))
+        // 展开动画期间先不挂渐进模糊：透明度遮罩和两趟着色器会显著增加每帧重绘成本，
+        // 而面板停稳之前这条模糊带本来也看不清。收起时立即卸掉，与原先一致。
+        var deferProgressiveBlur = shouldExpand && animate;
+        UpdateProgressiveBlurState(shouldExpand && !deferProgressiveBlur);
+
+        var requiresMeasurement = !shouldExpand && attachedViewModel?.SelectedLaunchInstanceItem is not null;
+        var isMeasured = false;
+        if (requiresMeasurement)
+            isMeasured = PrepareSelectedItemForMeasurement(out selectedItemWasVisible);
+
+        if (requiresMeasurement && !isMeasured)
         {
             if (measureRetryCount++ < 4)
             {
@@ -278,14 +391,84 @@ public partial class HomeLaunchGameListView : UserControl
         appliedExpandedState = shouldExpand;
         var generation = ++animationGeneration;
         var targetHeight = shouldExpand ? expandedHeight : GetCollapsedHeight();
+        // 面板高度固定，收起就是把它整体下移，露出的部分由裁剪宿主决定。
+        var targetPanelOffset = Math.Max(0d, expandedHeight - targetHeight);
         var targetTranslate = shouldExpand ? 0 : CalculateCollapsedListTranslate();
         var targetEmptyStateTranslate = CalculateEmptyStateTranslate(shouldExpand, expandedHeight);
         var targetHeaderOpacity = shouldExpand ? 1 : 0;
 
-        AnimateDouble(HomeLaunchMenuPanelShadow, HeightProperty, targetHeight, animate, generation);
+        var isPanelAnimated = AnimateDouble(
+            HomeLaunchMenuPanelTranslate,
+            TranslateTransform.YProperty,
+            targetPanelOffset,
+            animate,
+            generation,
+            OnMenuHeightAnimationCompleted);
         AnimateDouble(HomeLaunchListTranslate, TranslateTransform.YProperty, targetTranslate, animate, generation);
         AnimateDouble(HomeLaunchEmptyStateTranslate, TranslateTransform.YProperty, targetEmptyStateTranslate, animate, generation);
         AnimateDouble(HomeLaunchHeaderOverlay, OpacityProperty, targetHeaderOpacity, animate, generation);
+        // 投影三段与面板用同一组动画参数、在同一拍提交，因此逐帧严格对齐。
+        // 顶端帽走与面板相同的平移；侧边条的缩放是可见高度的线性函数，同样的缓动作用在两端点上，
+        // 中间每一帧的取值都彼此一致。
+        AnimateDouble(HomeLaunchMenuShadowTopTranslate, TranslateTransform.YProperty, targetPanelOffset, animate, generation);
+        var targetSideScale = CalculateShadowSideScale(targetHeight, expandedHeight);
+        AnimateDouble(HomeLaunchMenuShadowLeftScale, ScaleTransform.ScaleYProperty, targetSideScale, animate, generation);
+        AnimateDouble(HomeLaunchMenuShadowRightScale, ScaleTransform.ScaleYProperty, targetSideScale, animate, generation);
+
+        // 高度没有真正动起来（目标一致或本次不做动画）时不会有 Completed，就地收尾。
+        if (!isPanelAnimated)
+            OnMenuHeightAnimationCompleted();
+    }
+
+    /// <summary>
+    /// 侧边条在布局上占满两端圆角之间的高度，锚在底部缩放。缩放比就是可见高度扣掉两端圆角
+    /// 之后与展开态的比值 —— 它是可见高度的线性函数，才能和面板平移共用同一条缓动而不脱节。
+    /// </summary>
+    private static double CalculateShadowSideScale(double targetHeight, double expandedHeight)
+    {
+        var expandedSpan = expandedHeight - MenuShadowSideInset;
+        if (expandedSpan <= 0d)
+            return 0d;
+
+        return Math.Clamp((targetHeight - MenuShadowSideInset) / expandedSpan, 0d, 1d);
+    }
+
+    private void UpdateMenuClipHost(double expandedHeight)
+    {
+        var width = GetResourceDouble("HomeLaunchMenuPanelWidth", FallbackPanelWidth);
+        if (HomeLaunchMenuClipHost.Clip is not null
+            && Math.Abs(HomeLaunchMenuClipHost.Width - width) < 0.1
+            && Math.Abs(HomeLaunchMenuClipHost.Height - expandedHeight) < 0.1)
+        {
+            return;
+        }
+
+        HomeLaunchMenuClipHost.Width = width;
+        HomeLaunchMenuClipHost.Height = expandedHeight;
+        HomeLaunchMenuClipHost.Margin = GetPanelMargin();
+        // 投影宿主与裁剪宿主同尺寸同位置，但不裁剪，让九宫格向外溢出。
+        HomeLaunchMenuShadowHost.Width = width;
+        HomeLaunchMenuShadowHost.Height = expandedHeight;
+        HomeLaunchMenuShadowHost.Margin = GetPanelMargin();
+        // 面板比裁剪宿主高一点，自带的底边描边因此永远落在裁剪线之下，由静态端帽统一绘制。
+        HomeLaunchMenuPanelShadow.Height = expandedHeight + MenuPanelBottomOverhang;
+        HomeLaunchMenuBottomEdge.Width = width;
+        HomeLaunchMenuBottomEdge.Margin = GetPanelMargin();
+        var clip = new RectangleGeometry(
+            new Rect(0, 0, width, expandedHeight),
+            MenuPanelCornerRadius,
+            MenuPanelCornerRadius);
+        // 几何在动画期间不再变化，冻结后渲染线程可以直接复用。
+        clip.Freeze();
+        HomeLaunchMenuClipHost.Clip = clip;
+    }
+
+    /// <summary>
+    /// 面板停稳之后再补上被推迟的渐进模糊，它的挂载开销就落在没有动画的那一帧上。
+    /// </summary>
+    private void OnMenuHeightAnimationCompleted()
+    {
+        UpdateProgressiveBlurState(ShouldUseExpandedState());
     }
 
     private static void OnProgressiveBlurEnabledChanged(
@@ -457,18 +640,19 @@ public partial class HomeLaunchGameListView : UserControl
         return HomeLaunchInstanceListBox.ItemContainerGenerator.ContainerFromItem(selectedItem) as FrameworkElement;
     }
 
-    private void AnimateDouble(
+    private bool AnimateDouble(
         DependencyObject target,
         DependencyProperty property,
         double to,
         bool animate,
-        int generation)
+        int generation,
+        Action? onCompleted = null)
     {
         // 开始新动画前以当前呈现值为起点，快速进出菜单时不会跳回上次目标值。
         if (target is not IAnimatable animatable)
         {
             target.SetValue(property, to);
-            return;
+            return false;
         }
 
         var from = GetCurrentDouble(target, property);
@@ -478,7 +662,7 @@ public partial class HomeLaunchGameListView : UserControl
         if (!animate || Math.Abs(from - to) < 0.1)
         {
             target.SetValue(property, to);
-            return;
+            return false;
         }
 
         var animation = new DoubleAnimation
@@ -496,9 +680,11 @@ public partial class HomeLaunchGameListView : UserControl
 
             animatable.BeginAnimation(property, null);
             target.SetValue(property, to);
+            onCompleted?.Invoke();
         };
 
         animatable.BeginAnimation(property, animation, HandoffBehavior.SnapshotAndReplace);
+        return true;
     }
 
     private static double GetCurrentDouble(DependencyObject target, DependencyProperty property)

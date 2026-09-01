@@ -318,8 +318,14 @@
     <Color x:Key="Color.SecondaryMenu.BackdropTint">#90000000</Color>
     <Color x:Key="Color.SurfaceBackdrop.ContrastOverlay">#18FFFFFF</Color>
     <Color x:Key="Color.LauncherBackground.Image.DimOverlay">#FF000000</Color>
-    <Color x:Key="Color.SecondaryMenu.Border">#24FFFFFF</Color>
+    <Color x:Key="Color.SecondaryMenu.Border">#24B0B0B0</Color>
     <Color x:Key="Color.SecondaryMenu.Shadow">#52000000</Color>
+    <Color x:Key="Color.SecondaryMenu.Shadow.Transparent">#00000000</Color>
+    <Color x:Key="Color.SecondaryMenu.Shadow.Faint">#07000000</Color>
+    <Color x:Key="Color.SecondaryMenu.Shadow.Interior">#08000000</Color>
+    <Color x:Key="Color.SecondaryMenu.Shadow.Soft">#16000000</Color>
+    <Color x:Key="Color.SecondaryMenu.Shadow.Medium">#2B000000</Color>
+    <Color x:Key="Color.SecondaryMenu.Shadow.Strong">#42000000</Color>
     <Color x:Key="Color.SecondaryMenu.Header.Start">#D8282828</Color>
     <Color x:Key="Color.SecondaryMenu.Header.Middle">#C2282828</Color>
     <Color x:Key="Color.SecondaryMenu.Header.End">#00282828</Color>
@@ -328,6 +334,7 @@
     <SolidColorBrush x:Key="Brush.SurfaceBackdrop.ContrastOverlay" Color="{StaticResource Color.SurfaceBackdrop.ContrastOverlay}" />
     <SolidColorBrush x:Key="Brush.LauncherBackground.Image.DimOverlay" Color="{StaticResource Color.LauncherBackground.Image.DimOverlay}" />
     <SolidColorBrush x:Key="Brush.SecondaryMenu.Border" Color="{StaticResource Color.SecondaryMenu.Border}" />
+    <SolidColorBrush x:Key="Brush.SecondaryMenu.Shadow.Interior" Color="{StaticResource Color.SecondaryMenu.Shadow.Interior}" />
     <SolidColorBrush x:Key="Brush.Home.Name.Foreground" Color="{StaticResource Color.F4FFFFFF}" />
     <SolidColorBrush x:Key="Brush.Home.GameSettings.Foreground" Color="{StaticResource Color.9FFFFFFF}" />
     <SolidColorBrush x:Key="Brush.Home.GameSettings.ForegroundHover" Color="{StaticResource Color.F0FFFFFF}" />
@@ -353,4 +360,3 @@
                       ShadowDepth="0" />
     <Color x:Key="Color.Accent.Primary">#2196F3</Color>
 </ResourceDictionary>
-
