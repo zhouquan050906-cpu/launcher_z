@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  *
@@ -22,7 +22,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Threading;
 using Launcher.App.Controls;
 using Launcher.App.Services;
 using Launcher.App.ViewModels.Account;
@@ -61,10 +60,12 @@ public partial class AccountDetailsView : UserControl
                 PART_ProgressiveBlurBrush),
             () => IsVisible && IsProgressiveBlurEnabled);
 
-        accountTransitionService = new PageTransitionService(
+        // 方向按账户在左侧列表里的上下位置来定，列表会随增删改序，因此每次过渡现取一遍。
+        accountTransitionService = PageTransitionService.CreateWithDynamicOrder(
             Dispatcher,
             _ => DetailsContentRoot,
-            GetCurrentAccountToken());
+            GetCurrentAccountToken(),
+            GetAccountOrder);
 
         Loaded += AccountDetailsView_Loaded;
         Unloaded += AccountDetailsView_Unloaded;
@@ -178,14 +179,25 @@ public partial class AccountDetailsView : UserControl
 
         currentAccountToken = accountToken;
         ScrollToTop();
-        Dispatcher.BeginInvoke(
-            () => accountTransitionService.MoveTo(accountToken),
-            DispatcherPriority.Loaded);
+        // 过渡必须和数据更新落在同一个 dispatcher 周期里。推迟到 Loaded 优先级会排在
+        // 渲染之后，新账户的内容先按最终位置整幅画出来一帧，再被过渡压回几乎全透明重走一遍
+        // 淡入——看起来就是"先闪一下再重新进场"。其余分区视图都是就地同步调用。
+        AccountDetailsScrollViewer.UpdateLayout();
+        DetailsContentRoot.UpdateLayout();
+        accountTransitionService.MoveTo(accountToken);
     }
 
     private string? GetCurrentAccountToken()
     {
         return (DataContext as AccountDetailsViewModel)?.SelectedAccount?.Id;
+    }
+
+    private IReadOnlyList<string> GetAccountOrder()
+    {
+        if (DataContext is not AccountDetailsViewModel viewModel)
+            return [];
+
+        return [.. viewModel.AccountList.Accounts.Select(account => account.Id)];
     }
 
     private void ResetContentPresentation()

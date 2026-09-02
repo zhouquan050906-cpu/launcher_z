@@ -24,6 +24,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Launcher.App.Controls;
 using Launcher.App.Diagnostics;
+using Launcher.App.Models;
 
 namespace Launcher.App.Services;
 
@@ -53,16 +54,13 @@ public sealed class PageTransitionService
     internal const double TransitionOffset = 22;
 
     internal static readonly TimeSpan TransitionDuration = TimeSpan.FromMilliseconds(240);
-    private static readonly string[] DefaultPageOrder =
-    [
-        "Account",
-        "Home",
-        "Download",
-        "Install",
-        "GameSettings",
-        "Resources",
-        "Settings"
-    ];
+
+    /// <summary>
+    /// 主菜单页面的默认顺序。直接取自 <see cref="NavigationCatalog.PageOrder"/>，
+    /// 免得这里的副本和侧边栏实际顺序悄悄分家——一旦漏页，缺的那页在
+    /// <see cref="IndexOfPage"/> 里拿到 -1，进出方向就都会退化成默认的自下而上。
+    /// </summary>
+    private static readonly IReadOnlyList<string> DefaultPageOrder = NavigationCatalog.PageOrder;
 
     /// <summary>
     /// 预热阶段使用的透明度。必须严格大于 0：完全透明的子树会被渲染层剔除，
@@ -95,7 +93,7 @@ public sealed class PageTransitionService
 
     private readonly Dispatcher dispatcher;
     private readonly Func<string, FrameworkElement?> resolvePageRoot;
-    private readonly IReadOnlyList<string> pageOrder;
+    private readonly Func<IReadOnlyList<string>> resolvePageOrder;
     private readonly TransitionRenderCacheFactory renderCacheFactory;
     private readonly ICompositionFrameSource compositionFrames;
     private string? currentPage;
@@ -115,7 +113,7 @@ public sealed class PageTransitionService
         Dispatcher dispatcher,
         Func<string, FrameworkElement?> resolvePageRoot,
         string? initialPage)
-        : this(dispatcher, resolvePageRoot, initialPage, null)
+        : this(dispatcher, resolvePageRoot, initialPage, (IReadOnlyList<string>?)null)
     {
     }
 
@@ -128,6 +126,23 @@ public sealed class PageTransitionService
     {
     }
 
+    /// <summary>
+    /// 顺序在运行时会变的调用方走这里：每次过渡都重新取一遍。
+    /// 账户列表就是这样——条目随增删改序，构造时的固定快照会让方向停在那一刻。
+    /// </summary>
+    public static PageTransitionService CreateWithDynamicOrder(
+        Dispatcher dispatcher,
+        Func<string, FrameworkElement?> resolvePageRoot,
+        string? initialPage,
+        Func<IReadOnlyList<string>> resolvePageOrder) =>
+        new(
+            dispatcher,
+            resolvePageRoot,
+            initialPage,
+            resolvePageOrder,
+            TransitionRenderCacheScope.TryAcquire,
+            compositionFrames: null);
+
     internal PageTransitionService(
         Dispatcher dispatcher,
         Func<string, FrameworkElement?> resolvePageRoot,
@@ -135,11 +150,28 @@ public sealed class PageTransitionService
         IReadOnlyList<string>? pageOrder,
         TransitionRenderCacheFactory renderCacheFactory,
         ICompositionFrameSource? compositionFrames = null)
+        : this(
+            dispatcher,
+            resolvePageRoot,
+            initialPage,
+            () => pageOrder is { Count: > 0 } ? pageOrder : DefaultPageOrder,
+            renderCacheFactory,
+            compositionFrames)
+    {
+    }
+
+    private PageTransitionService(
+        Dispatcher dispatcher,
+        Func<string, FrameworkElement?> resolvePageRoot,
+        string? initialPage,
+        Func<IReadOnlyList<string>> resolvePageOrder,
+        TransitionRenderCacheFactory renderCacheFactory,
+        ICompositionFrameSource? compositionFrames)
     {
         this.dispatcher = dispatcher;
         UiTransitionGate.AttachDispatcher(dispatcher);
         this.resolvePageRoot = resolvePageRoot;
-        this.pageOrder = pageOrder is { Count: > 0 } ? pageOrder : DefaultPageOrder;
+        this.resolvePageOrder = resolvePageOrder;
         this.renderCacheFactory = renderCacheFactory;
         this.compositionFrames = compositionFrames ?? CompositionTargetFrameSource.Instance;
         currentPage = initialPage;
@@ -318,19 +350,21 @@ public sealed class PageTransitionService
         if (string.IsNullOrWhiteSpace(oldPage))
             return TransitionOffset;
 
-        var oldIndex = IndexOfPage(oldPage);
-        var newIndex = IndexOfPage(newPage);
+        // 顺序可能每次都不一样，取一份用到底，避免两次查询落在不同的快照上。
+        var order = resolvePageOrder() ?? DefaultPageOrder;
+        var oldIndex = IndexOfPage(order, oldPage);
+        var newIndex = IndexOfPage(order, newPage);
         if (oldIndex < 0 || newIndex < 0 || oldIndex == newIndex)
             return TransitionOffset;
 
         return newIndex > oldIndex ? TransitionOffset : -TransitionOffset;
     }
 
-    private int IndexOfPage(string page)
+    private static int IndexOfPage(IReadOnlyList<string> order, string page)
     {
-        for (var index = 0; index < pageOrder.Count; index++)
+        for (var index = 0; index < order.Count; index++)
         {
-            if (string.Equals(pageOrder[index], page, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(order[index], page, StringComparison.OrdinalIgnoreCase))
                 return index;
         }
 

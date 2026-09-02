@@ -1,4 +1,4 @@
-/*
+﻿/*
  * BlockHelm Launcher
  * Copyright (C) 2026 Quan Zhou
  *
@@ -34,6 +34,23 @@ internal static class NavigationCatalog
     public const string MultiplayerPage = "Multiplayer";
     public const string ResourcesPage = "Resources";
     public const string SettingsPage = "Settings";
+
+    /// <summary>
+    /// 侧边栏按钮自上而下的顺序，页面切换动画的方向以此为准：目标排在下方就自下而上进入。
+    /// 前七项由 <see cref="CreatePrimaryItems"/> 铺开，<see cref="InstallPage"/> 由下载任务
+    /// 按钮承载并停靠在菜单底部，因此排在最后。改动菜单顺序时必须同步这里，否则动画会反向。
+    /// </summary>
+    public static readonly string[] PageOrder =
+    [
+        AccountPage,
+        HomePage,
+        MultiplayerPage,
+        DownloadPage,
+        GameSettingsPage,
+        ResourcesPage,
+        SettingsPage,
+        InstallPage
+    ];
 
     public static NavigationItem CreateDownloadTasksItem()
     {
