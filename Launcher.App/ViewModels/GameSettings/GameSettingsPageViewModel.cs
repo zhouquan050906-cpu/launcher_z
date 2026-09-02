@@ -41,7 +41,6 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
     private readonly ILogger<GameSettingsPageViewModel> logger;
     // 选中项对象会被列表刷新替换，单独保存订阅目标以便安全解除旧对象事件。
     private INotifyPropertyChanged? selectedInstanceNotifier;
-    private string lastImportDropHintMessage = string.Empty;
     private bool isShellPageActive;
 
     [ObservableProperty]
@@ -216,8 +215,7 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
 
     public void ClearImportDropState()
     {
-        lastImportDropHintMessage = string.Empty;
-        floatingMessageService.Show(string.Empty);
+        floatingMessageService.ClearDragHint(this);
     }
 
     /// <summary>
@@ -226,15 +224,10 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
     public async Task HandleImportDropAsync(IReadOnlyList<string> paths)
     {
         // 拖放移动期间和真正释放时使用同一评估器，确保提示与最终处理规则完全一致。
+        // 此处不再重新显示提示：松手后它必然被立刻清除，重显只会让浮层闪一下。
         var evaluation = EvaluateImportDrop(paths);
-        ApplyImportDropHint(evaluation);
-        if (!evaluation.ShouldHandle)
-        {
-            ClearImportDropState();
-            return;
-        }
         ClearImportDropState();
-        if (!evaluation.CanAccept)
+        if (!evaluation.ShouldHandle || !evaluation.CanAccept)
             return;
         try
         {
@@ -410,11 +403,8 @@ public sealed partial class GameSettingsPageViewModel : ObservableObject
                 ? Strings.GameSettings_DropReleaseToImportMessage
                 : Strings.GameSettings_DropUnsupportedFileMessage
             : string.Empty;
-        // DragOver 高频触发；相同消息不重复调用浮层服务，避免动画不断重新开始。
-        if (string.Equals(lastImportDropHintMessage, message, StringComparison.Ordinal))
-            return;
-        lastImportDropHintMessage = message;
-        floatingMessageService.Show(message);
+        // DragOver 高频触发；去重由浮层服务统一负责，避免动画不断重新开始。
+        floatingMessageService.ShowDragHint(this, message);
     }
 
     /// <summary>

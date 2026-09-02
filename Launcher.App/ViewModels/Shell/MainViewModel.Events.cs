@@ -55,6 +55,13 @@ public Task SyncExternalInstanceCatalogAsync()
             UpdateAccountNavigationAvatar();
     }
 
+    private void AccountDialog_DroppedThirdPartyAccountAdditionCompleted()
+    {
+        CurrentPage = NavigationCatalog.AccountPage;
+        UpdateSecondaryItems();
+        UpdateNavigationSelection();
+    }
+
     private void GameSettingsPage_LocalImportRequested()
     {
         DownloadPage.LocalImportDialog.Open();

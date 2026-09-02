@@ -64,6 +64,29 @@ public sealed class AccountDialogService : IAccountDialogService
         addAccountHost.Show();
     }
 
+    public void ShowThirdPartyAddAccountDialog(string authenticationServer)
+    {
+        if (accountPage is null || addAccountHost is null || addAccountView is null)
+            return;
+
+        if (addAccountHost.IsOpen
+            && accountPage.Dialog.IsAddAccountDialogOpen
+            && (accountPage.Dialog.IsAccountTypeStep || accountPage.Dialog.IsThirdPartyCredentialsStep))
+        {
+            var shouldAnimate = accountPage.Dialog.IsAccountTypeStep;
+            var previousHeight = addAccountHost.SurfaceBorder.ActualHeight;
+            if (accountPage.Dialog.ApplyThirdPartyAuthenticationServer(authenticationServer))
+                addAccountView.ClearThirdPartyPassword();
+            if (shouldAnimate)
+                addAccountHost.AnimateSizeChange(previousHeight);
+            return;
+        }
+
+        addAccountView.ClearThirdPartyPassword();
+        accountPage.Dialog.OpenThirdPartyAddAccountDialog(authenticationServer);
+        addAccountHost.Show();
+    }
+
     public Task<bool> ShowThirdPartyReauthenticationDialogAsync(LauncherAccount account)
     {
         if (accountPage is null || addAccountHost is null || addAccountView is null || !account.IsThirdParty)

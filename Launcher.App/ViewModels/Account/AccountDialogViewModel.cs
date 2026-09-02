@@ -97,6 +97,11 @@ public sealed partial class AccountDialogViewModel : ObservableObject
     private readonly List<LauncherAccount> thirdPartySuccessfulAccounts = [];
     private CancellationTokenSource? thirdPartyImportCancellationTokenSource;
     private CancellationTokenSource? microsoftAuthenticationCancellationTokenSource;
+    private bool isDirectThirdPartyAddAccountEntry;
+    private bool navigateToAccountAfterThirdPartyAddition;
+    private bool hasPendingDroppedThirdPartyNavigation;
+
+    public event Action? DroppedThirdPartyAccountAdditionCompleted;
 
     // 删除对话框只保留待删除对象；确认后会立即清空引用，避免重复确认触发两次删除。
     [ObservableProperty]
@@ -183,7 +188,9 @@ public sealed partial class AccountDialogViewModel : ObservableObject
         || IsMicrosoftReauthenticationPromptStep
         || IsMicrosoftReauthenticationStep || IsMicrosoftReauthenticationResultStep;
     public bool CanShowAddAccountBackButton => !IsAddAccountDialogBusy
-        && (IsOfflineNameStep || IsThirdPartyCredentialsStep || IsMicrosoftLoginStep);
+        && (IsOfflineNameStep
+            || (IsThirdPartyCredentialsStep && !isDirectThirdPartyAddAccountEntry)
+            || IsMicrosoftLoginStep);
     public bool CanShowAddAccountCancelButton => !IsAddAccountDialogBusy
         && (!IsMicrosoftLoginResultStep || IsMicrosoftReauthenticationMode);
     public bool CanShowMicrosoftAuthenticationCancelButton =>

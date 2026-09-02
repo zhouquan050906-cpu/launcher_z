@@ -43,6 +43,8 @@ public interface IAccountDialogService : IMicrosoftAccountReauthenticationDialog
 
     void ShowAddAccountDialog();
 
+    void ShowThirdPartyAddAccountDialog(string authenticationServer);
+
     Task<bool> ShowThirdPartyReauthenticationDialogAsync(LauncherAccount account);
 
     void ShowDeleteAccountDialog(LauncherAccount account);

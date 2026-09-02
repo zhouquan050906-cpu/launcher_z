@@ -41,14 +41,6 @@ private bool CanHandleLocalImportDropCore(IReadOnlyList<string> paths)
             || string.Equals(extension, ".zip", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void ApplyLocalImportDropHint(string message)
-    {
-        if (string.Equals(lastLocalImportDropHintMessage, message, StringComparison.Ordinal))
-            return;
-        lastLocalImportDropHintMessage = message;
-        floatingMessageService.Show(message);
-    }
-
     private void CancelOptionsNavigation()
     {
         // CTS 只归本页面步骤所有；子 ViewModel 仍负责其内部网络请求生命周期。
@@ -118,9 +110,12 @@ private bool CanHandleLocalImportDropCore(IReadOnlyList<string> paths)
     private sealed class NullFloatingMessageService : IFloatingMessageService
     {
         public static NullFloatingMessageService Instance { get; } = new();
-        public event Action<string>? MessageRequested { add { } remove { } }
+        public event Action<FloatingMessageRequest>? MessageRequested { add { } remove { } }
         private NullFloatingMessageService() { }
         public void Show(string message) { }
+        public void ShowDragHint(object source, string message) { }
+        public void ClearDragHint(object source) { }
+        public void ClearDragHint() { }
     }
 
     private sealed class RejectingExistingFilePathValidator : IExistingFilePathValidator

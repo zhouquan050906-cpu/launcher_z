@@ -1352,6 +1352,9 @@
     <value>パスワード</value>
   </data>
   <data name="Account_ThirdPartyServerRequired" xml:space="preserve"><value>認証サーバーアドレスを入力してください</value></data>
+  <data name="Account_ThirdPartyDropReleaseToAdd" xml:space="preserve"><value>ドロップしてサードパーティアカウントを追加</value></data>
+  <data name="Account_ThirdPartyDropInvalidServer" xml:space="preserve"><value>ドロップされた認証サーバーアドレスを認識できません</value></data>
+  <data name="Account_ThirdPartyDropDialogBusy" xml:space="preserve"><value>現在のダイアログ操作を完了してからサードパーティアカウントを追加してください</value></data>
   <data name="Account_ThirdPartyUsernameRequired" xml:space="preserve"><value>ユーザー名またはメールアドレスを入力してください</value></data>
   <data name="Account_ThirdPartyPasswordRequired" xml:space="preserve"><value>パスワードを入力してください</value></data>
   <data name="Account_ThirdPartyServerInvalid" xml:space="preserve"><value>認証サーバーアドレスが無効です</value></data>

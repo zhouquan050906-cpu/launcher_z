@@ -40,7 +40,6 @@ public sealed partial class DownloadPageViewModel : ObservableObject, IDisposabl
     private readonly DownloadTasksPageViewModel downloadTasksPage;
     private readonly ILogger<DownloadPageViewModel> logger;
     private CancellationTokenSource? optionsNavigationCancellation;
-    private string lastLocalImportDropHintMessage = string.Empty;
 
     [ObservableProperty]
     private DownloadPageStep currentStep = DownloadPageStep.VersionList;

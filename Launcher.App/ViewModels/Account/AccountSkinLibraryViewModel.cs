@@ -94,9 +94,9 @@ public sealed partial class AccountSkinLibraryViewModel : ObservableObject
 
     public bool CanShowThirdPartyRefresh => IsThirdParty;
 
-    public bool HasPreview => !IsThirdParty && SelectedSkin is not null;
+    public bool HasPreview => SelectedSkin is not null;
 
-    public bool CanShowPreviewEmptyState => accountList.SelectedAccount is not null && !IsThirdParty && !HasPreview;
+    public bool CanShowPreviewEmptyState => accountList.SelectedAccount is not null && !HasPreview;
 
     public bool CanChangeSkin => accountList.SelectedAccount is { IsThirdParty: false };
 

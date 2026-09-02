@@ -501,14 +501,27 @@ public sealed class ResourcesProjectInstallViewModelTests
 
     private sealed class RecordingFloatingMessageService : IFloatingMessageService
     {
-        public event Action<string>? MessageRequested;
+        public event Action<FloatingMessageRequest>? MessageRequested;
 
         public List<string> Messages { get; } = [];
 
         public void Show(string message)
         {
             Messages.Add(message);
-            MessageRequested?.Invoke(message);
+            MessageRequested?.Invoke(new FloatingMessageRequest(message));
+        }
+
+        public void ShowDragHint(object source, string message)
+        {
+            Messages.Add(message);
+            MessageRequested?.Invoke(new FloatingMessageRequest(message, AutoHide: false));
+        }
+
+        public void ClearDragHint(object source) => ClearDragHint();
+
+        public void ClearDragHint()
+        {
+            MessageRequested?.Invoke(new FloatingMessageRequest(string.Empty));
         }
     }
 

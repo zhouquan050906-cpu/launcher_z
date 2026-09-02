@@ -460,6 +460,9 @@
   <data name="Account_UsernameOrEmailLabel" xml:space="preserve"><value>用户名或邮箱</value></data>
   <data name="Account_PasswordLabel" xml:space="preserve"><value>密码</value></data>
   <data name="Account_ThirdPartyServerRequired" xml:space="preserve"><value>请输入认证服务器地址</value></data>
+  <data name="Account_ThirdPartyDropReleaseToAdd" xml:space="preserve"><value>松手以添加第三方账户</value></data>
+  <data name="Account_ThirdPartyDropInvalidServer" xml:space="preserve"><value>无法识别拖入的认证服务器地址</value></data>
+  <data name="Account_ThirdPartyDropDialogBusy" xml:space="preserve"><value>请先完成当前弹窗操作后再添加第三方账户</value></data>
   <data name="Account_ThirdPartyUsernameRequired" xml:space="preserve"><value>请输入用户名或邮箱</value></data>
   <data name="Account_ThirdPartyPasswordRequired" xml:space="preserve"><value>请输入密码</value></data>
   <data name="Account_ThirdPartyServerInvalid" xml:space="preserve"><value>认证服务器地址无效</value></data>

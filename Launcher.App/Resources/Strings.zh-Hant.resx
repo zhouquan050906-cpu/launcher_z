@@ -1352,6 +1352,9 @@
     <value>密碼</value>
   </data>
   <data name="Account_ThirdPartyServerRequired" xml:space="preserve"><value>請輸入驗證伺服器位址</value></data>
+  <data name="Account_ThirdPartyDropReleaseToAdd" xml:space="preserve"><value>放開以新增第三方帳戶</value></data>
+  <data name="Account_ThirdPartyDropInvalidServer" xml:space="preserve"><value>無法識別拖入的驗證伺服器位址</value></data>
+  <data name="Account_ThirdPartyDropDialogBusy" xml:space="preserve"><value>請先完成目前的對話方塊操作，再新增第三方帳戶</value></data>
   <data name="Account_ThirdPartyUsernameRequired" xml:space="preserve"><value>請輸入使用者名稱或電子郵件</value></data>
   <data name="Account_ThirdPartyPasswordRequired" xml:space="preserve"><value>請輸入密碼</value></data>
   <data name="Account_ThirdPartyServerInvalid" xml:space="preserve"><value>驗證伺服器位址無效</value></data>

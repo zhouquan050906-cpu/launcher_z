@@ -71,7 +71,7 @@ public void PrimeFromSettings(LauncherSettings settings)
     {
         // DragOver 只做轻量格式判断和提示，不在高频事件中打开压缩包或执行识别。
         var canAccept = CanHandleLocalImportDropCore(paths);
-        ApplyLocalImportDropHint(canAccept
+        floatingMessageService.ShowDragHint(this, canAccept
             ? Strings.GameSettings_DropReleaseToImportMessage
             : Strings.GameSettings_DropUnsupportedFileMessage);
         return canAccept;
@@ -79,7 +79,7 @@ public void PrimeFromSettings(LauncherSettings settings)
 
     public void ClearLocalImportDropState()
     {
-        ApplyLocalImportDropHint(string.Empty);
+        floatingMessageService.ClearDragHint(this);
     }
 
     public async Task<bool> HandleLocalImportDropAsync(IReadOnlyList<string> paths)

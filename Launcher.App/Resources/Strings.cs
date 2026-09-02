@@ -794,6 +794,9 @@ public static class Strings
     public static string Account_ThirdPartyInvalidCredentials => Get(nameof(Account_ThirdPartyInvalidCredentials));
     public static string Account_ThirdPartyCredentialStorageFailed => Get(nameof(Account_ThirdPartyCredentialStorageFailed));
     public static string Account_ThirdPartyLoginFailed => Get(nameof(Account_ThirdPartyLoginFailed));
+    public static string Account_ThirdPartyDropReleaseToAdd => Get(nameof(Account_ThirdPartyDropReleaseToAdd));
+    public static string Account_ThirdPartyDropInvalidServer => Get(nameof(Account_ThirdPartyDropInvalidServer));
+    public static string Account_ThirdPartyDropDialogBusy => Get(nameof(Account_ThirdPartyDropDialogBusy));
     public static string Account_ProfileOfflineUnsupported => Get(nameof(Account_ProfileOfflineUnsupported));
     public static string Account_ProfileNoCapes => Get(nameof(Account_ProfileNoCapes));
     public static string Account_ProfileLoaded => Get(nameof(Account_ProfileLoaded));

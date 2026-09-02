@@ -51,6 +51,12 @@ public sealed partial class ThirdPartyAccountDialogViewModel : ObservableObject
     public void Reset()
     {
         AuthenticationServer = string.Empty;
+        ResetCredentials();
+    }
+
+    /// <summary>清空身份与密码状态，但保留当前认证服务器地址。</summary>
+    public void ResetCredentials()
+    {
         UsernameOrEmail = string.Empty;
         HasPassword = false;
         ClearErrors();

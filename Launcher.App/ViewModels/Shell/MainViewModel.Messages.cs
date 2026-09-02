@@ -35,12 +35,12 @@ namespace Launcher.App.ViewModels.Shell;
 
 public sealed partial class MainViewModel
 {
-private void ShowFloatingMessage(string message)
+private void ShowFloatingMessage(FloatingMessageRequest request)
     {
         // 新消息取消上一轮隐藏计时器，让快速连续提示从最后一次显示重新计时。
         if (!uiDispatcher.HasAccess)
         {
-            uiDispatcher.Post(() => ShowFloatingMessage(message));
+            uiDispatcher.Post(() => ShowFloatingMessage(request));
             return;
         }
 
@@ -48,17 +48,21 @@ private void ShowFloatingMessage(string message)
         floatingMessageHideCancellation?.Dispose();
         floatingMessageHideCancellation = null;
 
-        if (string.IsNullOrWhiteSpace(message))
+        if (string.IsNullOrWhiteSpace(request.Message))
         {
             IsFloatingMessageOpen = false;
             FloatingMessage = string.Empty;
             return;
         }
 
-        floatingMessageHideCancellation = new CancellationTokenSource();
-
-        FloatingMessage = message;
+        FloatingMessage = request.Message;
         IsFloatingMessageOpen = true;
+
+        // 拖放提示必须覆盖整个拖动过程，不能计时消失；它由拖放生命周期显式清除。
+        if (!request.AutoHide)
+            return;
+
+        floatingMessageHideCancellation = new CancellationTokenSource();
         ObserveShellTask(
             HideFloatingMessageAfterDelayAsync(floatingMessageHideCancellation.Token),
             "hide the floating message");

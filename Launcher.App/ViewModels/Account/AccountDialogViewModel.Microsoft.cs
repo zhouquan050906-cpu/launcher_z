@@ -90,9 +90,13 @@ public sealed partial class AccountDialogViewModel
         _ = ThirdParty.CancelEmailLoginAsync();
     }
 
+    // DialogHost.Hide 在收起动画播放完毕后回调这里，是拖入添加后切换页面的最早安全时机。
     public void ResetAddAccountDialog()
     {
+        var shouldNavigateToAccountPage = hasPendingDroppedThirdPartyNavigation;
         ResetAddAccountDialogState(clearOfflineName: true);
+        if (shouldNavigateToAccountPage)
+            DroppedThirdPartyAccountAdditionCompleted?.Invoke();
     }
 
     public void BackToAddAccountTypeStep()

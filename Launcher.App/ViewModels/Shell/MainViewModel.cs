@@ -149,6 +149,8 @@ public sealed partial class MainViewModel : ObservableObject
         statusService.MessageReported += message => StatusMessage = message;
         floatingMessageService.MessageRequested += ShowFloatingMessage;
         AccountPage.PropertyChanged += AccountPage_PropertyChanged;
+        AccountPage.Dialog.DroppedThirdPartyAccountAdditionCompleted +=
+            AccountDialog_DroppedThirdPartyAccountAdditionCompleted;
 
         UpdateNavigationSelection();
     }

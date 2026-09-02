@@ -241,7 +241,7 @@ public sealed class MultiplayerPageViewModelTests
     private sealed class RecordingMessageService : IStatusService, IFloatingMessageService
     {
         public event Action<string>? MessageReported;
-        public event Action<string>? MessageRequested;
+        public event Action<FloatingMessageRequest>? MessageRequested;
 
         public string? StatusMessage { get; private set; }
 
@@ -256,7 +256,21 @@ public sealed class MultiplayerPageViewModelTests
         public void Show(string message)
         {
             FloatingMessage = message;
-            MessageRequested?.Invoke(message);
+            MessageRequested?.Invoke(new FloatingMessageRequest(message));
+        }
+
+        public void ShowDragHint(object source, string message)
+        {
+            FloatingMessage = message;
+            MessageRequested?.Invoke(new FloatingMessageRequest(message, AutoHide: false));
+        }
+
+        public void ClearDragHint(object source) => ClearDragHint();
+
+        public void ClearDragHint()
+        {
+            FloatingMessage = string.Empty;
+            MessageRequested?.Invoke(new FloatingMessageRequest(string.Empty));
         }
     }
 }

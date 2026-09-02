@@ -26,6 +26,8 @@ public sealed partial class AccountDialogViewModel
         {
             IsAddAccountDialogOpen = false;
             await ThirdParty.CancelEmailLoginAsync();
+            if (thirdPartySuccessfulAccounts.Count > 0)
+                CompleteDroppedThirdPartyAccountAddition();
             return true;
         }
 
@@ -93,6 +95,7 @@ public sealed partial class AccountDialogViewModel
             else if (await ThirdParty.LoginAsync(thirdPartyPassword))
             {
                 IsAddAccountDialogOpen = false;
+                CompleteDroppedThirdPartyAccountAddition();
             }
         }
         finally

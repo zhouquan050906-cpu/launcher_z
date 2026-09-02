@@ -99,6 +99,9 @@ public sealed partial class AccountDialogViewModel
         ThirdPartyImportFailedCount = 0;
         AccountPendingThirdPartyReauthentication = null;
         AccountPendingMicrosoftReauthentication = null;
+        isDirectThirdPartyAddAccountEntry = false;
+        navigateToAccountAfterThirdPartyAddition = false;
+        hasPendingDroppedThirdPartyNavigation = false;
         AddAccountDialogStep = AccountDialogSteps.AddAccountType;
         if (clearOfflineName)
         {

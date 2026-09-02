@@ -94,14 +94,14 @@ public sealed partial class AccountDialogViewModel
         }
     }
 
-    private async Task SelectFirstSuccessfulThirdPartyAccountAsync()
+    private async Task SelectLastSuccessfulThirdPartyAccountAsync()
     {
         if (thirdPartySuccessfulAccounts.Count == 0)
             return;
-        var first = accountList.FindAccount(thirdPartySuccessfulAccounts[0].Id);
-        if (first is null)
+        var last = accountList.FindAccount(thirdPartySuccessfulAccounts[^1].Id);
+        if (last is null)
             return;
-        accountList.SelectAccount(first, persistSelection: false);
+        accountList.SelectAccount(last, persistSelection: false);
         await accountList.PersistAccountOrderAsync();
     }
 }

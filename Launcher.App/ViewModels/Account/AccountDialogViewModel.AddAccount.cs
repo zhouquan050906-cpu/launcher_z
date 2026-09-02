@@ -33,13 +33,13 @@ public sealed partial class AccountDialogViewModel
         if (await TryHandleThirdPartyReauthenticationAsync(password))
             return;
 
+        if (await TryHandleThirdPartyCredentialsAsync(password))
+            return;
+
         if (SelectedAccountTypeOption is null)
             return;
 
         if (TryAdvanceAccountTypeStep())
-            return;
-
-        if (await TryHandleThirdPartyCredentialsAsync(password))
             return;
 
         await AddOfflineAccountAsync();
