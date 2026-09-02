@@ -55,6 +55,13 @@ public sealed class LayerDependencyContractTests
             file => HasUsing(file, "Launcher.Application")
                 || HasUsing(file, "Launcher.Infrastructure")
                 || HasUsing(file, "Launcher.App"));
+        Assert.DoesNotContain(
+            sourceFiles.Where(file => IsUnder(file, root, "Launcher.App"))
+                .Where(file => !string.Equals(
+                    file,
+                    Path.Combine(root.FullName, "Launcher.App", "App.xaml.cs"),
+                    StringComparison.OrdinalIgnoreCase)),
+            file => HasUsing(file, "Launcher.Infrastructure"));
     }
 
     [Fact]

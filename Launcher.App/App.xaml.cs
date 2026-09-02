@@ -133,6 +133,10 @@ public partial class App : System.Windows.Application
             services.AddSingleton<IMicrosoftLoginBrowserPageProvider, MicrosoftLoginBrowserPageProvider>();
             services.AddSingleton<IAccountDialogService, AccountDialogService>();
             services.AddSingleton<IUiDispatcher, WpfUiDispatcher>();
+            services.AddSingleton(serviceProvider => new SettingsPersistenceCoordinator(
+                serviceProvider.GetRequiredService<ISettingsService>(),
+                serviceProvider.GetRequiredService<IStatusService>(),
+                serviceProvider.GetRequiredService<ILogger<SettingsPersistenceCoordinator>>()));
             services.AddSingleton(_ => new UiThreadStallMonitor(Dispatcher));
             services.AddSingleton<IThemeService, ThemeService>();
             services.AddSingleton<IHomePageViewModelFactory, HomePageViewModelFactory>();

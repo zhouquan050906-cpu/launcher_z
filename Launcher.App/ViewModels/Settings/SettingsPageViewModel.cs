@@ -35,6 +35,7 @@ namespace Launcher.App.ViewModels.Settings;
 public sealed partial class SettingsPageViewModel : ObservableObject, IDisposable
 {
     private readonly SettingsPersistenceCoordinator persistence;
+    private readonly bool ownsPersistence;
 
     [ObservableProperty]
     private SettingsSectionItem? selectedSection;
@@ -65,10 +66,13 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
         ILogger<CustomFileDownloadViewModel>? customFileDownloadLogger = null,
         DownloadTasksPageViewModel? downloadTasksPage = null,
         ILauncherLogLevelController? logLevelController = null,
-        LauncherBackgroundViewModel? launcherBackground = null)
+        LauncherBackgroundViewModel? launcherBackground = null,
+        SettingsPersistenceCoordinator? settingsPersistence = null)
     {
         var resolvedLogger = logger ?? NullLogger<SettingsPageViewModel>.Instance;
-        persistence = new SettingsPersistenceCoordinator(settingsService, statusService, resolvedLogger);
+        persistence = settingsPersistence
+            ?? new SettingsPersistenceCoordinator(settingsService, statusService, resolvedLogger);
+        ownsPersistence = settingsPersistence is null;
 
         General = new GeneralSettingsViewModel(
             persistence,
@@ -142,6 +146,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
     }
 
     public ObservableCollection<SettingsSectionItem> Sections { get; }
+    internal SettingsPersistenceCoordinator Persistence => persistence;
     public GeneralSettingsViewModel General { get; }
     public DownloadSettingsViewModel Download { get; }
     public LanguageSettingsViewModel Language { get; }
@@ -190,7 +195,8 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
     public void Dispose()
     {
         General.Dispose();
-        persistence.Dispose();
+        if (ownsPersistence)
+            persistence.Dispose();
     }
 
     [RelayCommand]

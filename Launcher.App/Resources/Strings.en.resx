@@ -1864,6 +1864,9 @@ Longer content wraps automatically.</value>
   <data name="Status_SettingsSaveFailed" xml:space="preserve">
     <value>Failed to save launcher settings. Please try again later.</value>
   </data>
+  <data name="Status_DataDirectoryNotWritableFormat" xml:space="preserve">
+    <value>The launcher data directory is not writable: {0}. Settings cannot be saved. Check the folder permissions, or move the launcher to a writable location and try again.</value>
+  </data>
   <data name="Status_JavaScanFailed" xml:space="preserve">
     <value>Failed to scan local Java runtimes. Please try again later.</value>
   </data>

@@ -43,6 +43,7 @@ public sealed class LauncherSessionCoordinator : IDisposable
     private readonly IDownloadConcurrencyLimitState downloadConcurrencyLimitState;
     private readonly ISettingsService settingsService;
     private readonly IStatusService statusService;
+    private readonly ILauncherDataDirectoryProbe dataDirectoryProbe;
     private readonly DownloadPageViewModel downloadPage;
     private readonly GameSettingsPageViewModel gameSettingsPage;
     private readonly ResourcesPageViewModel resourcesPage;
@@ -52,6 +53,8 @@ public sealed class LauncherSessionCoordinator : IDisposable
     private readonly ILogger<LauncherSessionCoordinator> logger;
     // 实例目录刷新统一串行化；页面激活只投影内存快照，不参与这把锁。
     private readonly SemaphoreSlim instanceSynchronizationLock = new(1, 1);
+    // Shell 与设置页共享同一个持久化队列，关闭时由设置页的统一 Flush 一并落盘。
+    private readonly SettingsPersistenceCoordinator settingsPersistence;
     private HomePageViewModel? homePage;
     private LauncherSettings? settings;
     private string currentPage = NavigationCatalog.HomePage;
@@ -63,18 +66,21 @@ public sealed class LauncherSessionCoordinator : IDisposable
         IDownloadConcurrencyLimitState downloadConcurrencyLimitState,
         ISettingsService settingsService,
         IStatusService statusService,
+        ILauncherDataDirectoryProbe dataDirectoryProbe,
         DownloadPageViewModel downloadPage,
         GameSettingsPageViewModel gameSettingsPage,
         ResourcesPageViewModel resourcesPage,
         SettingsPageViewModel settingsPage,
         GameManagementViewModel gameManagement,
         LauncherStateSyncService stateSyncService,
-        ILogger<LauncherSessionCoordinator>? logger = null)
+        ILogger<LauncherSessionCoordinator>? logger = null,
+        SettingsPersistenceCoordinator? settingsPersistence = null)
     {
         this.downloadSpeedLimitState = downloadSpeedLimitState;
         this.downloadConcurrencyLimitState = downloadConcurrencyLimitState;
         this.settingsService = settingsService;
         this.statusService = statusService;
+        this.dataDirectoryProbe = dataDirectoryProbe;
         this.downloadPage = downloadPage;
         this.gameSettingsPage = gameSettingsPage;
         this.resourcesPage = resourcesPage;
@@ -82,6 +88,7 @@ public sealed class LauncherSessionCoordinator : IDisposable
         this.gameManagement = gameManagement;
         this.stateSyncService = stateSyncService;
         this.logger = logger ?? NullLogger<LauncherSessionCoordinator>.Instance;
+        this.settingsPersistence = settingsPersistence ?? settingsPage.Persistence;
     }
 
     public event Action<string>? NavigationRequested;
@@ -144,6 +151,38 @@ public sealed class LauncherSessionCoordinator : IDisposable
         isInitialized = true;
         if (NavigationCatalog.IsPage(currentPage, NavigationCatalog.GameSettingsPage))
             SynchronizeGameSettingsInstances();
+
+        // 目录探测在断连的网络盘上可能耗满超时，不能挂在启动路径上等它。
+        _ = WarnWhenDataDirectoryIsNotWritableAsync(settings.DataDirectory);
+    }
+
+    /// <summary>
+    /// 数据目录不可写时提前提示，而不是等到第一次保存失败才暴露。
+    /// 只提示不改配置：目录是用户自己选的，换不换由用户决定。
+    /// </summary>
+    private async Task WarnWhenDataDirectoryIsNotWritableAsync(string dataDirectory)
+    {
+        try
+        {
+            if (await dataDirectoryProbe.IsWritableAsync(dataDirectory)
+                    .ConfigureAwait(false))
+            {
+                return;
+            }
+
+            logger.LogWarning(
+                "Launcher data directory is not writable. DataDirectory={DataDirectory}",
+                dataDirectory);
+            statusService.Report(string.Format(Strings.Status_DataDirectoryNotWritableFormat, dataDirectory));
+        }
+        catch (Exception exception)
+        {
+            // 探测本身失败不该影响启动，也不该冒泡成未观测任务异常。
+            logger.LogWarning(
+                exception,
+                "Failed to probe the launcher data directory. DataDirectory={DataDirectory}",
+                dataDirectory);
+        }
     }
 
     public async Task ActivatePageAsync(string page)
@@ -215,6 +254,15 @@ public sealed class LauncherSessionCoordinator : IDisposable
                 isPinned);
             return false;
         }
+    }
+
+    /// <summary>
+    /// 记录侧边菜单的折叠偏好。走防抖队列而不是直接落盘：点击不必等待写入完成，
+    /// 写入失败由队列记录、提示并在下次变更时重试，既不卡 UI 也不会终止进程。
+    /// </summary>
+    public void SetMenuExpanded(bool isExpanded)
+    {
+        settingsPersistence.Update(latest => latest.IsMenuExpanded = isExpanded);
     }
 
     public void Dispose()

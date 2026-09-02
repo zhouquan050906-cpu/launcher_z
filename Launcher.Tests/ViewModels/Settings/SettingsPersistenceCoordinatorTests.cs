@@ -66,6 +66,24 @@ public sealed class SettingsPersistenceCoordinatorTests
     }
 
     [Fact]
+    public async Task FlushPersistsTheLatestDebouncedValueBeforeTheDelayExpires()
+    {
+        var settings = new LauncherSettings();
+        var service = new TestSettingsService(settings);
+        using var coordinator = new SettingsPersistenceCoordinator(
+            service,
+            new RecordingStatusService(),
+            NullLogger.Instance);
+        coordinator.Prime(settings);
+
+        coordinator.Update(value => value.IsMenuExpanded = true);
+        await coordinator.FlushAsync();
+
+        Assert.Equal(1, service.SaveCount);
+        Assert.True(settings.IsMenuExpanded);
+    }
+
+    [Fact]
     public async Task FailedImmediateSaveKeepsUnrelatedPendingUpdatesForRetry()
     {
         var settings = new LauncherSettings();

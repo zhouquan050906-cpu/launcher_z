@@ -17,6 +17,7 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -33,6 +34,13 @@ public sealed class JsonSettingsService : ISettingsService
 {
     private static readonly TimeSpan BootstrapCrossProcessLockTimeout = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan CrossProcessLockRetryDelay = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// 等待设置锁的上限。锁只在一次"读取+写入"期间被持有，正常情况下毫秒级就能拿到；
+    /// 但网络盘上的陈旧 .lock 可能永远不释放，无上限的等待会把点击变成无响应，
+    /// 所以超时后主动放弃，让调用方按一次保存失败处理。
+    /// </summary>
+    private static readonly TimeSpan CrossProcessLockTimeout = TimeSpan.FromSeconds(5);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly string settingsPath;
     private readonly LauncherPathProvider pathProvider;
@@ -93,7 +101,8 @@ public sealed class JsonSettingsService : ISettingsService
         catch (Exception exception) when (
             exception is JsonException
             or IOException
-            or UnauthorizedAccessException)
+            or UnauthorizedAccessException
+            or TimeoutException)
         {
             logger.LogWarning(
                 exception,
@@ -214,6 +223,7 @@ public sealed class JsonSettingsService : ISettingsService
     {
         var lockPath = settingsPath + ".lock";
         Directory.CreateDirectory(Path.GetDirectoryName(lockPath)!);
+        var waited = Stopwatch.StartNew();
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -223,6 +233,14 @@ public sealed class JsonSettingsService : ISettingsService
             }
             catch (IOException exception) when (IsSharingViolation(exception))
             {
+                if (waited.Elapsed >= CrossProcessLockTimeout)
+                {
+                    throw new TimeoutException(
+                        $"Timed out waiting for the launcher settings lock. LockPath={lockPath} "
+                        + $"TimeoutSeconds={CrossProcessLockTimeout.TotalSeconds}",
+                        exception);
+                }
+
                 await Task.Delay(CrossProcessLockRetryDelay, cancellationToken).ConfigureAwait(false);
             }
         }

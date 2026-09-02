@@ -25,7 +25,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Launcher.App.ViewModels.Settings;
 
-internal sealed class SettingsPersistenceCoordinator : IDisposable
+public sealed class SettingsPersistenceCoordinator : IDisposable
 {
     private static readonly TimeSpan SaveDelay = TimeSpan.FromMilliseconds(350);
     private readonly ISettingsService settingsService;

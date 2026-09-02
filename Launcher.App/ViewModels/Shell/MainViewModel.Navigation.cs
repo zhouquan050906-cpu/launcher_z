@@ -69,29 +69,13 @@ public sealed partial class MainViewModel
     }
 
     [RelayCommand]
-    private async Task ToggleMenuAsync()
+    private void ToggleMenu()
     {
-        // 折叠状态只是 UI 偏好，先乐观翻转，保存失败再回滚，
-        // 写盘异常绝不能顺着 AsyncRelayCommand 冒泡到 Dispatcher 终止进程。
-        var previousValue = IsMenuExpanded;
-        var nextValue = !previousValue;
-        IsMenuExpanded = nextValue;
-        Settings.IsMenuExpanded = nextValue;
-
-        try
-        {
-            await settingsService.UpdateAsync(latest => latest.IsMenuExpanded = nextValue);
-        }
-        catch (Exception exception)
-        {
-            IsMenuExpanded = previousValue;
-            Settings.IsMenuExpanded = previousValue;
-            logger.LogWarning(
-                exception,
-                "Failed to save menu expansion preference. IsExpanded={IsExpanded}",
-                nextValue);
-            statusService.Report(Strings.Status_SettingsSaveFailed);
-        }
+        // 折叠状态只是 UI 偏好：立即翻转，落盘交给带防抖与失败重试的会话协调器。
+        // 点击既不等待写盘，写盘异常也不会顺着命令冒泡到 Dispatcher 终止进程。
+        IsMenuExpanded = !IsMenuExpanded;
+        Settings.IsMenuExpanded = IsMenuExpanded;
+        sessionCoordinator.SetMenuExpanded(IsMenuExpanded);
     }
 
     [RelayCommand]

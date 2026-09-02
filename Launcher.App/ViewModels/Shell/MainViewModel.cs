@@ -46,7 +46,6 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly LauncherSessionCoordinator sessionCoordinator;
     private readonly IWindowService windowService;
     private readonly IUiDispatcher uiDispatcher;
-    private readonly IStatusService statusService;
     private readonly ILogger<MainViewModel> logger;
     private bool hasPrimedSettings;
     private bool hasInitialized;
@@ -117,7 +116,6 @@ public sealed partial class MainViewModel : ObservableObject
         this.sessionCoordinator = sessionCoordinator;
         this.windowService = windowService;
         this.uiDispatcher = uiDispatcher;
-        this.statusService = statusService;
         this.logger = logger ?? NullLogger<MainViewModel>.Instance;
         AccountPage = accountPage;
         DownloadPage = downloadPage;
