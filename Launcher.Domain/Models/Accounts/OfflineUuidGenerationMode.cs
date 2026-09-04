@@ -22,6 +22,6 @@ namespace Launcher.Domain.Models;
 public enum OfflineUuidGenerationMode
 {
     Standard = 0,
-    Random = 1,
+    Random = 1, // Legacy persisted accounts; no longer offered as a selectable mode.
     Manual = 2
 }

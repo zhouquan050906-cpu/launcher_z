@@ -1285,26 +1285,23 @@ Longer content wraps automatically.</value>
   <data name="Account_UuidHeader" xml:space="preserve">
     <value>UUID</value>
   </data>
+  <data name="Dialog_OfflineUuidModeChangeTitle" xml:space="preserve"><value>Change UUID generation method</value></data>
+  <data name="Dialog_OfflineUuidModeChangeMessageFormat" xml:space="preserve"><value>Change the UUID generation method to “{0}”? This may change your in-game player identity, causing existing inventory, ender chest items, experience, or progress to become unavailable.</value></data>
+  <data name="Account_OfflineUuidModeChangeButton" xml:space="preserve"><value>Change</value></data>
   <data name="Account_OfflineUuidModeLabel" xml:space="preserve">
-    <value>UUID Generation Mode</value>
+    <value>UUID generation method</value>
   </data>
   <data name="Account_OfflineUuidStandardTitle" xml:space="preserve">
-    <value>Standard Offline UUID</value>
+    <value>Standard</value>
   </data>
   <data name="Account_OfflineUuidStandardDescription" xml:space="preserve">
-    <value>Generated consistently from OfflinePlayer:username, compatible with most offline servers.</value>
-  </data>
-  <data name="Account_OfflineUuidRandomTitle" xml:space="preserve">
-    <value>Random Fixed UUID</value>
-  </data>
-  <data name="Account_OfflineUuidRandomDescription" xml:space="preserve">
-    <value>Generated once and saved with the account; it stays unchanged after renaming.</value>
+    <value>Generate a UUID from the account name, compatible with most offline servers.</value>
   </data>
   <data name="Account_OfflineUuidManualTitle" xml:space="preserve">
-    <value>Manual UUID</value>
+    <value>Custom</value>
   </data>
   <data name="Account_OfflineUuidManualDescription" xml:space="preserve">
-    <value>Enter a UUID manually; it is saved with the account after applying.</value>
+    <value>Use a specified UUID. Click Apply to save it; renaming the account keeps it unchanged.</value>
   </data>
   <data name="Account_OfflineUuidInvalid" xml:space="preserve">
     <value>Invalid UUID format</value>
@@ -2066,10 +2063,10 @@ Longer content wraps automatically.</value>
     <value>Added offline account {0}</value>
   </data>
   <data name="Status_OfflineUuidModeChangedFormat" xml:space="preserve">
-    <value>Offline UUID mode changed to {0}</value>
+    <value>Offline UUID generation method changed to {0}</value>
   </data>
   <data name="Status_OfflineUuidModeChangeFailed" xml:space="preserve">
-    <value>Failed to change offline UUID mode. Please try again later.</value>
+    <value>Failed to change offline UUID generation method. Please try again later.</value>
   </data>
   <data name="Status_OfflineUuidInvalid" xml:space="preserve">
     <value>Invalid UUID format. Check it and try again.</value>

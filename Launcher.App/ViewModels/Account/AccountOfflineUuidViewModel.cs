@@ -26,6 +26,8 @@ using Launcher.App.Resources;
 using Launcher.App.Services;
 using Launcher.Application.Accounts;
 using Launcher.Domain.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Launcher.App.ViewModels.Account;
 
@@ -35,7 +37,23 @@ public sealed partial class AccountOfflineUuidViewModel : ObservableObject
     private readonly IOfflineAccountUuidService offlineUuidService;
     private readonly IStatusService statusService;
     private readonly IClipboardService clipboardService;
+    private readonly ILogger<AccountOfflineUuidViewModel> logger;
     private bool isRefreshingSelection;
+    private OfflineUuidModeOption? acceptedOfflineUuidOption;
+    private OfflineUuidModeOption? pendingOfflineUuidOption;
+    private LauncherAccount? pendingAccount;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChangeOfflineUuidMode))]
+    [NotifyPropertyChangedFor(nameof(CanApplyManualUuid))]
+    [NotifyCanExecuteChangedFor(nameof(ApplyManualUuidCommand))]
+    private bool isOfflineUuidModeChangeDialogOpen;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChangeOfflineUuidMode))]
+    [NotifyPropertyChangedFor(nameof(CanApplyManualUuid))]
+    [NotifyCanExecuteChangedFor(nameof(ApplyManualUuidCommand))]
+    private bool isSavingUuid;
 
     [ObservableProperty]
     private OfflineUuidModeOption? selectedOfflineUuidOption;
@@ -50,12 +68,14 @@ public sealed partial class AccountOfflineUuidViewModel : ObservableObject
         AccountListViewModel accountList,
         IOfflineAccountUuidService offlineUuidService,
         IStatusService statusService,
-        IClipboardService clipboardService)
+        IClipboardService clipboardService,
+        ILogger<AccountOfflineUuidViewModel>? logger = null)
     {
         this.accountList = accountList;
         this.offlineUuidService = offlineUuidService;
         this.statusService = statusService;
         this.clipboardService = clipboardService;
+        this.logger = logger ?? NullLogger<AccountOfflineUuidViewModel>.Instance;
 
         OfflineUuidOptions = new ObservableCollection<OfflineUuidModeOption>(
         [
@@ -64,12 +84,6 @@ public sealed partial class AccountOfflineUuidViewModel : ObservableObject
                 Mode = OfflineUuidGenerationMode.Standard,
                 Title = Strings.Account_OfflineUuidStandardTitle,
                 Description = Strings.Account_OfflineUuidStandardDescription
-            },
-            new()
-            {
-                Mode = OfflineUuidGenerationMode.Random,
-                Title = Strings.Account_OfflineUuidRandomTitle,
-                Description = Strings.Account_OfflineUuidRandomDescription
             },
             new()
             {
@@ -88,9 +102,14 @@ public sealed partial class AccountOfflineUuidViewModel : ObservableObject
     public bool HasSelectedOfflineAccount => accountList.SelectedAccount?.IsOffline == true;
 
     public bool HasManualUuidEditor =>
-        HasSelectedOfflineAccount && SelectedOfflineUuidOption?.Mode == OfflineUuidGenerationMode.Manual;
+        HasSelectedOfflineAccount && acceptedOfflineUuidOption?.Mode == OfflineUuidGenerationMode.Manual;
 
-    public bool CanApplyManualUuid => HasManualUuidEditor && !string.IsNullOrWhiteSpace(ManualUuidText);
+    public bool CanChangeOfflineUuidMode => HasSelectedOfflineAccount && !IsOfflineUuidModeChangeDialogOpen && !IsSavingUuid;
+
+    public bool CanApplyManualUuid => CanChangeOfflineUuidMode && HasManualUuidEditor && !string.IsNullOrWhiteSpace(ManualUuidText);
+
+    public string OfflineUuidModeChangeMessage => string.Format(
+        Strings.Dialog_OfflineUuidModeChangeMessageFormat, pendingOfflineUuidOption?.Title);
 
     public string SelectedAccountUuidText
     {
@@ -106,18 +125,67 @@ public sealed partial class AccountOfflineUuidViewModel : ObservableObject
         if (isRefreshingSelection || value is null)
             return;
 
-        IsManualUuidInvalid = false;
-        OnPropertyChanged(nameof(HasManualUuidEditor));
-        OnPropertyChanged(nameof(CanApplyManualUuid));
-        ApplyManualUuidCommand.NotifyCanExecuteChanged();
-
-        if (value.Mode == OfflineUuidGenerationMode.Manual)
+        if (!CanChangeOfflineUuidMode)
         {
-            ManualUuidText = accountList.SelectedAccount?.Uuid ?? string.Empty;
+            RestoreAcceptedOption();
             return;
         }
 
-        _ = SelectOfflineUuidModeAsync(value);
+        if (value.Mode == acceptedOfflineUuidOption?.Mode)
+            return;
+
+        pendingAccount = accountList.SelectedAccount;
+        pendingOfflineUuidOption = value;
+        OnPropertyChanged(nameof(OfflineUuidModeChangeMessage));
+        IsOfflineUuidModeChangeDialogOpen = true;
+    }
+
+    [RelayCommand]
+    private void CancelOfflineUuidModeChange()
+    {
+        pendingAccount = null;
+        pendingOfflineUuidOption = null;
+        IsOfflineUuidModeChangeDialogOpen = false;
+        RestoreAcceptedOption();
+    }
+
+    [RelayCommand]
+    private async Task ConfirmOfflineUuidModeChangeAsync()
+    {
+        var account = pendingAccount;
+        var option = pendingOfflineUuidOption;
+        if (!IsOfflineUuidModeChangeDialogOpen || IsSavingUuid || account is null || option is null
+            || !ReferenceEquals(accountList.SelectedAccount, account))
+        {
+            CancelOfflineUuidModeChange();
+            return;
+        }
+
+        pendingAccount = null;
+        pendingOfflineUuidOption = null;
+        IsOfflineUuidModeChangeDialogOpen = false;
+        logger.LogInformation("Offline UUID mode change confirmed. AccountId={AccountId} Mode={Mode}", account.Id, option.Mode);
+
+        if (option.Mode == OfflineUuidGenerationMode.Manual)
+        {
+            acceptedOfflineUuidOption = option;
+            RestoreAcceptedOption();
+            IsManualUuidInvalid = false;
+            ManualUuidText = account.Uuid ?? string.Empty;
+            OnPropertyChanged(nameof(HasManualUuidEditor));
+            OnPropertyChanged(nameof(CanApplyManualUuid));
+            ApplyManualUuidCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        await SelectOfflineUuidModeAsync(account, option);
+    }
+
+    private void RestoreAcceptedOption()
+    {
+        isRefreshingSelection = true;
+        try { SelectedOfflineUuidOption = acceptedOfflineUuidOption; }
+        finally { isRefreshingSelection = false; }
     }
 
     partial void OnManualUuidTextChanged(string value)
@@ -127,44 +195,36 @@ public sealed partial class AccountOfflineUuidViewModel : ObservableObject
         ApplyManualUuidCommand.NotifyCanExecuteChanged();
     }
 
-    private async Task SelectOfflineUuidModeAsync(OfflineUuidModeOption option)
+    private async Task SelectOfflineUuidModeAsync(LauncherAccount account, OfflineUuidModeOption option)
     {
-        LauncherAccount? originalAccount = null;
+        IsSavingUuid = true;
         try
         {
-            var account = accountList.SelectedAccount;
-            if (account is null || !account.IsOffline)
-                return;
-
-            originalAccount = account;
             var existingUuid = account.OfflineUuidGenerationMode == option.Mode
                 ? account.Uuid
                 : null;
             var uuid = offlineUuidService.CreateUuid(account.DisplayName, option.Mode, existingUuid);
             var updatedAccount = AccountMapper.WithOfflineUuid(account, option.Mode, uuid);
 
-            accountList.ReplaceSelectedAccount(account, updatedAccount);
-            await accountList.PersistAccountOrderAsync();
+            await accountList.ReplaceSelectedAccountAndPersistAsync(account, updatedAccount);
+            logger.LogInformation("Offline UUID mode changed. AccountId={AccountId} Mode={Mode}", account.Id, option.Mode);
             statusService.Report(string.Format(Strings.Status_OfflineUuidModeChangedFormat, option.Title));
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            var currentAccount = accountList.SelectedAccount;
-            if (originalAccount is not null
-                && currentAccount is not null
-                && string.Equals(currentAccount.Id, originalAccount.Id, StringComparison.Ordinal))
-            {
-                accountList.ReplaceSelectedAccount(currentAccount, originalAccount);
-            }
-
+            logger.LogWarning(exception, "Offline UUID mode change failed. AccountId={AccountId} Mode={Mode}", account.Id, option.Mode);
             RefreshSelection();
             statusService.Report(Strings.Status_OfflineUuidModeChangeFailed);
         }
+        finally { IsSavingUuid = false; }
     }
 
     [RelayCommand(CanExecute = nameof(CanApplyManualUuid))]
     private async Task ApplyManualUuidAsync()
     {
+        if (!CanApplyManualUuid)
+            return;
+
         var account = accountList.SelectedAccount;
         if (account is null || !account.IsOffline)
             return;
@@ -176,6 +236,7 @@ public sealed partial class AccountOfflineUuidViewModel : ObservableObject
             return;
         }
 
+        IsSavingUuid = true;
         try
         {
             var updatedAccount = AccountMapper.WithOfflineUuid(
@@ -183,23 +244,19 @@ public sealed partial class AccountOfflineUuidViewModel : ObservableObject
                 OfflineUuidGenerationMode.Manual,
                 uuid);
 
-            accountList.ReplaceSelectedAccount(account, updatedAccount);
-            await accountList.PersistAccountOrderAsync();
-            ManualUuidText = uuid;
+            await accountList.ReplaceSelectedAccountAndPersistAsync(account, updatedAccount);
+            if (ReferenceEquals(accountList.SelectedAccount, updatedAccount))
+                ManualUuidText = uuid;
+            logger.LogInformation("Manual offline UUID applied. AccountId={AccountId}", account.Id);
             statusService.Report(Strings.Status_OfflineUuidApplied);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            var currentAccount = accountList.SelectedAccount;
-            if (currentAccount is not null
-                && string.Equals(currentAccount.Id, account.Id, StringComparison.Ordinal))
-            {
-                accountList.ReplaceSelectedAccount(currentAccount, account);
-            }
-
+            logger.LogWarning(exception, "Manual offline UUID apply failed. AccountId={AccountId}", account.Id);
             RefreshSelection();
             statusService.Report(Strings.Status_OfflineUuidModeChangeFailed);
         }
+        finally { IsSavingUuid = false; }
     }
 
     [RelayCommand]
@@ -212,13 +269,21 @@ public sealed partial class AccountOfflineUuidViewModel : ObservableObject
 
     private void RefreshSelection()
     {
+        pendingAccount = null;
+        pendingOfflineUuidOption = null;
+        IsOfflineUuidModeChangeDialogOpen = false;
         isRefreshingSelection = true;
         try
         {
             var account = accountList.SelectedAccount;
-            SelectedOfflineUuidOption = account is { IsOffline: true }
-                ? OfflineUuidOptions.FirstOrDefault(option => option.Mode == account.OfflineUuidGenerationMode)
+            // Previously generated random UUIDs are fixed values; expose them as custom without regenerating them.
+            var displayedMode = account?.OfflineUuidGenerationMode == OfflineUuidGenerationMode.Random
+                ? OfflineUuidGenerationMode.Manual
+                : account?.OfflineUuidGenerationMode;
+            acceptedOfflineUuidOption = account is { IsOffline: true }
+                ? OfflineUuidOptions.FirstOrDefault(option => option.Mode == displayedMode)
                 : null;
+            SelectedOfflineUuidOption = acceptedOfflineUuidOption;
             ManualUuidText = account?.Uuid ?? string.Empty;
             IsManualUuidInvalid = false;
         }
@@ -228,6 +293,7 @@ public sealed partial class AccountOfflineUuidViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(HasSelectedOfflineAccount));
+        OnPropertyChanged(nameof(CanChangeOfflineUuidMode));
         OnPropertyChanged(nameof(HasManualUuidEditor));
         OnPropertyChanged(nameof(CanApplyManualUuid));
         OnPropertyChanged(nameof(SelectedAccountUuidText));

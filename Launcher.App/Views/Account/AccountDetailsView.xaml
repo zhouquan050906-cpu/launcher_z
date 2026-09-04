@@ -125,6 +125,7 @@
                             <controls:AnimatedComboBox Grid.Column="1"
                                                        ItemsSource="{Binding OfflineUuid.OfflineUuidOptions}"
                                                        SelectedItem="{Binding OfflineUuid.SelectedOfflineUuidOption, Mode=TwoWay}"
+                                                       IsEnabled="{Binding OfflineUuid.CanChangeOfflineUuidMode}"
                                                        Style="{StaticResource LauncherComboBoxStyle}"
                                                        shell:WindowChrome.IsHitTestVisibleInChrome="True">
                                 <controls:AnimatedComboBox.ItemTemplate>
@@ -353,5 +354,4 @@
         </Grid>
     </Grid>
 </UserControl>
-
 

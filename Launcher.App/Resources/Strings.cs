@@ -761,10 +761,11 @@ public static class Strings
     public static string Account_SkinModelSlimDescription => Get(nameof(Account_SkinModelSlimDescription));
     public static string Account_UuidHeader => Get(nameof(Account_UuidHeader));
     public static string Account_OfflineUuidModeLabel => Get(nameof(Account_OfflineUuidModeLabel));
+    public static string Dialog_OfflineUuidModeChangeTitle => Get(nameof(Dialog_OfflineUuidModeChangeTitle));
+    public static string Dialog_OfflineUuidModeChangeMessageFormat => Get(nameof(Dialog_OfflineUuidModeChangeMessageFormat));
+    public static string Account_OfflineUuidModeChangeButton => Get(nameof(Account_OfflineUuidModeChangeButton));
     public static string Account_OfflineUuidStandardTitle => Get(nameof(Account_OfflineUuidStandardTitle));
     public static string Account_OfflineUuidStandardDescription => Get(nameof(Account_OfflineUuidStandardDescription));
-    public static string Account_OfflineUuidRandomTitle => Get(nameof(Account_OfflineUuidRandomTitle));
-    public static string Account_OfflineUuidRandomDescription => Get(nameof(Account_OfflineUuidRandomDescription));
     public static string Account_OfflineUuidManualTitle => Get(nameof(Account_OfflineUuidManualTitle));
     public static string Account_OfflineUuidManualDescription => Get(nameof(Account_OfflineUuidManualDescription));
     public static string Account_OfflineUuidInvalid => Get(nameof(Account_OfflineUuidInvalid));

@@ -1285,26 +1285,23 @@
   <data name="Account_UuidHeader" xml:space="preserve">
     <value>UUID</value>
   </data>
+  <data name="Dialog_OfflineUuidModeChangeTitle" xml:space="preserve"><value>變更 UUID 產生方式</value></data>
+  <data name="Dialog_OfflineUuidModeChangeMessageFormat" xml:space="preserve"><value>確定要將 UUID 產生方式變更為「{0}」嗎？變更可能會改變遊戲中的玩家身分，導致原有背包、終界箱物品、經驗或進度無法顯示。</value></data>
+  <data name="Account_OfflineUuidModeChangeButton" xml:space="preserve"><value>變更</value></data>
   <data name="Account_OfflineUuidModeLabel" xml:space="preserve">
     <value>UUID 產生方式</value>
   </data>
   <data name="Account_OfflineUuidStandardTitle" xml:space="preserve">
-    <value>標準離線 UUID</value>
+    <value>標準</value>
   </data>
   <data name="Account_OfflineUuidStandardDescription" xml:space="preserve">
-    <value>按 OfflinePlayer:使用者名稱 穩定產生，兼容多數離線伺服器。</value>
-  </data>
-  <data name="Account_OfflineUuidRandomTitle" xml:space="preserve">
-    <value>隨機固定 UUID</value>
-  </data>
-  <data name="Account_OfflineUuidRandomDescription" xml:space="preserve">
-    <value>產生一次後隨帳戶儲存，改名後仍保持不變。</value>
+    <value>根據帳戶名稱自動產生 UUID，相容於多數離線伺服器。</value>
   </data>
   <data name="Account_OfflineUuidManualTitle" xml:space="preserve">
-    <value>手動輸入 UUID</value>
+    <value>自訂</value>
   </data>
   <data name="Account_OfflineUuidManualDescription" xml:space="preserve">
-    <value>自己輸入 UUID，套用後隨帳戶儲存。</value>
+    <value>使用指定的 UUID，點擊「套用」後儲存，改名後保持不變。</value>
   </data>
   <data name="Account_OfflineUuidInvalid" xml:space="preserve">
     <value>UUID 格式不正確</value>
@@ -2066,10 +2063,10 @@
     <value>已新增離線帳戶 {0}</value>
   </data>
   <data name="Status_OfflineUuidModeChangedFormat" xml:space="preserve">
-    <value>離線 UUID 方式已切換為 {0}</value>
+    <value>離線 UUID 產生方式已切換為 {0}</value>
   </data>
   <data name="Status_OfflineUuidModeChangeFailed" xml:space="preserve">
-    <value>離線 UUID 方式切換失敗，請稍後再試。</value>
+    <value>離線 UUID 產生方式切換失敗，請稍後再試。</value>
   </data>
   <data name="Status_OfflineUuidInvalid" xml:space="preserve">
     <value>UUID 格式不正確，請檢查後再試。</value>

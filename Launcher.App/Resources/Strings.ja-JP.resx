@@ -1285,26 +1285,23 @@
   <data name="Account_UuidHeader" xml:space="preserve">
     <value>UUID</value>
   </data>
+  <data name="Dialog_OfflineUuidModeChangeTitle" xml:space="preserve"><value>UUID の生成方法を変更</value></data>
+  <data name="Dialog_OfflineUuidModeChangeMessageFormat" xml:space="preserve"><value>UUID の生成方法を「{0}」に変更しますか？ゲーム内のプレイヤー識別情報が変わり、これまでのインベントリやエンダーチェストのアイテム、経験値、進捗が表示されなくなる可能性があります。</value></data>
+  <data name="Account_OfflineUuidModeChangeButton" xml:space="preserve"><value>変更</value></data>
   <data name="Account_OfflineUuidModeLabel" xml:space="preserve">
-    <value>UUID 生成方式</value>
+    <value>UUID の生成方法</value>
   </data>
   <data name="Account_OfflineUuidStandardTitle" xml:space="preserve">
-    <value>標準オフライン UUID</value>
+    <value>標準</value>
   </data>
   <data name="Account_OfflineUuidStandardDescription" xml:space="preserve">
-    <value>OfflinePlayer:ユーザー名 に基づいて安定生成し、多くのオフラインサーバーと互換性があります。</value>
-  </data>
-  <data name="Account_OfflineUuidRandomTitle" xml:space="preserve">
-    <value>ランダム固定 UUID</value>
-  </data>
-  <data name="Account_OfflineUuidRandomDescription" xml:space="preserve">
-    <value>一度生成するとアカウントに保存され、名前変更後も変わりません。</value>
+    <value>アカウント名から UUID を自動生成します。多くのオフラインサーバーに対応しています。</value>
   </data>
   <data name="Account_OfflineUuidManualTitle" xml:space="preserve">
-    <value>UUID を手動入力</value>
+    <value>カスタム</value>
   </data>
   <data name="Account_OfflineUuidManualDescription" xml:space="preserve">
-    <value>自分で UUID を入力し、適用後にアカウントへ保存します。</value>
+    <value>指定した UUID を使用します。「適用」で保存され、アカウント名を変更しても変わりません。</value>
   </data>
   <data name="Account_OfflineUuidInvalid" xml:space="preserve">
     <value>UUID の形式が正しくありません</value>
@@ -2066,10 +2063,10 @@
     <value>オフラインアカウント {0} を追加しました</value>
   </data>
   <data name="Status_OfflineUuidModeChangedFormat" xml:space="preserve">
-    <value>オフライン UUID 方式を {0} に切り替えました</value>
+    <value>オフライン UUID の生成方法を {0} に切り替えました</value>
   </data>
   <data name="Status_OfflineUuidModeChangeFailed" xml:space="preserve">
-    <value>オフライン UUID 方式の切り替えに失敗しました。しばらくしてから再試行してください。</value>
+    <value>オフライン UUID の生成方法の切り替えに失敗しました。しばらくしてから再試行してください。</value>
   </data>
   <data name="Status_OfflineUuidInvalid" xml:space="preserve">
     <value>UUID の形式が正しくありません。確認してから再試行してください。</value>

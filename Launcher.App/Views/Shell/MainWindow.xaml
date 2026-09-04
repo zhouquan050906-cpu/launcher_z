@@ -294,6 +294,38 @@
                 <accountDialogViews:DeleteAccountDialogView />
             </controls:DialogHost>
 
+            <controls:DialogHost x:Name="OfflineUuidModeChangeDialogHost"
+                                 Grid.ColumnSpan="2"
+                                 Grid.RowSpan="2"
+                                 DialogWidth="460"
+                                 UseIntegratedOverlay="True"
+                                 IsOpen="{Binding DataContext.AccountPage.OfflineUuid.IsOfflineUuidModeChangeDialogOpen, ElementName=RootWindow}"
+                                 DataContext="{Binding DataContext.AccountPage.OfflineUuid, ElementName=RootWindow}">
+                <Grid Style="{StaticResource DialogContentGridStyle}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="{x:Static res:Strings.Dialog_OfflineUuidModeChangeTitle}"
+                               Style="{StaticResource DialogTitleTextStyle}" />
+                    <TextBlock Grid.Row="1"
+                               Margin="0,16,0,24"
+                               Text="{Binding OfflineUuidModeChangeMessage}"
+                               Style="{StaticResource DialogBodyTextStyle}"
+                               TextWrapping="Wrap" />
+                    <StackPanel Grid.Row="2" Style="{StaticResource DialogFooterStyle}">
+                        <Button Style="{StaticResource LauncherDialogButtonStyle}"
+                                Content="{x:Static res:Strings.Cancel_Button}"
+                                Command="{Binding CancelOfflineUuidModeChangeCommand}" />
+                        <Button Style="{StaticResource LauncherDangerDialogButtonStyle}"
+                                Margin="{StaticResource DialogTrailingButtonMargin}"
+                                Content="{x:Static res:Strings.Account_OfflineUuidModeChangeButton}"
+                                Command="{Binding ConfirmOfflineUuidModeChangeCommand}" />
+                    </StackPanel>
+                </Grid>
+            </controls:DialogHost>
+
             <controls:DialogHost x:Name="RenameAccountDialogHost"
                                  Grid.ColumnSpan="2"
                                  Grid.RowSpan="2"
