@@ -2,29 +2,29 @@
   "schemaVersion": 1,
   "appId": "BlockHelm-Launcher",
   "channel": "release",
-  "versionName": "0.9.14",
-  "versionCode": 91499,
-  "publishedAt": "2026-08-21T03:49:26Z",
+  "versionName": "0.9.15",
+  "versionCode": 91599,
+  "publishedAt": "2026-09-04T05:34:02Z",
   "mandatory": false,
   "minSupportedVersionCode": 0,
-  "releaseNotes": "# 正式版 0.9.14\r\n\r\n* 改进下载页的版本列表加载流程：网络异常时更快显示错误，并支持直接重试。\r\n* 新增游戏文件完整性故障提示，可区分文件缺失、损坏、下载失败和 Loader 文件生成失败等情况，并提供对应的处理建议。\r\n* 优化页面切换、滚动的性能，减少动画卡顿以及图片背景下模糊内容跟随不及时的问题。\r\n* 修复多个页面左侧的卡片阴影和渐变模糊被边界裁剪的问题，改善页面的视觉效果。",
+  "releaseNotes": "# 正式版 0.9.15\r\n\r\n* 新增多个 Minecraft 目录的管理与切换功能。\r\n* 优化页面切换、首页启动菜单动画和账户列表加载。\r\n* 支持拖入第三方服务器卡片，并修复第三方账户的皮肤预览。\r\n* 修复旧版 Minecraft 的语言代码兼容问题。\r\n* 调整离线账户 UUID 生成模式为两种，移除随机生成模式。",
   "assets": [
     {
       "platform": "windows",
       "arch": "x64",
       "packageType": "exe",
       "fileName": "BlockHelm_Launcher_x64.exe",
-      "size": 12750944,
-      "sha256": "b7aa32d1e285a00f5db0e6c6fd722e438cc2988077595c748f0e90c855ffc3d1",
+      "size": 12933216,
+      "sha256": "81919fd179f1f077d1ee9420a07c4bfe8b539a9bcd5c25579a4e176dcdda03cf",
       "urls": [
         {
           "name": "gitee",
-          "url": "https://gitee.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.14/BlockHelm_Launcher_x64.exe",
+          "url": "https://gitee.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.15/BlockHelm_Launcher_x64.exe",
           "priority": 1
         },
         {
           "name": "github",
-          "url": "https://github.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.14/BlockHelm_Launcher_x64.exe",
+          "url": "https://github.com/zqq-699/BlockHelm-Launcher/releases/download/v0.9.15/BlockHelm_Launcher_x64.exe",
           "priority": 2
         }
       ]
