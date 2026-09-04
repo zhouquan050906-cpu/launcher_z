@@ -39,6 +39,7 @@
     <CornerRadius x:Key="LauncherCornerRadiusMedium">8</CornerRadius>
     <CornerRadius x:Key="LauncherCornerRadiusLarge">12</CornerRadius>
     <CornerRadius x:Key="LauncherDialogCornerRadius">14</CornerRadius>
+    <CornerRadius x:Key="LauncherToolTipCornerRadius">10</CornerRadius>
     <sys:Boolean x:Key="Is.SecondaryMenu.BackdropBlur.Enabled">False</sys:Boolean>
     <sys:Boolean x:Key="Is.Surface.BackdropBlur.Enabled">False</sys:Boolean>
     <sys:Boolean x:Key="Is.ImageBackground.ControlTint.Enabled">False</sys:Boolean>

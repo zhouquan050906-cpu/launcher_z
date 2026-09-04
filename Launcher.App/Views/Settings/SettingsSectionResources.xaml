@@ -225,6 +225,7 @@
             <StackPanel>
                 <TextBlock Text="{Binding DisplayName}"
                            ToolTip="{Binding DisplayName}"
+                           behaviors:TextOverflowToolTip.IsEnabled="True"
                            Foreground="{DynamicResource Brush.F4F4F4}"
                            FontSize="13"
                            FontWeight="SemiBold"
@@ -234,6 +235,7 @@
                 <TextBlock Margin="0,4,0,0"
                            Text="{Binding DirectoryPath}"
                            ToolTip="{Binding DirectoryPath}"
+                           behaviors:TextOverflowToolTip.IsEnabled="True"
                            Foreground="{DynamicResource Brush.AFFFFFFF}"
                            FontSize="12"
                            TextTrimming="CharacterEllipsis" />

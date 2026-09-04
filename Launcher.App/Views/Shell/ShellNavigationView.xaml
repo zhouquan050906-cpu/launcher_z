@@ -35,6 +35,7 @@
             <DockPanel LastChildFill="True">
             <Button DockPanel.Dock="Bottom"
                     Style="{StaticResource NavigationMenuButtonStyle}"
+                    ToolTip="{x:Static res:Strings.Menu_Button}"
                     Command="{Binding ToggleMenuCommand}">
                 <StackPanel Orientation="Horizontal" Margin="8,0">
                     <Grid Width="30">
@@ -82,6 +83,7 @@
             <Button DockPanel.Dock="Bottom"
                     DataContext="{Binding DownloadTasksNavigationItem}"
                     Style="{StaticResource NavigationMenuButtonStyle}"
+                    ToolTip="{Binding Page, Converter={StaticResource PageTitleConverter}}"
                     Command="{Binding DataContext.NavigateCommand, ElementName=Root}"
                     CommandParameter="{Binding}">
                 <Grid Margin="3,0,0,0">
@@ -131,6 +133,7 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type models:NavigationItem}">
                         <Button Style="{StaticResource NavigationMenuButtonStyle}"
+                                ToolTip="{Binding Page, Converter={StaticResource PageTitleConverter}}"
                                 Command="{Binding DataContext.NavigateCommand, ElementName=Root}"
                                 CommandParameter="{Binding}">
                             <StackPanel Orientation="Horizontal" Margin="8,0">

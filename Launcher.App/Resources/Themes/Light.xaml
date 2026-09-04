@@ -358,6 +358,13 @@
                       Direction="270"
                       Opacity="0.08"
                       ShadowDepth="0" />
+    <DropShadowEffect x:Key="Effect.ToolTip.Surface"
+                      x:Shared="False"
+                      BlurRadius="17"
+                      Color="{StaticResource Color.Shadow}"
+                      Direction="270"
+                      Opacity="0.16"
+                      ShadowDepth="0" />
     <Color x:Key="Color.Accent.Primary">#2196F3</Color>
 </ResourceDictionary>
 
