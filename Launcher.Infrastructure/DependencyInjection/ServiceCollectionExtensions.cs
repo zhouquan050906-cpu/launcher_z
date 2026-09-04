@@ -51,7 +51,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICurseForgeApiKeyResolver, CurseForgeApiKeyResolver>();
         services.AddSingleton<IMcresBhlApiKeyResolver, McresBhlApiKeyResolver>();
         services.AddSingleton<ISettingsService, JsonSettingsService>();
-        services.AddSingleton<ILauncherDataDirectoryProbe, LauncherDataDirectoryProbe>();
         services.AddSingleton<IMinecraftDirectoryFileSystem, MinecraftDirectoryFileSystem>();
         services.AddSingleton<IMinecraftDirectoryDiscoveryService, MinecraftDirectoryDiscoveryService>();
         services.AddSingleton<IAccountStateService, JsonAccountStateService>();

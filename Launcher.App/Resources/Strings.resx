@@ -642,7 +642,6 @@
   <data name="Status_WorldDownloadFailed" xml:space="preserve"><value>&#x4E16;&#x754C;&#x4E0B;&#x8F7D;&#x5931;&#x8D25;</value></data>
   <data name="Status_SettingsSaved" xml:space="preserve"><value>启动器设置已保存</value></data>
   <data name="Status_SettingsSaveFailed" xml:space="preserve"><value>启动器设置保存失败，请稍后重试。</value></data>
-  <data name="Status_DataDirectoryNotWritableFormat" xml:space="preserve"><value>启动器数据目录不可写：{0}。设置将无法保存，请检查目录权限，或将启动器移到可写位置后重试。</value></data>
   <data name="Status_JavaScanFailed" xml:space="preserve"><value>扫描本机 Java 失败，请稍后重试。</value></data>
   <data name="Status_JavaImported" xml:space="preserve"><value>Java 已导入</value></data>
   <data name="Status_JavaAlreadyExists" xml:space="preserve"><value>已存在这个 Java</value></data>
@@ -1044,7 +1043,7 @@
   <data name="FilePicker_MinecraftDirectoryTitle" xml:space="preserve"><value>选择 .minecraft 目录</value></data>
   <data name="FilePicker_BackupDirectoryTitle" xml:space="preserve"><value>选择备份目录</value></data>
   <data name="Settings_LauncherLogDirectoryLabel" xml:space="preserve"><value>启动器日志</value></data>
-  <data name="Settings_LauncherLogDirectoryDescription" xml:space="preserve"><value>这里存放启动器运行日志和诊断日志文件。</value></data>
+  <data name="Settings_LauncherLogDirectoryDescription" xml:space="preserve"><value>启动器日志目录</value></data>
   <data name="Settings_DiagnosticLoggingLabel" xml:space="preserve"><value>诊断日志</value></data>
   <data name="Settings_DiagnosticLoggingDescription" xml:space="preserve"><value>记录逐文件、逐请求和性能细节。仅在排查问题时启用。</value></data>
   <data name="Settings_OpenLauncherLogDirectoryButton" xml:space="preserve"><value>打开目录</value></data>

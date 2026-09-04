@@ -43,7 +43,6 @@ public sealed class LauncherSessionCoordinator : IDisposable
     private readonly IDownloadConcurrencyLimitState downloadConcurrencyLimitState;
     private readonly ISettingsService settingsService;
     private readonly IStatusService statusService;
-    private readonly ILauncherDataDirectoryProbe dataDirectoryProbe;
     private readonly DownloadPageViewModel downloadPage;
     private readonly GameSettingsPageViewModel gameSettingsPage;
     private readonly ResourcesPageViewModel resourcesPage;
@@ -66,7 +65,6 @@ public sealed class LauncherSessionCoordinator : IDisposable
         IDownloadConcurrencyLimitState downloadConcurrencyLimitState,
         ISettingsService settingsService,
         IStatusService statusService,
-        ILauncherDataDirectoryProbe dataDirectoryProbe,
         DownloadPageViewModel downloadPage,
         GameSettingsPageViewModel gameSettingsPage,
         ResourcesPageViewModel resourcesPage,
@@ -80,7 +78,6 @@ public sealed class LauncherSessionCoordinator : IDisposable
         this.downloadConcurrencyLimitState = downloadConcurrencyLimitState;
         this.settingsService = settingsService;
         this.statusService = statusService;
-        this.dataDirectoryProbe = dataDirectoryProbe;
         this.downloadPage = downloadPage;
         this.gameSettingsPage = gameSettingsPage;
         this.resourcesPage = resourcesPage;
@@ -151,38 +148,6 @@ public sealed class LauncherSessionCoordinator : IDisposable
         isInitialized = true;
         if (NavigationCatalog.IsPage(currentPage, NavigationCatalog.GameSettingsPage))
             SynchronizeGameSettingsInstances();
-
-        // 目录探测在断连的网络盘上可能耗满超时，不能挂在启动路径上等它。
-        _ = WarnWhenDataDirectoryIsNotWritableAsync(settings.DataDirectory);
-    }
-
-    /// <summary>
-    /// 数据目录不可写时提前提示，而不是等到第一次保存失败才暴露。
-    /// 只提示不改配置：目录是用户自己选的，换不换由用户决定。
-    /// </summary>
-    private async Task WarnWhenDataDirectoryIsNotWritableAsync(string dataDirectory)
-    {
-        try
-        {
-            if (await dataDirectoryProbe.IsWritableAsync(dataDirectory)
-                    .ConfigureAwait(false))
-            {
-                return;
-            }
-
-            logger.LogWarning(
-                "Launcher data directory is not writable. DataDirectory={DataDirectory}",
-                dataDirectory);
-            statusService.Report(string.Format(Strings.Status_DataDirectoryNotWritableFormat, dataDirectory));
-        }
-        catch (Exception exception)
-        {
-            // 探测本身失败不该影响启动，也不该冒泡成未观测任务异常。
-            logger.LogWarning(
-                exception,
-                "Failed to probe the launcher data directory. DataDirectory={DataDirectory}",
-                dataDirectory);
-        }
     }
 
     public async Task ActivatePageAsync(string page)

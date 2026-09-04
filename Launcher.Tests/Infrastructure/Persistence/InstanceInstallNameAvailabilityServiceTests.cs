@@ -99,7 +99,7 @@ public sealed class InstanceInstallNameAvailabilityServiceTests : TestTempDirect
     /// 而退化成同步执行过一次，因此这里直接钉住"不得在调用线程上做这件事"。
     /// </summary>
     [Fact]
-    public void ProbingDoesNotRunOnTheCallingThread()
+    public async Task ProbingDoesNotRunOnTheCallingThread()
     {
         var minecraftDirectory = Path.Combine(TempRoot, ".minecraft");
         Directory.CreateDirectory(Path.Combine(minecraftDirectory, "versions"));
@@ -110,25 +110,34 @@ public sealed class InstanceInstallNameAvailabilityServiceTests : TestTempDirect
         // 因此"线程号相同"只可能意味着探测是在调用线程上同步跑完的。
         // 若改用线程池线程发起，Task.Run 有可能复用调用者刚释放的那条，判定会失真。
         var callerThreadId = 0;
-        Exception? failure = null;
+        var completion = new TaskCompletionSource<Exception?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
             callerThreadId = Environment.CurrentManagedThreadId;
-            try
-            {
-                service.CheckAsync(minecraftDirectory, "target").GetAwaiter().GetResult();
-            }
-            catch (Exception exception)
-            {
-                failure = exception;
-            }
+            _ = ObserveProbeAsync();
         });
         thread.Start();
 
-        Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "CheckAsync did not complete in time.");
+        Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "CheckAsync did not return to the caller in time.");
+        var failure = await completion.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
         Assert.Null(failure);
         Assert.NotNull(coordinator.ObservedThreadId);
         Assert.NotEqual(callerThreadId, coordinator.ObservedThreadId);
+
+        async Task ObserveProbeAsync()
+        {
+            try
+            {
+                await service.CheckAsync(minecraftDirectory, "target");
+                completion.TrySetResult(null);
+            }
+            catch (Exception exception)
+            {
+                completion.TrySetResult(exception);
+            }
+        }
     }
 
     private static InstanceInstallNameAvailabilityService CreateService(

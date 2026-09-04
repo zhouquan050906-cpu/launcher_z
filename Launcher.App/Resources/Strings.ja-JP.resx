@@ -1864,9 +1864,6 @@
   <data name="Status_SettingsSaveFailed" xml:space="preserve">
     <value>ランチャー設定の保存に失敗しました。しばらくしてから再試行してください。</value>
   </data>
-  <data name="Status_DataDirectoryNotWritableFormat" xml:space="preserve">
-    <value>ランチャーのデータディレクトリに書き込めません: {0}。設定を保存できないため、フォルダーのアクセス権を確認するか、ランチャーを書き込み可能な場所へ移動してから再試行してください。</value>
-  </data>
   <data name="Status_JavaScanFailed" xml:space="preserve">
     <value>この PC の Java スキャンに失敗しました。しばらくしてから再試行してください。</value>
   </data>
@@ -3063,7 +3060,7 @@
     <value>ランチャーログ</value>
   </data>
   <data name="Settings_LauncherLogDirectoryDescription" xml:space="preserve">
-    <value>ここにはランチャーの実行ログと診断ログファイルが保存されます。</value>
+    <value>ランチャーログディレクトリ</value>
   </data>
   <data name="Settings_DiagnosticLoggingLabel" xml:space="preserve">
     <value>診断ログ</value>

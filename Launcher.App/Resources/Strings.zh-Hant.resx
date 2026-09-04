@@ -1864,9 +1864,6 @@
   <data name="Status_SettingsSaveFailed" xml:space="preserve">
     <value>啟動器設定儲存失敗，請稍後再試。</value>
   </data>
-  <data name="Status_DataDirectoryNotWritableFormat" xml:space="preserve">
-    <value>啟動器資料目錄無法寫入：{0}。設定將無法儲存，請檢查目錄權限，或將啟動器移至可寫入的位置後再試。</value>
-  </data>
   <data name="Status_JavaScanFailed" xml:space="preserve">
     <value>掃描本機 Java 失敗，請稍後再試。</value>
   </data>
@@ -3063,7 +3060,7 @@
     <value>啟動器日誌</value>
   </data>
   <data name="Settings_LauncherLogDirectoryDescription" xml:space="preserve">
-    <value>這裡存放啟動器執行日誌和診斷日誌檔案。</value>
+    <value>啟動器日誌目錄</value>
   </data>
   <data name="Settings_DiagnosticLoggingLabel" xml:space="preserve">
     <value>診斷日誌</value>

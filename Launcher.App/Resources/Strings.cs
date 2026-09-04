@@ -1102,7 +1102,6 @@ public static class Strings
     public static string Status_WorldDownloadFailed => Get(nameof(Status_WorldDownloadFailed));
     public static string Status_SettingsSaved => Get(nameof(Status_SettingsSaved));
     public static string Status_SettingsSaveFailed => Get(nameof(Status_SettingsSaveFailed));
-    public static string Status_DataDirectoryNotWritableFormat => Get(nameof(Status_DataDirectoryNotWritableFormat));
     public static string Status_JavaScanFailed => Get(nameof(Status_JavaScanFailed));
     public static string Status_JavaImported => Get(nameof(Status_JavaImported));
     public static string Status_JavaAlreadyExists => Get(nameof(Status_JavaAlreadyExists));
