@@ -424,6 +424,7 @@
     <Style x:Key="ReadOnlyFieldSurfaceStyle"
            TargetType="Border"
            BasedOn="{StaticResource SectionFieldSurfaceStyle}">
+        <Setter Property="CornerRadius" Value="8" />
         <Setter Property="MinHeight" Value="{StaticResource LauncherCompactControlHeight}" />
         <Setter Property="Padding" Value="14,4" />
         <Setter Property="Background" Value="{DynamicResource Brush.Card.Surface}" />
